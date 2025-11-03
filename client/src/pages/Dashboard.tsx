@@ -3,36 +3,36 @@ import { ProjectCard } from "@/components/ProjectCard";
 import { DollarSign, FolderKanban, Users, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { useProjects } from "@/hooks/useProjects";
+import { useClients } from "@/hooks/useClients";
+import { useClient } from "@/hooks/useClients";
+import { formatDate } from "@/lib/utils/dateFormat";
+import type { Project, Client } from "@/lib/firestore";
+
+function DashboardProjectCard({ project }: { project: Project & { id: string } }) {
+  const { data: client } = useClient(project.clientId);
+
+  return (
+    <ProjectCard
+      id={project.id}
+      name={project.name}
+      clientName={client?.name || 'Loading...'}
+      status={project.status}
+      location={project.location}
+      startDate={formatDate(project.startDate)}
+      estimatedCompletion={project.estimatedCompletion ? formatDate(project.estimatedCompletion) : undefined}
+      onClick={() => console.log(`View project ${project.id}`)}
+    />
+  );
+}
 
 export default function Dashboard() {
-  const mockProjects = [
-    {
-      id: "1",
-      name: "Residential Exterior Paint",
-      clientName: "John Smith",
-      status: "in-progress" as const,
-      location: "123 Main St, Oakland, CA",
-      startDate: "Jan 15, 2025",
-      estimatedCompletion: "Jan 30, 2025",
-    },
-    {
-      id: "2",
-      name: "Office Interior Refresh",
-      clientName: "Tech Startup Inc",
-      status: "pending" as const,
-      location: "456 Market St, San Francisco, CA",
-      startDate: "Feb 1, 2025",
-    },
-    {
-      id: "3",
-      name: "Apartment Complex",
-      clientName: "Property Management LLC",
-      status: "in-progress" as const,
-      location: "789 Oak Ave, Berkeley, CA",
-      startDate: "Jan 20, 2025",
-      estimatedCompletion: "Feb 15, 2025",
-    },
-  ];
+  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { data: clients = [], isLoading: clientsLoading } = useClients();
+
+  const activeProjects = projects.filter(p => p.status === 'in-progress' || p.status === 'pending');
+  const completedProjects = projects.filter(p => p.status === 'completed');
+  const recentProjects = projects.slice(0, 3);
 
   return (
     <div className="space-y-8">
@@ -57,38 +57,41 @@ export default function Dashboard() {
         />
         <StatCard
           title="Active Projects"
-          value="12"
+          value={activeProjects.length}
           icon={FolderKanban}
-          trend={{ value: "+2 from last week", isPositive: true }}
           testId="card-projects"
         />
         <StatCard
           title="Total Clients"
-          value="38"
+          value={clients.length}
           icon={Users}
-          trend={{ value: "+5 this month", isPositive: true }}
           testId="card-clients"
         />
         <StatCard
           title="Completed Jobs"
-          value="156"
+          value={completedProjects.length}
           icon={CheckCircle}
-          trend={{ value: "+8 this month", isPositive: true }}
           testId="card-completed"
         />
       </div>
 
       <div>
         <h2 className="text-2xl font-semibold mb-6">Recent Projects</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockProjects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              {...project}
-              onClick={() => console.log(`View project ${project.id}`)}
-            />
-          ))}
-        </div>
+        {projectsLoading ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Loading projects...</p>
+          </div>
+        ) : recentProjects.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">No projects yet. Create your first project to get started!</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {recentProjects.map((project) => (
+              <DashboardProjectCard key={project.id} project={project} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

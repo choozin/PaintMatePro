@@ -3,59 +3,34 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
 import { useState } from "react";
+import { useProjects } from "@/hooks/useProjects";
+import { useClient } from "@/hooks/useClients";
+import { formatDate } from "@/lib/utils/dateFormat";
+import type { Project } from "@/lib/firestore";
+
+function ProjectCardWithClient({ project }: { project: Project & { id: string } }) {
+  const { data: client } = useClient(project.clientId);
+
+  return (
+    <ProjectCard
+      id={project.id}
+      name={project.name}
+      clientName={client?.name || 'Loading...'}
+      status={project.status}
+      location={project.location}
+      startDate={formatDate(project.startDate)}
+      estimatedCompletion={project.estimatedCompletion ? formatDate(project.estimatedCompletion) : undefined}
+      onClick={() => console.log(`View project ${project.id}`)}
+    />
+  );
+}
 
 export default function Projects() {
   const [searchQuery, setSearchQuery] = useState("");
+  const { data: projects = [], isLoading } = useProjects();
 
-  const mockProjects = [
-    {
-      id: "1",
-      name: "Residential Exterior Paint",
-      clientName: "John Smith",
-      status: "in-progress" as const,
-      location: "123 Main St, Oakland, CA",
-      startDate: "Jan 15, 2025",
-      estimatedCompletion: "Jan 30, 2025",
-    },
-    {
-      id: "2",
-      name: "Office Interior Refresh",
-      clientName: "Tech Startup Inc",
-      status: "pending" as const,
-      location: "456 Market St, San Francisco, CA",
-      startDate: "Feb 1, 2025",
-    },
-    {
-      id: "3",
-      name: "Apartment Complex",
-      clientName: "Property Management LLC",
-      status: "in-progress" as const,
-      location: "789 Oak Ave, Berkeley, CA",
-      startDate: "Jan 20, 2025",
-      estimatedCompletion: "Feb 15, 2025",
-    },
-    {
-      id: "4",
-      name: "Commercial Storefront",
-      clientName: "Retail Corp",
-      status: "completed" as const,
-      location: "321 Elm St, Oakland, CA",
-      startDate: "Dec 1, 2024",
-      estimatedCompletion: "Dec 20, 2024",
-    },
-    {
-      id: "5",
-      name: "Warehouse Exterior",
-      clientName: "Logistics Inc",
-      status: "on-hold" as const,
-      location: "555 Industrial Pkwy, Fremont, CA",
-      startDate: "Jan 10, 2025",
-    },
-  ];
-
-  const filteredProjects = mockProjects.filter((project) =>
-    project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    project.clientName.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredProjects = projects.filter((project) =>
+    project.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -82,15 +57,23 @@ export default function Projects() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredProjects.map((project) => (
-          <ProjectCard
-            key={project.id}
-            {...project}
-            onClick={() => console.log(`View project ${project.id}`)}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Loading projects...</p>
+        </div>
+      ) : filteredProjects.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">
+            {searchQuery ? 'No projects match your search.' : 'No projects yet. Create your first project to get started!'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredProjects.map((project) => (
+            <ProjectCardWithClient key={project.id} project={project} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

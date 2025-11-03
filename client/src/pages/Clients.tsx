@@ -3,54 +3,32 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
 import { useState } from "react";
+import { useClients } from "@/hooks/useClients";
+import { useProjects } from "@/hooks/useProjects";
+import type { Client } from "@/lib/firestore";
+
+function ClientCardWithProjects({ client }: { client: Client & { id: string } }) {
+  const { data: projects = [] } = useProjects();
+  const projectCount = projects.filter(p => p.clientId === client.id).length;
+
+  return (
+    <ClientCard
+      id={client.id}
+      name={client.name}
+      email={client.email}
+      phone={client.phone}
+      address={client.address}
+      projectCount={projectCount}
+      onClick={() => console.log(`View client ${client.id}`)}
+    />
+  );
+}
 
 export default function Clients() {
   const [searchQuery, setSearchQuery] = useState("");
+  const { data: clients = [], isLoading } = useClients();
 
-  const mockClients = [
-    {
-      id: "1",
-      name: "John Smith",
-      email: "john.smith@email.com",
-      phone: "(555) 123-4567",
-      address: "123 Main St, Oakland, CA 94612",
-      projectCount: 3,
-    },
-    {
-      id: "2",
-      name: "Tech Startup Inc",
-      email: "contact@techstartup.com",
-      phone: "(555) 234-5678",
-      address: "456 Market St, San Francisco, CA 94102",
-      projectCount: 1,
-    },
-    {
-      id: "3",
-      name: "Property Management LLC",
-      email: "admin@propertymgmt.com",
-      phone: "(555) 345-6789",
-      address: "789 Oak Ave, Berkeley, CA 94704",
-      projectCount: 5,
-    },
-    {
-      id: "4",
-      name: "Retail Corp",
-      email: "facilities@retailcorp.com",
-      phone: "(555) 456-7890",
-      address: "321 Elm St, Oakland, CA 94607",
-      projectCount: 2,
-    },
-    {
-      id: "5",
-      name: "Logistics Inc",
-      email: "ops@logistics.com",
-      phone: "(555) 567-8901",
-      address: "555 Industrial Pkwy, Fremont, CA 94538",
-      projectCount: 1,
-    },
-  ];
-
-  const filteredClients = mockClients.filter((client) =>
+  const filteredClients = clients.filter((client) =>
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -79,15 +57,23 @@ export default function Clients() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredClients.map((client) => (
-          <ClientCard
-            key={client.id}
-            {...client}
-            onClick={() => console.log(`View client ${client.id}`)}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Loading clients...</p>
+        </div>
+      ) : filteredClients.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">
+            {searchQuery ? 'No clients match your search.' : 'No clients yet. Add your first client to get started!'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredClients.map((client) => (
+            <ClientCardWithProjects key={client.id} client={client} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

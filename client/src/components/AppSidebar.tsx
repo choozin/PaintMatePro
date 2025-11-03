@@ -19,6 +19,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 
 const menuItems = [
   {
@@ -50,6 +51,16 @@ const menuItems = [
 
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
+  const { signOut } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      setLocation('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   return (
     <Sidebar>
@@ -89,11 +100,9 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild data-testid="button-logout">
-              <a href="/login" onClick={(e) => { e.preventDefault(); console.log('Logout triggered'); }}>
-                <LogOut className="h-5 w-5" />
-                <span>Logout</span>
-              </a>
+            <SidebarMenuButton onClick={handleLogout} data-testid="button-logout">
+              <LogOut className="h-5 w-5" />
+              <span>Logout</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
