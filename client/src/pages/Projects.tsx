@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useProjects } from "@/hooks/useProjects";
 import { useClient } from "@/hooks/useClients";
 import { formatDate } from "@/lib/utils/dateFormat";
 import type { Project } from "@/lib/firestore";
 
 function ProjectCardWithClient({ project }: { project: Project & { id: string } }) {
+  const [, setLocation] = useLocation();
   const { data: client } = useClient(project.clientId);
 
   return (
@@ -21,7 +23,7 @@ function ProjectCardWithClient({ project }: { project: Project & { id: string } 
       location={project.location}
       startDate={formatDate(project.startDate)}
       estimatedCompletion={project.estimatedCompletion ? formatDate(project.estimatedCompletion) : undefined}
-      onClick={() => console.log(`View project ${project.id}`)}
+      onClick={() => setLocation(`/projects/${project.id}`)}
     />
   );
 }

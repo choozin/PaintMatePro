@@ -11,6 +11,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 import Dashboard from "@/pages/Dashboard";
 import Projects from "@/pages/Projects";
+import ProjectDetail from "@/pages/ProjectDetail";
 import Clients from "@/pages/Clients";
 import Quotes from "@/pages/Quotes";
 import Schedule from "@/pages/Schedule";
@@ -56,6 +57,7 @@ function Router() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/projects" component={Projects} />
+          <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/clients" component={Clients} />
           <Route path="/quotes" component={Quotes} />
           <Route path="/schedule" component={Schedule} />

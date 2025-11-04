@@ -3,46 +3,146 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Ruler, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Ruler, Plus, Trash2, Save } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/useRooms";
+import { useToast } from "@/hooks/use-toast";
+import type { Room } from "@/lib/firestore";
 
-interface Room {
-  id: string;
+interface RoomMeasurementProps {
+  projectId: string;
+}
+
+interface LocalRoom {
+  id?: string;
   name: string;
   length: string;
   width: string;
   height: string;
+  isNew?: boolean;
+  hasChanges?: boolean;
 }
 
-export function RoomMeasurement() {
-  const [rooms, setRooms] = useState<Room[]>([
-    { id: "1", name: "Living Room", length: "15", width: "12", height: "9" },
-  ]);
+export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
+  const { data: rooms = [], isLoading } = useRooms(projectId);
+  const createRoom = useCreateRoom();
+  const updateRoom = useUpdateRoom();
+  const deleteRoom = useDeleteRoom();
+  const { toast } = useToast();
+
+  const [localRooms, setLocalRooms] = useState<LocalRoom[]>([]);
+
+  // Sync Firebase rooms to local state
+  useEffect(() => {
+    if (rooms.length > 0) {
+      setLocalRooms(
+        rooms.map((room) => ({
+          id: room.id,
+          name: room.name,
+          length: room.length.toString(),
+          width: room.width.toString(),
+          height: room.height.toString(),
+          isNew: false,
+          hasChanges: false,
+        }))
+      );
+    }
+  }, [rooms]);
 
   const addRoom = () => {
-    const newRoom: Room = {
-      id: Date.now().toString(),
-      name: `Room ${rooms.length + 1}`,
+    const newRoom: LocalRoom = {
+      name: `Room ${localRooms.length + 1}`,
       length: "",
       width: "",
       height: "",
+      isNew: true,
+      hasChanges: false,
     };
-    setRooms([...rooms, newRoom]);
-    console.log('Add room triggered');
+    setLocalRooms([...localRooms, newRoom]);
   };
 
-  const removeRoom = (id: string) => {
-    setRooms(rooms.filter((r) => r.id !== id));
-    console.log('Remove room triggered', id);
+  const removeRoom = async (index: number) => {
+    const room = localRooms[index];
+    
+    if (room.id && !room.isNew) {
+      try {
+        await deleteRoom.mutateAsync({ id: room.id, projectId });
+        toast({
+          title: "Room Deleted",
+          description: "Room has been successfully deleted",
+        });
+      } catch (error: any) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message || "Failed to delete room",
+        });
+      }
+    } else {
+      // Just remove from local state if not saved yet
+      setLocalRooms(localRooms.filter((_, i) => i !== index));
+    }
   };
 
-  const updateRoom = (id: string, field: keyof Room, value: string) => {
-    setRooms(
-      rooms.map((r) => (r.id === id ? { ...r, [field]: value } : r))
+  const updateLocalRoom = (index: number, field: keyof LocalRoom, value: string) => {
+    setLocalRooms(
+      localRooms.map((room, i) => {
+        if (i === index) {
+          return { ...room, [field]: value, hasChanges: !room.isNew };
+        }
+        return room;
+      })
     );
   };
 
-  const calculateArea = (room: Room) => {
+  const saveRoom = async (index: number) => {
+    const room = localRooms[index];
+    
+    if (!room.name || !room.length || !room.width || !room.height) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please fill in all room measurements",
+      });
+      return;
+    }
+
+    const roomData = {
+      projectId,
+      name: room.name,
+      length: parseFloat(room.length),
+      width: parseFloat(room.width),
+      height: parseFloat(room.height),
+    };
+
+    try {
+      if (room.isNew) {
+        await createRoom.mutateAsync(roomData);
+        toast({
+          title: "Room Saved",
+          description: "Room measurements have been saved",
+        });
+      } else if (room.id && room.hasChanges) {
+        await updateRoom.mutateAsync({
+          id: room.id,
+          data: roomData,
+          projectId,
+        });
+        toast({
+          title: "Room Updated",
+          description: "Room measurements have been updated",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to save room",
+      });
+    }
+  };
+
+  const calculateArea = (room: LocalRoom) => {
     const length = parseFloat(room.length) || 0;
     const width = parseFloat(room.width) || 0;
     const height = parseFloat(room.height) || 0;
@@ -53,6 +153,22 @@ export function RoomMeasurement() {
     
     return { floorArea, wallArea, totalArea };
   };
+
+  const calculatePaintNeeded = (wallArea: number) => {
+    // Assume 1 gallon covers ~400 sq ft with one coat
+    const coveragePerGallon = 400;
+    const coats = 2; // Standard: primer + finish coat
+    const gallons = (wallArea * coats) / coveragePerGallon;
+    return Math.ceil(gallons);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <p className="text-muted-foreground">Loading room measurements...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -67,71 +183,101 @@ export function RoomMeasurement() {
         </Button>
       </div>
 
+      {localRooms.length === 0 && (
+        <Card>
+          <CardContent className="flex items-center justify-center p-12">
+            <div className="text-center space-y-3">
+              <Ruler className="h-12 w-12 mx-auto text-muted-foreground" />
+              <p className="text-muted-foreground">No rooms added yet</p>
+              <p className="text-sm text-muted-foreground">Add room measurements to calculate paint quantities</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6">
-        {rooms.map((room, index) => {
+        {localRooms.map((room, index) => {
           const { floorArea, wallArea, totalArea } = calculateArea(room);
+          const paintGallons = calculatePaintNeeded(wallArea);
+          const needsSave = room.isNew || room.hasChanges;
           
           return (
-            <Card key={room.id} data-testid={`card-room-${room.id}`}>
+            <Card key={index} data-testid={`card-room-${index}`}>
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-                <CardTitle className="text-lg">
+                <CardTitle className="text-lg flex-1">
                   <Input
                     value={room.name}
-                    onChange={(e) => updateRoom(room.id, "name", e.target.value)}
+                    onChange={(e) => updateLocalRoom(index, "name", e.target.value)}
                     className="text-lg font-semibold border-0 p-0 h-auto focus-visible:ring-0"
-                    data-testid={`input-room-name-${room.id}`}
+                    data-testid={`input-room-name-${index}`}
+                    placeholder="Room name"
                   />
                 </CardTitle>
-                {rooms.length > 1 && (
+                <div className="flex items-center gap-2">
+                  {needsSave && (
+                    <Button
+                      size="sm"
+                      onClick={() => saveRoom(index)}
+                      disabled={createRoom.isPending || updateRoom.isPending}
+                      data-testid={`button-save-room-${index}`}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {createRoom.isPending || updateRoom.isPending ? "Saving..." : "Save"}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => removeRoom(room.id)}
-                    data-testid={`button-remove-room-${room.id}`}
+                    onClick={() => removeRoom(index)}
+                    disabled={deleteRoom.isPending}
+                    data-testid={`button-remove-room-${index}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
-                )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   <div className="space-y-2">
-                    <Label htmlFor={`length-${room.id}`}>Length (ft)</Label>
+                    <Label htmlFor={`length-${index}`}>Length (ft)</Label>
                     <Input
-                      id={`length-${room.id}`}
+                      id={`length-${index}`}
                       type="number"
+                      step="0.1"
                       value={room.length}
-                      onChange={(e) => updateRoom(room.id, "length", e.target.value)}
+                      onChange={(e) => updateLocalRoom(index, "length", e.target.value)}
                       className="font-mono"
-                      data-testid={`input-length-${room.id}`}
+                      data-testid={`input-length-${index}`}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor={`width-${room.id}`}>Width (ft)</Label>
+                    <Label htmlFor={`width-${index}`}>Width (ft)</Label>
                     <Input
-                      id={`width-${room.id}`}
+                      id={`width-${index}`}
                       type="number"
+                      step="0.1"
                       value={room.width}
-                      onChange={(e) => updateRoom(room.id, "width", e.target.value)}
+                      onChange={(e) => updateLocalRoom(index, "width", e.target.value)}
                       className="font-mono"
-                      data-testid={`input-width-${room.id}`}
+                      data-testid={`input-width-${index}`}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor={`height-${room.id}`}>Height (ft)</Label>
+                    <Label htmlFor={`height-${index}`}>Height (ft)</Label>
                     <Input
-                      id={`height-${room.id}`}
+                      id={`height-${index}`}
                       type="number"
+                      step="0.1"
                       value={room.height}
-                      onChange={(e) => updateRoom(room.id, "height", e.target.value)}
+                      onChange={(e) => updateLocalRoom(index, "height", e.target.value)}
                       className="font-mono"
-                      data-testid={`input-height-${room.id}`}
+                      data-testid={`input-height-${index}`}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Total Area</Label>
                     <div className="h-10 flex items-center">
-                      <span className="font-mono text-2xl font-bold" data-testid={`text-area-${room.id}`}>
+                      <span className="font-mono text-2xl font-bold" data-testid={`text-area-${index}`}>
                         {totalArea.toFixed(0)}
                       </span>
                       <span className="text-sm text-muted-foreground ml-1">ft²</span>
@@ -146,12 +292,51 @@ export function RoomMeasurement() {
                   <Badge variant="secondary" className="font-mono">
                     Walls: {wallArea.toFixed(0)} ft²
                   </Badge>
+                  <Badge variant="outline" className="font-mono">
+                    Paint needed: ~{paintGallons} gallons
+                  </Badge>
                 </div>
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      {localRooms.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Project Totals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Floor Area</p>
+                <p className="text-2xl font-bold font-mono">
+                  {localRooms.reduce((sum, room) => sum + calculateArea(room).floorArea, 0).toFixed(0)} ft²
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Wall Area</p>
+                <p className="text-2xl font-bold font-mono">
+                  {localRooms.reduce((sum, room) => sum + calculateArea(room).wallArea, 0).toFixed(0)} ft²
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Paintable Area</p>
+                <p className="text-2xl font-bold font-mono">
+                  {localRooms.reduce((sum, room) => sum + calculateArea(room).totalArea, 0).toFixed(0)} ft²
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Est. Paint Needed</p>
+                <p className="text-2xl font-bold font-mono">
+                  {localRooms.reduce((sum, room) => sum + calculatePaintNeeded(calculateArea(room).wallArea), 0)} gal
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
