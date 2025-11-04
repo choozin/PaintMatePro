@@ -63,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (firebaseUser) {
         const userClaims = await getUserClaims();
+        console.log('🔑 Custom claims loaded:', userClaims);
         setClaims(userClaims);
       } else {
         setClaims(null);
