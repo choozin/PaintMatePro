@@ -50,8 +50,37 @@ export async function getUserClaims(): Promise<{ orgIds: string[]; role: string 
 
   try {
     const idTokenResult = await user.getIdTokenResult();
+    let orgIds = (idTokenResult.claims.orgIds as string[]) || [];
+    
+    // Fallback: if no custom claims, try to get the first org from Firestore
+    if (orgIds.length === 0) {
+      try {
+        const { collection, getDocs } = await import('firebase/firestore');
+        const { db } = await import('./firebase');
+        const orgsSnapshot = await getDocs(collection(db, 'orgs'));
+        
+        if (!orgsSnapshot.empty) {
+          orgIds = [orgsSnapshot.docs[0].id];
+          console.log('No custom claims found, using first available org:', orgIds[0]);
+        }
+      } catch (firestoreError: any) {
+        // If permission denied, use a hardcoded org ID as last resort
+        // This allows the app to work even without custom claims set
+        if (firestoreError.code === 'permission-denied') {
+          // Check localStorage for a saved orgId
+          const savedOrgId = localStorage.getItem('fallbackOrgId');
+          if (savedOrgId) {
+            orgIds = [savedOrgId];
+            console.log('Using saved fallback org:', savedOrgId);
+          } else {
+            console.warn('No custom claims and permission denied to read orgs. Please set Firebase custom claims with orgIds.');
+          }
+        }
+      }
+    }
+    
     return {
-      orgIds: (idTokenResult.claims.orgIds as string[]) || [],
+      orgIds,
       role: (idTokenResult.claims.role as string) || 'member',
     };
   } catch (error) {

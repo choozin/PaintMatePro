@@ -93,6 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
   };
 
+  // Show org setup screen if user is logged in but has no orgIds
+  if (!loading && user && claims && claims.orgIds.length === 0) {
+    const { OrgSetup } = require('@/components/OrgSetup');
+    return <OrgSetup onOrgIdSet={() => window.location.reload()} />;
+  }
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

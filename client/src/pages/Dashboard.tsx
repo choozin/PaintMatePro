@@ -1,5 +1,6 @@
 import { StatCard } from "@/components/StatCard";
 import { ProjectCard } from "@/components/ProjectCard";
+import { ProjectDialog } from "@/components/ProjectDialog";
 import { DollarSign, FolderKanban, Users, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -41,10 +42,7 @@ export default function Dashboard() {
           <h1 className="text-4xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground mt-2">Welcome back! Here's your business overview.</p>
         </div>
-        <Button data-testid="button-new-project">
-          <Plus className="h-4 w-4 mr-2" />
-          New Project
-        </Button>
+        <ProjectDialog mode="create" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
