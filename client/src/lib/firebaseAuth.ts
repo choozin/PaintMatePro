@@ -20,8 +20,10 @@ export interface AuthUser extends User {
 export async function signIn(email: string, password: string): Promise<UserCredential> {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    // Force token refresh to get custom claims
+    // Force token refresh to get latest custom claims
     await userCredential.user.getIdToken(true);
+    // Clear any cached fallback org ID since we now have proper claims
+    localStorage.removeItem('fallbackOrgId');
     return userCredential;
   } catch (error: any) {
     console.error('Sign in error:', error);
