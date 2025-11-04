@@ -8,6 +8,17 @@ PaintPro is a production-grade SaaS application designed for painting companies 
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Updates
+
+**2025-11-04: Quote Management System Implemented**
+- Created ProjectDetail page with tabs for project overview, room measurements, and quotes
+- Integrated RoomMeasurement component with Firebase Firestore for persistent storage
+- Integrated QuoteBuilder component with Firebase including auto-generation from rooms
+- Material calculation: 400 sq ft/gallon coverage, 2-coat estimation
+- Labor estimation: 150 sq ft/hour for wall painting
+- Room measurement features: floor area, wall area, total paintable area, paint quantity estimates
+- Quote features: line item management, configurable tax rate, validity period, Firebase persistence
+
 ## System Architecture
 
 ### Frontend Architecture
@@ -44,7 +55,9 @@ Preferred communication style: Simple, everyday language.
 - `entitlements`: Feature flags per organization controlling access to AR capture, recolor previews, analytics, PDF watermarks, e-signatures, etc.
 - `projects`: Project records with status tracking (pending, in-progress, completed, on-hold), client references, location, and dates
 - `clients`: Client contact information scoped to organizations
-- Additional collections implied but not yet implemented: quotes, rooms, measurements, materials
+- `rooms`: Room measurements (length, width, height) linked to projects, with automatic area calculations
+- `quotes`: Project quotes with line items, subtotal, tax, total, and validity period
+- Additional collections planned: measurements (AR/manual), materials (paint inventory)
 
 **Data Access Pattern**: Direct client-side Firestore queries using collection operations (getByOrg, get, create, update, delete) with React Query caching. All queries are scoped by organization ID from user claims to enforce multi-tenancy.
 
