@@ -1,4 +1,5 @@
 import { ProjectCard } from "@/components/ProjectCard";
+import { ProjectDialog } from "@/components/ProjectDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
@@ -40,10 +41,7 @@ export default function Projects() {
           <h1 className="text-4xl font-bold">Projects</h1>
           <p className="text-muted-foreground mt-2">Manage all your painting projects.</p>
         </div>
-        <Button data-testid="button-create-project">
-          <Plus className="h-4 w-4 mr-2" />
-          Create Project
-        </Button>
+        <ProjectDialog mode="create" />
       </div>
 
       <div className="relative max-w-md">
