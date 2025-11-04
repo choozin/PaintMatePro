@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User } from 'firebase/auth';
 import { onAuthChange, signIn as authSignIn, signOut as authSignOut, getUserClaims } from '@/lib/firebaseAuth';
 import { getDocById } from '@/lib/firestore';
+import { OrgSetup } from '@/components/OrgSetup';
 import type { Org, Entitlement } from '@/lib/firestore';
 
 interface UserClaims {
@@ -95,7 +96,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Show org setup screen if user is logged in but has no orgIds
   if (!loading && user && claims && claims.orgIds.length === 0) {
-    const { OrgSetup } = require('@/components/OrgSetup');
     return <OrgSetup onOrgIdSet={() => window.location.reload()} />;
   }
 
