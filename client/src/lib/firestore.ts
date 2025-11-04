@@ -138,8 +138,11 @@ export async function getDocs<T>(
       id: doc.id,
       ...doc.data(),
     })) as (T & { id: string })[];
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error getting documents from ${collectionName}:`, error);
+    if (error?.message) {
+      console.error('Full error message:', error.message);
+    }
     throw error;
   }
 }
