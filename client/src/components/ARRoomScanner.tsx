@@ -81,6 +81,21 @@ export function ARRoomScanner({
   const startARSession = async () => {
     if (!containerRef.current) return;
 
+    console.log('🎥 Starting AR session...');
+    console.log('Navigator XR available:', 'xr' in navigator);
+    
+    if ('xr' in navigator) {
+      const xr = (navigator as any).xr;
+      console.log('XR object:', xr);
+      
+      try {
+        const isARSupported = await xr.isSessionSupported('immersive-ar');
+        console.log('immersive-ar supported:', isARSupported);
+      } catch (e) {
+        console.error('Error checking AR support:', e);
+      }
+    }
+
     try {
       // Create Three.js scene
       const scene = new THREE.Scene();
@@ -119,10 +134,22 @@ export function ARRoomScanner({
       scene.add(reticle);
       reticleRef.current = reticle;
 
-      // Start AR session
-      const session = await (navigator as any).xr.requestSession('immersive-ar', {
-        requiredFeatures: ['hit-test']
-      });
+      // Start AR session - try with hit-test first, fallback without it
+      console.log('📱 Requesting AR session with hit-test feature...');
+      let session;
+      try {
+        session = await (navigator as any).xr.requestSession('immersive-ar', {
+          requiredFeatures: ['hit-test']
+        });
+        console.log('✅ AR session created with hit-test');
+      } catch (hitTestError: any) {
+        console.warn('⚠️ hit-test not supported, trying without it...', hitTestError);
+        // Fallback: try without hit-test
+        session = await (navigator as any).xr.requestSession('immersive-ar', {
+          optionalFeatures: ['hit-test']
+        });
+        console.log('✅ AR session created without required hit-test');
+      }
 
       await renderer.xr.setSession(session);
       setIsARActive(true);
@@ -151,14 +178,17 @@ export function ARRoomScanner({
       });
 
     } catch (error: any) {
-      console.error('AR session failed:', error);
+      console.error('❌ AR session failed:', error);
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      console.error('Full error:', JSON.stringify(error, null, 2));
       
       let errorMessage = "Failed to start AR session. ";
       
       if (error.name === 'NotAllowedError') {
         errorMessage += "Please allow camera access and try again.";
       } else if (error.name === 'NotSupportedError') {
-        errorMessage += "Your device doesn't support AR features. Try using Chrome on Android.";
+        errorMessage += "Your device doesn't support the 'hit-test' AR feature. We'll add a fallback mode soon!";
       } else if (error.name === 'SecurityError') {
         errorMessage += "AR requires a secure connection (HTTPS).";
       } else {
