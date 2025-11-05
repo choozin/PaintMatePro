@@ -31,6 +31,13 @@ interface Point3D {
   z: number;
 }
 
+type ARMode = 'hit-test' | 'plane-detection' | 'pose-based' | 'unsupported';
+
+interface ARCapabilities {
+  mode: ARMode;
+  features: string[];
+}
+
 export function ARRoomScanner({ 
   onClose, 
   onScanComplete,
@@ -40,11 +47,13 @@ export function ARRoomScanner({
   const { toast } = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isARSupported, setIsARSupported] = useState<boolean | null>(null);
+  const [arMode, setArMode] = useState<ARMode | null>(null);
   const [isARActive, setIsARActive] = useState(false);
   const [roomName, setRoomName] = useState("");
   const [ceilingHeight, setCeilingHeight] = useState("");
   const [corners, setCorners] = useState<Point3D[]>([]);
-  const [currentStep, setCurrentStep] = useState<'name' | 'height' | 'corners' | 'complete'>('name');
+  const [currentStep, setCurrentStep] = useState<'name' | 'height' | 'corners' | 'calibrate' | 'complete'>('name');
+  const [floorPlane, setFloorPlane] = useState<THREE.Plane | null>(null);
 
   // Three.js refs
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -52,19 +61,60 @@ export function ARRoomScanner({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const reticleRef = useRef<THREE.Mesh | null>(null);
   const hitTestSourceRef = useRef<XRHitTestSource | null>(null);
+  const planeDetectionRef = useRef<Set<XRPlane> | null>(null);
   const markerMeshesRef = useRef<THREE.Mesh[]>([]);
+  const sessionRef = useRef<XRSession | null>(null);
+
+  // Detect AR capabilities with cascading fallback
+  const detectARCapabilities = async (): Promise<ARCapabilities> => {
+    if (!('xr' in navigator)) {
+      return { mode: 'unsupported', features: [] };
+    }
+
+    const xr = (navigator as any).xr;
+    
+    // Check basic AR support first
+    const isARSupported = await xr.isSessionSupported('immersive-ar').catch(() => false);
+    if (!isARSupported) {
+      return { mode: 'unsupported', features: [] };
+    }
+
+    // Try hit-test (best option)
+    try {
+      const testSession = await xr.requestSession('immersive-ar', {
+        requiredFeatures: ['hit-test']
+      });
+      await testSession.end();
+      console.log('✅ Hit-test supported');
+      return { mode: 'hit-test', features: ['hit-test'] };
+    } catch (e) {
+      console.log('⚠️ Hit-test not supported, trying plane-detection...');
+    }
+
+    // Try plane-detection (second best)
+    try {
+      const testSession = await xr.requestSession('immersive-ar', {
+        requiredFeatures: ['plane-detection']
+      });
+      await testSession.end();
+      console.log('✅ Plane-detection supported');
+      return { mode: 'plane-detection', features: ['plane-detection'] };
+    } catch (e) {
+      console.log('⚠️ Plane-detection not supported, using pose-based...');
+    }
+
+    // Pose-based works on any AR-capable device
+    console.log('✅ Using pose-based mode');
+    return { mode: 'pose-based', features: [] };
+  };
 
   // Check AR support on mount
   useEffect(() => {
-    if ('xr' in navigator) {
-      (navigator as any).xr.isSessionSupported('immersive-ar').then((supported: boolean) => {
-        setIsARSupported(supported);
-      }).catch(() => {
-        setIsARSupported(false);
-      });
-    } else {
-      setIsARSupported(false);
-    }
+    detectARCapabilities().then((capabilities) => {
+      setArMode(capabilities.mode);
+      setIsARSupported(capabilities.mode !== 'unsupported');
+      console.log('AR Mode:', capabilities.mode, 'Features:', capabilities.features);
+    });
 
     // Cleanup on unmount
     return () => {
@@ -79,22 +129,9 @@ export function ARRoomScanner({
   }, []);
 
   const startARSession = async () => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !arMode) return;
 
-    console.log('🎥 Starting AR session...');
-    console.log('Navigator XR available:', 'xr' in navigator);
-    
-    if ('xr' in navigator) {
-      const xr = (navigator as any).xr;
-      console.log('XR object:', xr);
-      
-      try {
-        const isARSupported = await xr.isSessionSupported('immersive-ar');
-        console.log('immersive-ar supported:', isARSupported);
-      } catch (e) {
-        console.error('Error checking AR support:', e);
-      }
-    }
+    console.log(`🎥 Starting AR session in ${arMode} mode...`);
 
     try {
       // Create Three.js scene
@@ -134,26 +171,28 @@ export function ARRoomScanner({
       scene.add(reticle);
       reticleRef.current = reticle;
 
-      // Start AR session - try with hit-test first, fallback without it
-      console.log('📱 Requesting AR session with hit-test feature...');
-      let session;
-      try {
-        session = await (navigator as any).xr.requestSession('immersive-ar', {
-          requiredFeatures: ['hit-test']
-        });
-        console.log('✅ AR session created with hit-test');
-      } catch (hitTestError: any) {
-        console.warn('⚠️ hit-test not supported, trying without it...', hitTestError);
-        // Fallback: try without hit-test
-        session = await (navigator as any).xr.requestSession('immersive-ar', {
-          optionalFeatures: ['hit-test']
-        });
-        console.log('✅ AR session created without required hit-test');
+      // Start AR session based on detected mode
+      let sessionConfig: any = {};
+      if (arMode === 'hit-test') {
+        sessionConfig.requiredFeatures = ['hit-test'];
+      } else if (arMode === 'plane-detection') {
+        sessionConfig.requiredFeatures = ['plane-detection'];
       }
+      // pose-based mode needs no special features
+      
+      const session = await (navigator as any).xr.requestSession('immersive-ar', sessionConfig);
+      sessionRef.current = session;
+      console.log(`✅ AR session created in ${arMode} mode`);
 
       await renderer.xr.setSession(session);
       setIsARActive(true);
-      setCurrentStep('corners');
+      
+      // For pose-based mode, need calibration step first
+      if (arMode === 'pose-based') {
+        setCurrentStep('calibrate');
+      } else {
+        setCurrentStep('corners');
+      }
 
       // Setup controller for tap events
       const controller = renderer.xr.getController(0);
@@ -220,44 +259,91 @@ export function ARRoomScanner({
     const referenceSpace = renderer.xr.getReferenceSpace();
     if (!referenceSpace) return;
 
-    // Request hit test source once
-    if (!hitTestSourceRef.current && session.requestHitTestSource) {
-      session.requestReferenceSpace('viewer').then((viewerSpace) => {
-        const hitTestRequest = session.requestHitTestSource;
-        if (hitTestRequest) {
-          hitTestRequest.call(session, { space: viewerSpace }).then((source) => {
-            hitTestSourceRef.current = source;
-          });
-        }
-      });
-    }
-
-    // Perform hit test
-    if (hitTestSourceRef.current) {
-      const hitTestResults = frame.getHitTestResults(hitTestSourceRef.current);
-
-      if (hitTestResults.length > 0) {
-        const hit = hitTestResults[0];
-        const pose = hit.getPose(referenceSpace);
-        
-        if (pose) {
-          reticle.visible = true;
-          reticle.matrix.fromArray(pose.transform.matrix);
-        }
-      } else {
-        reticle.visible = false;
+    // Only do hit-testing in hit-test mode
+    if (arMode === 'hit-test') {
+      // Request hit test source once
+      if (!hitTestSourceRef.current && session.requestHitTestSource) {
+        session.requestReferenceSpace('viewer').then((viewerSpace) => {
+          const hitTestRequest = session.requestHitTestSource;
+          if (hitTestRequest) {
+            hitTestRequest.call(session, { space: viewerSpace }).then((source) => {
+              hitTestSourceRef.current = source;
+            });
+          }
+        });
       }
+
+      // Perform hit test
+      if (hitTestSourceRef.current) {
+        const hitTestResults = frame.getHitTestResults(hitTestSourceRef.current);
+
+        if (hitTestResults.length > 0) {
+          const hit = hitTestResults[0];
+          const pose = hit.getPose(referenceSpace);
+          
+          if (pose) {
+            reticle.visible = true;
+            reticle.matrix.fromArray(pose.transform.matrix);
+          }
+        } else {
+          reticle.visible = false;
+        }
+      }
+    } else {
+      // Hide reticle in other modes
+      reticle.visible = false;
     }
   };
 
   const onARTap = () => {
-    if (!reticleRef.current || !reticleRef.current.visible || !sceneRef.current) return;
+    if (!sceneRef.current || !cameraRef.current) return;
 
-    // Get reticle position
-    const position = new THREE.Vector3();
-    const quaternion = new THREE.Quaternion();
-    const scale = new THREE.Vector3();
-    reticleRef.current.matrix.decompose(position, quaternion, scale);
+    let position: THREE.Vector3;
+
+    // Get position based on AR mode
+    if (arMode === 'hit-test' && reticleRef.current?.visible) {
+      // Hit-test mode: use reticle position
+      position = new THREE.Vector3();
+      const quaternion = new THREE.Quaternion();
+      const scale = new THREE.Vector3();
+      reticleRef.current.matrix.decompose(position, quaternion, scale);
+    } else if (arMode === 'pose-based') {
+      // Pose-based mode: ray-plane intersection
+      if (currentStep === 'calibrate' && !floorPlane) {
+        // First tap - calibrate floor plane at center of view
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), cameraRef.current);
+        
+        // Assume floor is 1.6m below camera (average eye height)
+        const cameraPos = cameraRef.current.position;
+        const floorY = cameraPos.y - 1.6;
+        
+        const calibratedPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY);
+        setFloorPlane(calibratedPlane);
+        
+        const intersect = raycaster.ray.intersectPlane(calibratedPlane, new THREE.Vector3());
+        if (!intersect) return;
+        position = intersect;
+        
+        setCurrentStep('corners');
+        toast({
+          title: "Floor Calibrated",
+          description: "Now tap the four corners of the room",
+        });
+      } else if (floorPlane) {
+        // Subsequent taps - use calibrated plane
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector3(0, 0), cameraRef.current);
+        const intersect = raycaster.ray.intersectPlane(floorPlane, new THREE.Vector3());
+        if (!intersect) return;
+        position = intersect;
+      } else {
+        return;
+      }
+    } else {
+      // No valid position source
+      return;
+    }
 
     // Add corner marker
     const markerGeometry = new THREE.SphereGeometry(0.05);
@@ -336,16 +422,37 @@ export function ARRoomScanner({
     }
   };
 
-  if (isARSupported === false) {
+  if (isARSupported === false || arMode === 'unsupported') {
     return (
-      <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-background flex items-center justify-center p-4">
         <Card className="max-w-md">
-          <CardContent className="p-6 text-center space-y-4">
-            <p className="text-lg font-semibold">AR Not Supported</p>
-            <p className="text-sm text-muted-foreground">
-              Your browser doesn't support WebXR AR. Please use Chrome on an Android device.
-            </p>
-            <Button onClick={onClose}>Close</Button>
+          <CardContent className="p-6 space-y-4">
+            <div className="text-center space-y-2">
+              <p className="text-lg font-semibold">Camera Scanning Not Available</p>
+              <p className="text-sm text-muted-foreground">
+                Your device doesn't support the AR features needed for camera-based room measurement.
+              </p>
+            </div>
+            
+            <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm font-medium">Required Features:</p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                <li>WebXR Device API (immersive-ar)</li>
+                <li>Hit-testing OR Plane-detection OR Pose tracking</li>
+                <li>Camera access</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">No worries!</p>
+              <p className="text-xs text-muted-foreground">
+                You can still use our excellent quote generator. Simply measure your room using a ruler or tape measure and enter the dimensions manually.
+              </p>
+            </div>
+
+            <Button onClick={onClose} className="w-full">
+              Continue with Manual Entry
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -441,12 +548,24 @@ export function ARRoomScanner({
       {isARActive && (
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent text-white">
           <div className="max-w-md mx-auto text-center space-y-2">
-            <p className="text-lg font-semibold">
-              Tap {corners.length === 0 ? 'first' : corners.length === 1 ? 'second' : corners.length === 2 ? 'third' : 'fourth'} corner
-            </p>
-            <p className="text-sm">
-              Tap the four corners of the room in order. {corners.length}/4 corners marked.
-            </p>
+            {currentStep === 'calibrate' && (
+              <>
+                <p className="text-lg font-semibold">Calibrate Floor Level</p>
+                <p className="text-sm">Point camera at the floor and tap anywhere to set the floor plane</p>
+              </>
+            )}
+            {currentStep === 'corners' && (
+              <>
+                <p className="text-lg font-semibold">
+                  Tap {corners.length === 0 ? 'first' : corners.length === 1 ? 'second' : corners.length === 2 ? 'third' : 'fourth'} corner
+                </p>
+                <p className="text-sm">
+                  {arMode === 'hit-test' && 'Aim the green reticle at each corner and tap. '}
+                  {arMode === 'pose-based' && 'Point camera at each corner and tap. '}
+                  {corners.length}/4 corners marked.
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}
