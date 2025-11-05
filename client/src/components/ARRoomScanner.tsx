@@ -150,13 +150,30 @@ export function ARRoomScanner({
         renderer.render(scene, camera);
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('AR session failed:', error);
+      
+      let errorMessage = "Failed to start AR session. ";
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage += "Please allow camera access and try again.";
+      } else if (error.name === 'NotSupportedError') {
+        errorMessage += "Your device doesn't support AR features. Try using Chrome on Android.";
+      } else if (error.name === 'SecurityError') {
+        errorMessage += "AR requires a secure connection (HTTPS).";
+      } else {
+        errorMessage += error.message || "Please try again.";
+      }
+      
       toast({
         variant: "destructive",
         title: "AR Error",
-        description: "Failed to start AR session. Please try again.",
+        description: errorMessage,
       });
+      
+      // Reset to initial state
+      setCurrentStep('name');
+      setIsARActive(false);
     }
   };
 
@@ -176,9 +193,12 @@ export function ARRoomScanner({
     // Request hit test source once
     if (!hitTestSourceRef.current && session.requestHitTestSource) {
       session.requestReferenceSpace('viewer').then((viewerSpace) => {
-        session.requestHitTestSource!({ space: viewerSpace }).then((source) => {
-          hitTestSourceRef.current = source;
-        });
+        const hitTestRequest = session.requestHitTestSource;
+        if (hitTestRequest) {
+          hitTestRequest.call(session, { space: viewerSpace }).then((source) => {
+            hitTestSourceRef.current = source;
+          });
+        }
       });
     }
 

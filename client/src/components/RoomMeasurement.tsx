@@ -216,6 +216,44 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
             <CardTitle className="text-lg">Camera-Assisted Measurement</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Rounding Preferences - Show before button so users configure first */}
+            <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+              <div className="space-y-1">
+                <Label className="text-sm font-semibold">Measurement Rounding</Label>
+                <p className="text-xs text-muted-foreground">
+                  Configure how AR measurements should be rounded before scanning
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">Precision</Label>
+                  <Select value={roundingPreference} onValueChange={(value: any) => setRoundingPreference(value)}>
+                    <SelectTrigger data-testid="select-rounding-precision" className="h-9">
+                      <SelectValue placeholder="Select precision" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="precise">Precise (0.1 ft)</SelectItem>
+                      <SelectItem value="2inch">2 Inches</SelectItem>
+                      <SelectItem value="6inch">6 Inches</SelectItem>
+                      <SelectItem value="1foot">1 Foot</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Direction</Label>
+                  <Select value={roundingDirection} onValueChange={(value: any) => setRoundingDirection(value)}>
+                    <SelectTrigger data-testid="select-rounding-direction" className="h-9">
+                      <SelectValue placeholder="Select direction" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="up">Round Up</SelectItem>
+                      <SelectItem value="down">Round Down</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-3">
               <Button
                 onClick={() => setShowARScanner(true)}
@@ -232,36 +270,6 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
                   Currently only available on Android devices. iOS support coming soon.
                 </p>
               )}
-            </div>
-
-            {/* Rounding Preferences */}
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-              <div className="space-y-2">
-                <Label>Rounding Precision</Label>
-                <Select value={roundingPreference} onValueChange={(value: any) => setRoundingPreference(value)}>
-                  <SelectTrigger data-testid="select-rounding-precision">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="precise">Precise (0.1 ft)</SelectItem>
-                    <SelectItem value="2inch">2 Inches</SelectItem>
-                    <SelectItem value="6inch">6 Inches</SelectItem>
-                    <SelectItem value="1foot">1 Foot</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Rounding Direction</Label>
-                <Select value={roundingDirection} onValueChange={(value: any) => setRoundingDirection(value)}>
-                  <SelectTrigger data-testid="select-rounding-direction">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="up">Round Up</SelectItem>
-                    <SelectItem value="down">Round Down</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           </CardContent>
         </Card>
