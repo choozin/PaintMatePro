@@ -10,11 +10,16 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Updates
 
-**2025-11-05: AR Room Scanning Architecture**
+**2025-11-05: AR Room Scanning Implementation (WebXR)**
+- **Completed WebXR AR Scanner** for Android devices using Chrome browser with camera-based room measurement
 - Extended Room data schema to support multiple measurement methods (manual, camera-assisted AR, LiDAR)
-- Added support for complex room shapes with wall-by-wall measurements and 3D point data
-- Implemented measurement metadata tracking (confidence, rounding preferences, source photos)
-- Designed upgrade path from WebXR (Android) to LiDAR (iOS) without breaking changes
+- **AR Workflow**: User selects rounding preferences (Precise/2"/6"/1' and Round Up/Down) → enters ceiling height → launches AR session → taps 4 floor corners → auto-fills manual fields with rounded measurements
+- **AR Components**: ARRoomScanner.tsx with Three.js WebGL renderer, hit-testing for surface detection, visual reticle feedback, and corner markers
+- **Measurement Logic**: Calculates opposite-side averages, converts meters to feet, applies user-selected rounding, and computes confidence scores based on measurement consistency
+- **Platform Support**: WebXR enabled on Android Chrome; iOS displays "Android only, iOS support coming soon" message (LiDAR upgrade planned)
+- **State Management**: Fixed critical bugs using functional setState to avoid stale closure issues in AR event handlers
+- **Cleanup**: Proper XR session teardown on unmount to prevent memory leaks
+- Data structure supports complex room shapes with wall-by-wall measurements and 3D point data for future enhancements
 - All new fields are optional for backward compatibility with existing room data
 
 **2025-11-04: Quote Management System Implemented**
