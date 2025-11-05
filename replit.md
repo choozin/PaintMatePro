@@ -10,6 +10,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Updates
 
+**2025-11-05: AR Room Scanning Architecture**
+- Extended Room data schema to support multiple measurement methods (manual, camera-assisted AR, LiDAR)
+- Added support for complex room shapes with wall-by-wall measurements and 3D point data
+- Implemented measurement metadata tracking (confidence, rounding preferences, source photos)
+- Designed upgrade path from WebXR (Android) to LiDAR (iOS) without breaking changes
+- All new fields are optional for backward compatibility with existing room data
+
 **2025-11-04: Quote Management System Implemented**
 - Created ProjectDetail page with tabs for project overview, room measurements, and quotes
 - Integrated RoomMeasurement component with Firebase Firestore for persistent storage

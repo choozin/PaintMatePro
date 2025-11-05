@@ -65,13 +65,61 @@ export interface Client {
   updatedAt?: Timestamp;
 }
 
+// 3D point for AR measurements
+export interface Point3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
+// Individual wall measurement for complex room shapes
+export interface Wall {
+  id: string;
+  startPoint: Point3D;
+  endPoint: Point3D;
+  height: number;
+  length: number;
+  area: number;
+}
+
+// Measurement metadata
+export interface MeasurementMetadata {
+  confidence?: number; // 0-1 scale for accuracy confidence
+  roundingPreference?: 'precise' | '2inch' | '6inch' | '1foot';
+  roundingDirection?: 'up' | 'down';
+  capturedAt?: Timestamp;
+  deviceInfo?: string;
+}
+
+// Extended room interface supporting multiple measurement methods
 export interface Room {
   orgId: string;
   projectId: string;
   name: string;
+  
+  // Basic dimensions (backward compatible with existing data)
   length: number;
   width: number;
   height: number;
+  
+  // Measurement method tracking
+  measurementMethod?: 'manual' | 'camera' | 'lidar';
+  measurementMetadata?: MeasurementMetadata;
+  
+  // Complex room shape support (future)
+  walls?: Wall[];
+  shape?: 'rectangular' | 'complex';
+  
+  // Optional photo storage references (Firebase Storage URLs)
+  photoUrls?: string[];
+  
+  // Pre-calculated areas (cached for performance)
+  calculatedAreas?: {
+    floor: number;
+    wall: number;
+    total: number;
+  };
+  
   createdAt?: Timestamp;
 }
 
