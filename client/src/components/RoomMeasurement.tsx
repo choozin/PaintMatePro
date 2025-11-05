@@ -3,11 +3,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Ruler, Plus, Trash2, Save } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Ruler, Plus, Trash2, Save, Camera } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/useRooms";
 import { useToast } from "@/hooks/use-toast";
 import type { Room } from "@/lib/firestore";
+import { isIOS } from "@/lib/deviceDetection";
+import { ARRoomScanner, type ARScanData } from "./ARRoomScanner";
 
 interface RoomMeasurementProps {
   projectId: string;
@@ -31,6 +34,10 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
   const { toast } = useToast();
 
   const [localRooms, setLocalRooms] = useState<LocalRoom[]>([]);
+  const [showARScanner, setShowARScanner] = useState(false);
+  const [roundingPreference, setRoundingPreference] = useState<'precise' | '2inch' | '6inch' | '1foot'>('2inch');
+  const [roundingDirection, setRoundingDirection] = useState<'up' | 'down'>('up');
+  const [isIOSDevice] = useState(isIOS());
 
   // Sync Firebase rooms to local state
   useEffect(() => {
@@ -162,6 +169,26 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
     return Math.ceil(gallons);
   };
 
+  const handleARScanComplete = (scanData: ARScanData) => {
+    // Add the scanned room to local state
+    const newRoom: LocalRoom = {
+      name: scanData.name,
+      length: scanData.length.toString(),
+      width: scanData.width.toString(),
+      height: scanData.height.toString(),
+      isNew: true,
+      hasChanges: false,
+    };
+    
+    setLocalRooms([...localRooms, newRoom]);
+    setShowARScanner(false);
+    
+    toast({
+      title: "Room Scanned",
+      description: `${scanData.name} measurements captured successfully`,
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -171,17 +198,84 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Ruler className="h-5 w-5" />
-          <h2 className="text-2xl font-semibold">Room Measurements</h2>
+    <>
+      {showARScanner && (
+        <ARRoomScanner
+          projectId={projectId}
+          onClose={() => setShowARScanner(false)}
+          onScanComplete={handleARScanComplete}
+          roundingPreference={roundingPreference}
+          roundingDirection={roundingDirection}
+        />
+      )}
+
+      <div className="space-y-6">
+        {/* AR Scanner Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Camera-Assisted Measurement</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <Button
+                onClick={() => setShowARScanner(true)}
+                disabled={isIOSDevice}
+                size="lg"
+                className="w-full"
+                data-testid="button-scan-room-camera"
+              >
+                <Camera className="h-5 w-5 mr-2" />
+                Scan Room with Camera
+              </Button>
+              {isIOSDevice && (
+                <p className="text-sm text-muted-foreground text-center">
+                  Currently only available on Android devices. iOS support coming soon.
+                </p>
+              )}
+            </div>
+
+            {/* Rounding Preferences */}
+            <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+              <div className="space-y-2">
+                <Label>Rounding Precision</Label>
+                <Select value={roundingPreference} onValueChange={(value: any) => setRoundingPreference(value)}>
+                  <SelectTrigger data-testid="select-rounding-precision">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="precise">Precise (0.1 ft)</SelectItem>
+                    <SelectItem value="2inch">2 Inches</SelectItem>
+                    <SelectItem value="6inch">6 Inches</SelectItem>
+                    <SelectItem value="1foot">1 Foot</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Rounding Direction</Label>
+                <Select value={roundingDirection} onValueChange={(value: any) => setRoundingDirection(value)}>
+                  <SelectTrigger data-testid="select-rounding-direction">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="up">Round Up</SelectItem>
+                    <SelectItem value="down">Round Down</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Ruler className="h-5 w-5" />
+            <h2 className="text-2xl font-semibold">Manual Entry</h2>
+          </div>
+          <Button onClick={addRoom} data-testid="button-add-room">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Room
+          </Button>
         </div>
-        <Button onClick={addRoom} data-testid="button-add-room">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Room
-        </Button>
-      </div>
 
       {localRooms.length === 0 && (
         <Card>
@@ -337,6 +431,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
           </CardContent>
         </Card>
       )}
-    </div>
+      </div>
+    </>
   );
 }
