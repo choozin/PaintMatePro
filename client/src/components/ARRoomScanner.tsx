@@ -187,8 +187,8 @@ export function ARRoomScanner({
       await renderer.xr.setSession(session);
       setIsARActive(true);
       
-      // For pose-based mode, need calibration step first
-      if (arMode === 'pose-based') {
+      // For pose-based and plane-detection modes, need calibration step first
+      if (arMode === 'pose-based' || arMode === 'plane-detection') {
         setCurrentStep('calibrate');
       } else {
         setCurrentStep('corners');
@@ -266,11 +266,11 @@ export function ARRoomScanner({
         session.requestReferenceSpace('viewer').then((viewerSpace) => {
           const hitTestRequest = session.requestHitTestSource;
           if (hitTestRequest) {
-            hitTestRequest.call(session, { space: viewerSpace }).then((source) => {
+            hitTestRequest.call(session, { space: viewerSpace }).then((source: any) => {
               hitTestSourceRef.current = source;
-            });
+            }).catch(() => {});
           }
-        });
+        }).catch(() => {});
       }
 
       // Perform hit test
@@ -307,8 +307,8 @@ export function ARRoomScanner({
       const quaternion = new THREE.Quaternion();
       const scale = new THREE.Vector3();
       reticleRef.current.matrix.decompose(position, quaternion, scale);
-    } else if (arMode === 'pose-based') {
-      // Pose-based mode: ray-plane intersection
+    } else if (arMode === 'plane-detection' || arMode === 'pose-based') {
+      // Plane-detection and pose-based modes: ray-plane intersection
       if (currentStep === 'calibrate' && !floorPlane) {
         // First tap - calibrate floor plane at center of view
         const raycaster = new THREE.Raycaster();
@@ -333,7 +333,7 @@ export function ARRoomScanner({
       } else if (floorPlane) {
         // Subsequent taps - use calibrated plane
         const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(new THREE.Vector3(0, 0), cameraRef.current);
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), cameraRef.current);
         const intersect = raycaster.ray.intersectPlane(floorPlane, new THREE.Vector3());
         if (!intersect) return;
         position = intersect;
@@ -561,7 +561,7 @@ export function ARRoomScanner({
                 </p>
                 <p className="text-sm">
                   {arMode === 'hit-test' && 'Aim the green reticle at each corner and tap. '}
-                  {arMode === 'pose-based' && 'Point camera at each corner and tap. '}
+                  {(arMode === 'plane-detection' || arMode === 'pose-based') && 'Point camera at each corner and tap. '}
                   {corners.length}/4 corners marked.
                 </p>
               </>
