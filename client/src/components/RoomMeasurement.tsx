@@ -4,8 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Ruler, Plus, Trash2, Save, Camera } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Ruler, Plus, Trash2, Save, Camera, AlertCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/useRooms";
 import { useToast } from "@/hooks/use-toast";
 import type { Room } from "@/lib/firestore";
@@ -36,8 +36,13 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
   const [localRooms, setLocalRooms] = useState<LocalRoom[]>([]);
   const [showARScanner, setShowARScanner] = useState(false);
   const [roundingPreference, setRoundingPreference] = useState<'precise' | '2inch' | '6inch' | '1foot'>('2inch');
-  const [roundingDirection, setRoundingDirection] = useState<'up' | 'down'>('up');
   const [isIOSDevice] = useState(isIOS());
+  
+  const [isArDiscouraged, setIsArDiscouraged] = useState(
+    () => sessionStorage.getItem('ar-unsupported') === 'true'
+  );
+  const manualEntryRef = useRef<HTMLDivElement>(null);
+
 
   // Sync Firebase rooms to local state
   useEffect(() => {
@@ -168,24 +173,37 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
     return Math.ceil(gallons);
   };
 
-  const handleARScanComplete = (scanData: ARScanData) => {
-    // Add the scanned room to local state
-    const newRoom: LocalRoom = {
-      name: scanData.name,
-      length: scanData.length.toString(),
-      width: scanData.width.toString(),
-      height: scanData.height.toString(),
-      isNew: true,
-      hasChanges: false,
-    };
-    
-    setLocalRooms([...localRooms, newRoom]);
+  const handleARClose = (status: 'completed' | 'failed' | 'cancelled', data?: ARScanData) => {
     setShowARScanner(false);
-    
-    toast({
-      title: "Room Scanned",
-      description: `${scanData.name} measurements captured successfully`,
-    });
+
+    if (status === 'completed' && data) {
+      const newRoom: LocalRoom = {
+        name: data.name,
+        length: data.length.toString(),
+        width: data.width.toString(),
+        height: data.height.toString(),
+        isNew: true,
+        hasChanges: false,
+      };
+      setLocalRooms(prev => [...prev, newRoom]);
+      toast({
+        title: "Room Scanned",
+        description: `${data.name} measurements captured successfully`,
+      });
+    }
+
+    if (status === 'failed') {
+      sessionStorage.setItem('ar-unsupported', 'true');
+      setIsArDiscouraged(true);
+      toast({
+        variant: "destructive",
+        title: "AR Scanning Not Supported",
+        description: "Your device does not support camera-based measurements.",
+      });
+      setTimeout(() => {
+        manualEntryRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
   };
 
   if (isLoading) {
@@ -201,10 +219,8 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
       {showARScanner && (
         <ARRoomScanner
           projectId={projectId}
-          onClose={() => setShowARScanner(false)}
-          onScanComplete={handleARScanComplete}
+          onClose={handleARClose}
           roundingPreference={roundingPreference}
-          roundingDirection={roundingDirection}
         />
       )}
 
@@ -215,7 +231,6 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
             <CardTitle className="text-lg">Camera-Assisted Measurement</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Rounding Preferences - Show before button so users configure first */}
             <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
               <div className="space-y-1">
                 <Label className="text-sm font-semibold">Measurement Rounding</Label>
@@ -223,7 +238,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
                   Configure how AR measurements should be rounded before scanning
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs">Precision</Label>
                   <Select value={roundingPreference} onValueChange={(value: any) => setRoundingPreference(value)}>
@@ -238,42 +253,31 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Direction</Label>
-                  <Select value={roundingDirection} onValueChange={(value: any) => setRoundingDirection(value)}>
-                    <SelectTrigger data-testid="select-rounding-direction" className="h-9">
-                      <SelectValue placeholder="Select direction" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="up">Round Up</SelectItem>
-                      <SelectItem value="down">Round Down</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             </div>
 
             <div className="space-y-3">
               <Button
                 onClick={() => setShowARScanner(true)}
-                disabled={isIOSDevice}
+                disabled={isIOSDevice || isArDiscouraged}
                 size="lg"
+                variant={isArDiscouraged ? "outline" : "default"}
                 className="w-full"
                 data-testid="button-scan-room-camera"
               >
-                <Camera className="h-5 w-5 mr-2" />
-                Scan Room with Camera
+                {isArDiscouraged ? <AlertCircle className="h-5 w-5 mr-2" /> : <Camera className="h-5 w-5 mr-2" />}
+                {isArDiscouraged ? "AR Scanning Not Supported" : "Scan Room with Camera"}
               </Button>
-              {isIOSDevice && (
+              {(isIOSDevice || isArDiscouraged) && (
                 <p className="text-sm text-muted-foreground text-center">
-                  Currently only available on Android devices. iOS support coming soon.
+                  {isIOSDevice ? "Currently only available on Android devices. iOS support coming soon." : "Your device does not support this feature. Please use manual entry."}
                 </p>
               )}
             </div>
           </CardContent>
         </Card>
 
-        <div className="flex items-center justify-between gap-4">
+        <div ref={manualEntryRef} className="flex items-center justify-between gap-4 scroll-mt-4">
           <div className="flex items-center gap-2">
             <Ruler className="h-5 w-5" />
             <h2 className="text-2xl font-semibold">Manual Entry</h2>
