@@ -1,5 +1,7 @@
 node_modules
 dist
+ios/
+android/
 .DS_Store
 server/public
 vite.config.ts.*
@@ -24,4 +26,10 @@ vite.config.ts.*
 # Replit specific
 .replit
 .upm
-replit.nix
+# === Gemini ===
+.env
+.local/
+node_modules/
+
+# Firebase Service Account Key
+serviceAccountKey.json

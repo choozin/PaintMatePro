@@ -51,7 +51,7 @@ const menuItems = [
 
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
-  const { signOut } = useAuth();
+  const { user, claims, currentOrgRole, signOut } = useAuth();
 
   const handleLogout = async () => {
     try {
@@ -89,7 +89,15 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t">
+      <SidebarFooter className="p-4 border-t space-y-4">
+        <div className="px-4 py-2 space-y-1">
+          <p className="font-semibold text-sm">{user?.displayName || 'User'}</p>
+          <p className="text-xs text-muted-foreground">{user?.email}</p>
+          <div className="text-xs text-muted-foreground pt-2">
+            <p>Global Role: <span className="font-medium text-foreground">{claims?.role || 'N/A'}</span></p>
+            <p>Org Role: <span className="font-medium text-foreground">{currentOrgRole || 'N/A'}</span></p>
+          </div>
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild data-testid="link-settings">

@@ -10,6 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Timestamp } from "firebase/firestore";
 import type { Project } from "@/lib/firestore";
 import { Plus, Edit } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useDeleteProject } from "@/hooks/useProjects";
 
 interface ProjectDialogProps {
   project?: Project & { id: string };
@@ -30,6 +32,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
   const { data: clients = [] } = useClients();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
+  const deleteProject = useDeleteProject();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -224,6 +227,50 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
+            {mode === "edit" && project && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" data-testid="button-delete-project">
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete your project
+                      and remove its data from our servers.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        try {
+                          await deleteProject.mutateAsync(project.id);
+                          toast({
+                            title: "Project Deleted",
+                            description: "Project has been successfully deleted",
+                          });
+                          setOpen(false);
+                          onSuccess?.();
+                        } catch (error: any) {
+                          toast({
+                            variant: "destructive",
+                            title: "Error",
+                            description: error.message || "Failed to delete project",
+                          });
+                        }
+                      }}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      disabled={deleteProject.isPending}
+                    >
+                      {deleteProject.isPending ? "Deleting..." : "Continue"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -234,7 +281,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
             </Button>
             <Button
               type="submit"
-              disabled={createProject.isPending || updateProject.isPending}
+              disabled={createProject.isPending || updateProject.isPending || deleteProject.isPending}
               data-testid="button-submit-project"
             >
               {createProject.isPending || updateProject.isPending

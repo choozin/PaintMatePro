@@ -1,72 +1,119 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from 'firebase/auth';
-import { onAuthChange, signIn as authSignIn, signOut as authSignOut, getUserClaims } from '@/lib/firebaseAuth';
+import { auth } from '@/lib/firebase';
+import { 
+  onAuthChange, 
+  signIn as authSignIn, 
+  signOut as authSignOut, 
+  sendPasswordReset as authSendPasswordReset,
+  updateUserProfile as authUpdateUserProfile,
+  getUserClaims as getAuthClaims
+} from '@/lib/firebaseAuth';
 import { getDocById } from '@/lib/firestore';
-import { OrgSetup } from '@/components/OrgSetup';
-import type { Org, Entitlement } from '@/lib/firestore';
+import type { Org, Entitlement, OrgWithId } from '@/lib/firestore';
 
-interface UserClaims {
+// Define the full context type
+export interface UserClaims {
   orgIds: string[];
-  role: string;
+  role: 'owner' | 'admin' | 'member';
 }
 
 interface AuthContextType {
   user: User | null;
   claims: UserClaims | null;
-  org: Org | null;
+  currentOrgId: string | null;
+  currentOrgRole: 'owner' | 'admin' | 'member' | null;
+  org: OrgWithId | null;
   entitlements: Entitlement | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  updateUserProfile: (profile: { displayName?: string }) => Promise<void>;
+  refetchEntitlements: () => Promise<void>;
 }
 
+// Create the context with a default value
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+// Create the provider with full logic
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [claims, setClaims] = useState<UserClaims | null>(null);
-  const [org, setOrg] = useState<Org | null>(null);
+  const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
+  const [currentOrgRole, setCurrentOrgRole] = useState<'owner' | 'admin' | 'member' | null>(null);
+  const [org, setOrg] = useState<OrgWithId | null>(null);
   const [entitlements, setEntitlements] = useState<Entitlement | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load org and entitlements when user/claims change
-  useEffect(() => {
-    async function loadOrgData() {
-      if (!user || !claims || claims.orgIds.length === 0) {
-        setOrg(null);
-        setEntitlements(null);
-        return;
-      }
-
-      try {
-        // Get the first org (users belong to exactly one org according to rules)
-        const orgId = claims.orgIds[0];
-        const [orgData, entData] = await Promise.all([
-          getDocById<Org>('orgs', orgId),
-          getDocById<Entitlement>('entitlements', orgId),
-        ]);
-
-        setOrg(orgData);
-        setEntitlements(entData);
-      } catch (error) {
-        console.error('Error loading org data:', error);
-      }
+  const loadOrgData = useCallback(async () => {
+    if (!user || !currentOrgId) {
+      setOrg(null);
+      setEntitlements(null);
+      return;
     }
+    try {
+      const [orgData, entData] = await Promise.all([
+        getDocById<Org>('orgs', currentOrgId),
+        getDocById<Entitlement>('entitlements', currentOrgId),
+      ]);
+      setOrg(orgData);
+      setEntitlements(entData);
+    } catch (error) {
+      console.error('Error loading org data:', error);
+    }
+  }, [user, currentOrgId]);
 
+  useEffect(() => {
     loadOrgData();
-  }, [user, claims]);
+  }, [loadOrgData]);
 
-  // Subscribe to auth state changes
   useEffect(() => {
     const unsubscribe = onAuthChange(async (firebaseUser) => {
       setUser(firebaseUser);
       
       if (firebaseUser) {
-        const userClaims = await getUserClaims();
+        const userClaims = await getAuthClaims();
         console.log('🔑 Custom claims loaded:', userClaims);
-        setClaims(userClaims);
+        
+        if (!userClaims) {
+          setClaims(null);
+          setCurrentOrgId(null);
+          setCurrentOrgRole(null);
+          setLoading(false);
+          return;
+        }
+
+        const parsedClaims: UserClaims = {
+          orgIds: userClaims.orgIds || [],
+          role: userClaims.role as UserClaims['role'] || 'member', // Assert type
+        };
+        setClaims(parsedClaims);
+
+        let firstOrgId = parsedClaims.orgIds[0] || null;
+        
+        // If no orgs in claims, check for a fallback in localStorage
+        if (!firstOrgId) {
+          const fallbackOrgId = localStorage.getItem('fallbackOrgId');
+          if (fallbackOrgId) {
+            console.log(`Using fallback orgId from localStorage: ${fallbackOrgId}`);
+            firstOrgId = fallbackOrgId;
+            // Add fallbackOrgId to orgIds if it's not already there
+            if (!parsedClaims.orgIds.includes(fallbackOrgId)) {
+              parsedClaims.orgIds.push(fallbackOrgId);
+            }
+          }
+        }
+
+        setCurrentOrgId(firstOrgId);
+        // The role is now a single string, not per-org.
+        setCurrentOrgRole(parsedClaims.role); 
+        setClaims(parsedClaims); // Update claims again if fallback modified orgIds
+
       } else {
         setClaims(null);
+        setCurrentOrgId(null);
+        setCurrentOrgRole(null);
       }
       
       setLoading(false);
@@ -77,32 +124,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     await authSignIn(email, password);
-    // User state will be updated by the onAuthChange listener
   };
 
   const signOut = async () => {
     await authSignOut();
-    // User state will be updated by the onAuthChange listener
+  };
+
+  const sendPasswordReset = async (email: string) => {
+    await authSendPasswordReset(email);
+  };
+
+  const updateUserProfile = async (profile: { displayName?: string }) => {
+    await authUpdateUserProfile(profile);
+    if (auth.currentUser) {
+      setUser({ ...auth.currentUser });
+    }
+  };
+
+  const refetchEntitlements = async () => {
+    await loadOrgData();
   };
 
   const value = {
     user,
     claims,
+    currentOrgId,
+    currentOrgRole,
     org,
     entitlements,
     loading,
     signIn,
     signOut,
+    sendPasswordReset,
+    updateUserProfile,
+    refetchEntitlements,
   };
-
-  // Show org setup screen if user is logged in but has no orgIds
-  if (!loading && user && claims && claims.orgIds.length === 0) {
-    return <OrgSetup onOrgIdSet={() => window.location.reload()} />;
-  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// Export the useAuth hook
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

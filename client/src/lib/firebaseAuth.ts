@@ -2,6 +2,8 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  sendPasswordResetEmail,
+  updateProfile, // Added for profile updates
   User,
   UserCredential,
 } from 'firebase/auth';
@@ -40,6 +42,35 @@ export async function signOut(): Promise<void> {
   } catch (error: any) {
     console.error('Sign out error:', error);
     throw new Error(error.message || 'Failed to sign out');
+  }
+}
+
+/**
+ * Send a password reset email to the specified email address.
+ */
+export async function sendPasswordReset(email: string): Promise<void> {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (error: any) {
+    console.error('Password reset error:', error);
+    throw new Error(error.message || 'Failed to send password reset email');
+  }
+}
+
+/**
+ * Update the current user's profile.
+ */
+export async function updateUserProfile(profile: { displayName?: string; photoURL?: string }): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('No user is signed in to update the profile.');
+  }
+
+  try {
+    await updateProfile(user, profile);
+  } catch (error: any) {
+    console.error('Profile update error:', error);
+    throw new Error(error.message || 'Failed to update profile');
   }
 }
 

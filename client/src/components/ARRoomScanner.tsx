@@ -264,9 +264,10 @@ export function ARRoomScanner({
       // Request hit test source once
       if (!hitTestSourceRef.current && session.requestHitTestSource) {
         session.requestReferenceSpace('viewer').then((viewerSpace) => {
-          const hitTestRequest = session.requestHitTestSource;
-          if (hitTestRequest) {
-            hitTestRequest.call(session, { space: viewerSpace }).then((source: any) => {
+          if (viewerSpace && session.requestHitTestSource) {
+            // Explicitly assert the type of requestHitTestSource
+            const requestHitTestSource = session.requestHitTestSource as (options: XRHitTestOptionsInit) => Promise<XRHitTestSource>;
+            requestHitTestSource({ space: viewerSpace }).then((source: any) => {
               hitTestSourceRef.current = source;
             }).catch(() => {});
           }

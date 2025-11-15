@@ -24,6 +24,10 @@ export interface Org {
   region: string;
 }
 
+export interface OrgWithId extends Org {
+  id: string;
+}
+
 export interface Entitlement {
   plan: string;
   features: {
@@ -234,14 +238,16 @@ export async function createDoc<T>(
 export async function updateDocument<T>(
   collectionName: string,
   id: string,
-  data: Partial<T>
+  data: Partial<T> | { [key: string]: any }
 ): Promise<void> {
   try {
+    console.log(`Updating document in ${collectionName}/${id} with data:`, data); // Added for debugging
     const docRef = doc(db, collectionName, id);
     await updateDoc(docRef, {
       ...data,
       updatedAt: Timestamp.now(),
     });
+    console.log('Update successful!'); // Added for debugging
   } catch (error) {
     console.error(`Error updating document in ${collectionName}:`, error);
     throw error;
@@ -269,6 +275,10 @@ export const orgOperations = {
 
 export const entitlementOperations = {
   get: (orgId: string) => getDocById<Entitlement>('entitlements', orgId),
+  update: (orgId: string, featureKey: string, value: boolean) => {
+    const fieldPath = `features.${featureKey}`;
+    return updateDocument('entitlements', orgId, { [fieldPath]: value });
+  },
 };
 
 export const projectOperations = {

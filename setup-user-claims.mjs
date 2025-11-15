@@ -2,32 +2,16 @@
 // Run this ONCE to configure your account properly
 
 import admin from 'firebase-admin';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Initialize Firebase Admin
-// The service account JSON will be loaded from environment
-const serviceAccountJSON = process.env.FIREBASE_SERVICE_ACCOUNT;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-if (!serviceAccountJSON) {
-  console.error('\n❌ ERROR: FIREBASE_SERVICE_ACCOUNT environment variable not set!');
-  console.log('\nPlease follow these steps:');
-  console.log('1. Go to Firebase Console → Project Settings → Service Accounts');
-  console.log('2. Click "Generate New Private Key"');
-  console.log('3. Copy the entire JSON content');
-  console.log('4. In Replit, go to Secrets (lock icon in left sidebar)');
-  console.log('5. Add a secret named: FIREBASE_SERVICE_ACCOUNT');
-  console.log('6. Paste the JSON as the value');
-  console.log('7. Run this script again\n');
-  process.exit(1);
-}
-
-let serviceAccount;
-try {
-  serviceAccount = JSON.parse(serviceAccountJSON);
-} catch (error) {
-  console.error('\n❌ ERROR: Invalid JSON in FIREBASE_SERVICE_ACCOUNT');
-  console.error('Make sure you pasted the entire service account JSON correctly\n');
-  process.exit(1);
-}
+// Load the service account key from the JSON file
+const serviceAccountPath = path.resolve(__dirname, 'serviceAccountKey.json');
+const serviceAccount = JSON.parse(await fs.readFile(serviceAccountPath, 'utf8'));
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -47,12 +31,26 @@ async function setupUser() {
     console.log('✅ Found user:', user.uid);
 
     console.log('\n⚙️  Setting custom claims...');
-    await admin.auth().setCustomUserClaims(user.uid, {
-      orgIds: [orgId],
-      role: 'owner'
+    const newClaims = {
+      global_role: 'app_owner',
+      orgs: {
+        [orgId]: 'org_owner',
+      },
+    };
+
+    await admin.auth().setCustomUserClaims(user.uid, newClaims);
+
+    console.log('✅ Custom claims set successfully with new structure!', newClaims);
+
+    console.log('\n⚙️  Creating user document in Firestore...');
+    const userDocRef = admin.firestore().collection('users').doc(user.uid);
+    await userDocRef.set({
+      email: user.email,
+      displayName: user.displayName || 'Owner',
+      orgId: orgId,
     });
 
-    console.log('✅ Custom claims set successfully!');
+    console.log('✅ User document created successfully!');
     console.log('\n📱 IMPORTANT NEXT STEPS:');
     console.log('1. Close your app browser tab completely');
     console.log('2. Clear your browser localStorage (or use incognito)');

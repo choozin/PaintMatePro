@@ -7,6 +7,19 @@ import { useCreateClient, useUpdateClient } from "@/hooks/useClients";
 import { useToast } from "@/hooks/use-toast";
 import type { Client } from "@/lib/firestore";
 import { Plus, Edit } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+
+const clientFormSchema = z.object({
+  name: z.string().min(1, "Client name is required"),
+  email: z.string().email("Invalid email address"),
+  phone: z.string().min(10, "Phone number must be at least 10 digits").max(15, "Phone number cannot exceed 15 digits"),
+  address: z.string().min(1, "Address is required"),
+});
+
+type ClientFormValues = z.infer<typeof clientFormSchema>;
 
 interface ClientDialogProps {
   client?: Client & { id: string };
@@ -17,52 +30,42 @@ interface ClientDialogProps {
 
 export function ClientDialog({ client, trigger, mode = "create", onSuccess }: ClientDialogProps) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
+  const { toast } = useToast();
+
+  const form = useForm<ClientFormValues>({
+    resolver: zodResolver(clientFormSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      phone: "",
+      address: "",
+    },
+  });
 
   const createClient = useCreateClient();
   const updateClient = useUpdateClient();
-  const { toast } = useToast();
 
   useEffect(() => {
     if (client && mode === "edit") {
-      setName(client.name);
-      setEmail(client.email);
-      setPhone(client.phone);
-      setAddress(client.address);
-    }
-  }, [client, mode]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!name || !email || !phone || !address) {
-      toast({
-        variant: "destructive",
-        title: "Validation Error",
-        description: "Please fill in all required fields",
+      form.reset({
+        name: client.name,
+        email: client.email,
+        phone: client.phone,
+        address: client.address,
       });
-      return;
     }
+  }, [client, mode, form]);
 
+  const onSubmit = async (values: ClientFormValues) => {
     try {
-      const clientData = {
-        name,
-        email,
-        phone,
-        address,
-      };
-
       if (mode === "edit" && client) {
-        await updateClient.mutateAsync({ id: client.id, data: clientData });
+        await updateClient.mutateAsync({ id: client.id, data: values });
         toast({
           title: "Client Updated",
           description: "Client has been successfully updated",
         });
       } else {
-        await createClient.mutateAsync(clientData);
+        await createClient.mutateAsync(values);
         toast({
           title: "Client Created",
           description: "Client has been successfully created",
@@ -70,7 +73,7 @@ export function ClientDialog({ client, trigger, mode = "create", onSuccess }: Cl
       }
 
       setOpen(false);
-      resetForm();
+      form.reset(); // Reset form after successful submission
       onSuccess?.();
     } catch (error: any) {
       toast({
@@ -83,15 +86,19 @@ export function ClientDialog({ client, trigger, mode = "create", onSuccess }: Cl
 
   const resetForm = () => {
     if (mode === "create") {
-      setName("");
-      setEmail("");
-      setPhone("");
-      setAddress("");
+      form.reset({
+        name: "",
+        email: "",
+        phone: "",
+        address: "",
+      });
     } else if (client) {
-      setName(client.name);
-      setEmail(client.email);
-      setPhone(client.phone);
-      setAddress(client.address);
+      form.reset({
+        name: client.name,
+        email: client.email,
+        phone: client.phone,
+        address: client.address,
+      });
     }
   };
 
@@ -125,79 +132,105 @@ export function ClientDialog({ client, trigger, mode = "create", onSuccess }: Cl
             {mode === "create" ? "Add a new client to your system" : "Update client details"}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Full Name *</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., John Smith"
-              required
-              data-testid="input-client-name"
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Full Name *</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g., John Smith"
+                      data-testid="input-client-name"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="email">Email *</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g., john@example.com"
-              required
-              data-testid="input-client-email"
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email *</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      placeholder="e.g., john@example.com"
+                      data-testid="input-client-email"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone *</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g., (555) 123-4567"
-              required
-              data-testid="input-client-phone"
+            <FormField
+              control={form.control}
+              name="phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone *</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="tel"
+                      placeholder="e.g., (555) 123-4567"
+                      data-testid="input-client-phone"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="address">Address *</Label>
-            <Input
-              id="address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="e.g., 123 Main St, Cityville, ST 12345"
-              required
-              data-testid="input-client-address"
+            <FormField
+              control={form.control}
+              name="address"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address *</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g., 123 Main St, Cityville, ST 12345"
+                      data-testid="input-client-address"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-              data-testid="button-cancel-client"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={createClient.isPending || updateClient.isPending}
-              data-testid="button-submit-client"
-            >
-              {createClient.isPending || updateClient.isPending
-                ? "Saving..."
-                : mode === "create"
-                ? "Create Client"
-                : "Update Client"}
-            </Button>
-          </div>
-        </form>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleOpenChange(false)}
+                data-testid="button-cancel-client"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={createClient.isPending || updateClient.isPending}
+                data-testid="button-submit-client"
+              >
+                {createClient.isPending || updateClient.isPending
+                  ? "Saving..."
+                  : mode === "create"
+                  ? "Create Client"
+                  : "Update Client"}
+              </Button>
+            </div>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

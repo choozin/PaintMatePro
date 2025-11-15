@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useClients } from "@/hooks/useClients";
 import { useProjects } from "@/hooks/useProjects";
 import type { Client } from "@/lib/firestore";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function ClientCardWithProjects({ client }: { client: Client & { id: string } }) {
   const { data: projects = [] } = useProjects();
@@ -56,8 +57,17 @@ export default function Clients() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Loading clients...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex flex-col space-y-3 rounded-lg border p-6">
+              <Skeleton className="h-6 w-3/4" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <div className="flex justify-end pt-4">
+                <Skeleton className="h-8 w-20" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : filteredClients.length === 0 ? (
         <div className="text-center py-12">

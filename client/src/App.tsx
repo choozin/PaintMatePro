@@ -16,15 +16,18 @@ import Clients from "@/pages/Clients";
 import Quotes from "@/pages/Quotes";
 import Schedule from "@/pages/Schedule";
 import Settings from "@/pages/Settings";
+import AdminPage from "@/pages/Admin";
 import Login from "@/pages/Login";
 import ClientPortal from "@/pages/ClientPortal";
 import NotFound from "@/pages/not-found";
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen w-full">
+    <div
+      className="flex h-screen w-full">
       <AppSidebar />
-      <div className="flex flex-col flex-1">
+      <div
+        className="flex flex-col flex-1">
         <header className="flex items-center justify-between px-6 py-4 border-b">
           <SidebarTrigger data-testid="button-sidebar-toggle" />
           <ThemeToggle />
@@ -37,17 +40,34 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+import { PublicLayout } from "@/components/PublicLayout";
+import { OrgSetup } from "@/components/OrgSetup";
+import { useAuth } from "@/contexts/AuthContext";
+
 function Router() {
+  const { user, claims, loading } = useAuth();
   const [location] = useLocation();
   const isPublicRoute = location === "/login" || location.startsWith("/portal");
 
+  if (loading) {
+    // You might want to show a global loading spinner here
+    return null;
+  }
+
+  // If user is logged in but has no orgs, show the setup screen
+  if (user && claims && claims.orgIds.length === 0) {
+    return <OrgSetup onOrgIdSet={() => window.location.reload()} />;
+  }
+
   if (isPublicRoute) {
     return (
-      <Switch>
-        <Route path="/login" component={Login} />
-        <Route path="/portal/:token" component={ClientPortal} />
-        <Route component={NotFound} />
-      </Switch>
+      <PublicLayout>
+        <Switch>
+          <Route path="/login" component={Login} />
+          <Route path="/portal/:token" component={ClientPortal} />
+          <Route component={NotFound} />
+        </Switch>
+      </PublicLayout>
     );
   }
 
@@ -59,9 +79,10 @@ function Router() {
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/clients" component={Clients} />
-          <Route path="/quotes" component={Quotes} />
+          <Route path="/projects/:projectId/quotes" component={Quotes} />
           <Route path="/schedule" component={Schedule} />
           <Route path="/settings" component={Settings} />
+          <Route path="/admin" component={AdminPage} />
           <Route component={NotFound} />
         </Switch>
       </AppLayout>

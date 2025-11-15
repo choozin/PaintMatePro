@@ -27,7 +27,12 @@ function DashboardProjectCard({ project }: { project: Project & { id: string } }
   );
 }
 
+import { useAuth } from "@/contexts/AuthContext";
+
+// ... (existing imports)
+
 export default function Dashboard() {
+  const { user } = useAuth();
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const { data: clients = [], isLoading: clientsLoading } = useClients();
 
@@ -39,11 +44,12 @@ export default function Dashboard() {
     <div className="space-y-8">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground mt-2">Welcome back! Here's your business overview.</p>
+          <h1 className="text-4xl font-bold">Welcome back, {user?.displayName || 'User'}!</h1>
+          <p className="text-muted-foreground mt-2">Here's your business overview.</p>
         </div>
         <ProjectDialog mode="create" />
       </div>
+// ... (rest of the file)
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard

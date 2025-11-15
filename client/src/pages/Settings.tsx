@@ -1,131 +1,279 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Building2, CreditCard, Lock } from "lucide-react";
+import React from 'react';
+import { RoleGuard } from '@/components/RoleGuard';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { useUsers } from '@/hooks/useUsers';
+import { useDeleteUser } from '@/hooks/useDeleteUser';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Terminal } from 'lucide-react';
+
+function MyProfileCard() {
+  const { user, sendPasswordReset, updateUserProfile } = useAuth();
+  const { toast } = useToast();
+  const [isPasswordLoading, setIsPasswordLoading] = React.useState(false);
+  const [isProfileLoading, setIsProfileLoading] = React.useState(false);
+  const [displayName, setDisplayName] = React.useState(user?.displayName || '');
+
+  React.useEffect(() => {
+    if (user?.displayName) {
+      setDisplayName(user.displayName);
+    }
+  }, [user?.displayName]);
+
+  const handleChangePassword = async () => {
+    if (!user?.email) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not find your email address.",
+      });
+      return;
+    }
+
+    setIsPasswordLoading(true);
+    try {
+      await sendPasswordReset(user.email);
+      toast({
+        title: "Password Reset Email Sent",
+        description: "Please check your inbox for instructions to reset your password.",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to Send Email",
+        description: error.message || "An unexpected error occurred.",
+      });
+    } finally {
+      setIsPasswordLoading(false);
+    }
+  };
+
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsProfileLoading(true);
+    try {
+      await updateUserProfile({ displayName });
+      toast({
+        title: "Profile Updated",
+        description: "Your display name has been successfully updated.",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Update Failed",
+        description: error.message || "An unexpected error occurred.",
+      });
+    } finally {
+      setIsProfileLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>My Profile</CardTitle>
+        <CardDescription>Manage your personal information and password.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={handleProfileUpdate} className="space-y-2">
+          <Label htmlFor="displayName">Display Name</Label>
+          <div className="flex gap-2">
+            <Input
+              id="displayName"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your Name"
+            />
+            <Button type="submit" disabled={isProfileLoading || displayName === (user?.displayName || '')}>
+              {isProfileLoading ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        </form>
+        <div className="space-y-2">
+          <Label>Email</Label>
+          <p className="text-sm text-muted-foreground">{user?.email}</p>
+        </div>
+      </CardContent>
+      <CardFooter className="border-t px-6 py-4">
+        <Button onClick={handleChangePassword} disabled={isPasswordLoading} variant="outline">
+          {isPasswordLoading ? 'Sending...' : 'Send Password Reset Email'}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+// ... (MyProfileCard component remains the same)
+
+function UserManagementCard() {
+  const { user: currentUser, currentOrgRole, currentOrgId, claims } = useAuth();
+  const { data: users, isLoading, error } = useUsers();
+  const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
+  const { toast } = useToast();
+
+  const isCurrentUserOrgOwner = currentOrgRole === 'owner';
+
+  const handleDeleteUser = (userId: string) => {
+    deleteUser(userId, {
+      onSuccess: () => {
+        toast({
+          title: "User Deleted",
+          description: "The user has been successfully deleted.",
+        });
+      },
+      onError: (error) => {
+        toast({
+          variant: "destructive",
+          title: "Deletion Failed",
+          description: error.message || "An unexpected error occurred.",
+        });
+      },
+    });
+  };
+
+  const handleRoleChange = (userId: string, newRole: string) => {
+    // This will call a new mutation to update the user's role
+    console.log(`Change role for user ${userId} to ${newRole} in org ${currentOrgId}`);
+    toast({
+      title: "Role Change (Not Implemented)",
+      description: `Attempted to change role for ${userId} to ${newRole}. Backend not yet connected.`,
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>User Management</CardTitle>
+        <CardDescription>Manage users within your organization.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-5 w-2/5" />
+              <Skeleton className="h-8 w-1/5" />
+            </div>
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-5 w-2/5" />
+              <Skeleton className="h-8 w-1/5" />
+            </div>
+          </div>
+        )}
+        {error && (
+          <p className="text-sm text-destructive">Failed to load users: {error.message}</p>
+        )}
+        {users && (
+          <div className="space-y-4">
+            {users.map((user) => (
+              <div key={user.uid} className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{user.displayName || 'No Name'}{currentUser?.uid === user.uid && ' (You)'}</p>
+                  <p className="text-sm text-muted-foreground">{user.email}</p>
+                  <p className="text-xs text-muted-foreground">Role: {claims?.role || 'member'}</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {isCurrentUserOrgOwner && currentUser?.uid !== user.uid && (
+                    <Select
+                      value={claims?.role === 'owner' ? 'org_owner' : claims?.role === 'admin' ? 'org_admin' : claims?.role || 'member'}
+                      onValueChange={(newRole) => handleRoleChange(user.uid, newRole)}
+                      disabled={isDeleting}
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue placeholder="Select Role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="org_owner">Org Owner</SelectItem>
+                        <SelectItem value="org_admin">Org Admin</SelectItem>
+                        <SelectItem value="member">Member</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={currentUser?.uid === user.uid || isDeleting || !isCurrentUserOrgOwner}
+                      >
+                        Delete
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This action cannot be undone. This will permanently delete the user account
+                          and all associated data.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeleteUser(user.uid)}>
+                          Continue
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ... (Settings component remains the same)
 
 export default function Settings() {
   return (
-    <div className="space-y-8 max-w-4xl">
-      <div>
-        <h1 className="text-4xl font-bold">Settings</h1>
-        <p className="text-muted-foreground mt-2">Manage your organization and account settings.</p>
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-3xl font-bold">App Settings</h1>
+        <p className="text-muted-foreground">Manage your organization, profile, and users.</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            <CardTitle>Organization Details</CardTitle>
-          </div>
-          <CardDescription>Your company information and preferences.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="org-name">Company Name</Label>
-              <Input
-                id="org-name"
-                defaultValue="Demo Painting Co"
-                data-testid="input-company-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="region">Region</Label>
-              <Select defaultValue="CA">
-                <SelectTrigger data-testid="select-region">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CA">California</SelectItem>
-                  <SelectItem value="NY">New York</SelectItem>
-                  <SelectItem value="TX">Texas</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="units">Default Units</Label>
-              <Select defaultValue="metric">
-                <SelectTrigger data-testid="select-units">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="metric">Metric (m, m²)</SelectItem>
-                  <SelectItem value="imperial">Imperial (ft, ft²)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <Button data-testid="button-save-org">Save Changes</Button>
-        </CardContent>
-      </Card>
+      <RoleGuard scope="global" allowedRoles={['app_owner']}>
+        <Alert>
+          <Terminal className="h-4 w-4" />
+          <AlertTitle>App Owner Status Confirmed!</AlertTitle>
+          <AlertDescription>
+            This message is only visible to users with the global 'app_owner' role.
+          </AlertDescription>
+        </Alert>
+      </RoleGuard>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            <CardTitle>Subscription Plan</CardTitle>
-          </div>
-          <CardDescription>Manage your plan and features.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Current Plan</p>
-              <p className="text-sm text-muted-foreground">Free tier with basic features</p>
-            </div>
-            <Badge variant="secondary" className="text-base px-4 py-1">
-              FREE
-            </Badge>
-          </div>
-          
-          <div className="border rounded-md p-4 space-y-2">
-            <p className="font-medium text-sm">Features on Free Plan:</p>
-            <ul className="text-sm text-muted-foreground space-y-1 ml-4">
-              <li>• 1 capture per week</li>
-              <li>• Basic measurements and quotes</li>
-              <li>• PDF exports with watermark</li>
-              <li>• Client portal (view only)</li>
-              <li>• Lite analytics</li>
-            </ul>
-          </div>
-
-          <Button variant="outline" data-testid="button-upgrade">
-            Upgrade to Pro
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Lock className="h-5 w-5" />
-            <CardTitle>Security</CardTitle>
-          </div>
-          <CardDescription>Update your password and security settings.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="current-password">Current Password</Label>
-            <Input
-              id="current-password"
-              type="password"
-              data-testid="input-current-password"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="new-password">New Password</Label>
-            <Input
-              id="new-password"
-              type="password"
-              data-testid="input-new-password"
-            />
-          </div>
-          <Button data-testid="button-change-password">Change Password</Button>
-        </CardContent>
-      </Card>
+      <div className="grid gap-6">
+        <MyProfileCard />
+        <RoleGuard scope="org" allowedRoles={['org_owner', 'org_admin']}>
+          <UserManagementCard />
+        </RoleGuard>
+      </div>
     </div>
   );
 }
