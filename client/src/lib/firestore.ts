@@ -28,23 +28,25 @@ export interface OrgWithId extends Org {
   id: string;
 }
 
+export interface EntitlementFeatures {
+  'capture.ar': boolean;
+  'capture.reference': boolean;
+  'capture.weeklyLimit': number;
+  'visual.recolor': boolean;
+  'visual.sheenSimulator': boolean;
+  'portal.fullView': boolean;
+  'portal.advancedActionsLocked': boolean;
+  'analytics.lite': boolean;
+  'analytics.drilldowns': boolean;
+  'pdf.watermark': boolean;
+  eSign: boolean;
+  payments: boolean;
+  scheduler: boolean;
+}
+
 export interface Entitlement {
   plan: string;
-  features: {
-    'capture.ar': boolean;
-    'capture.reference': boolean;
-    'capture.weeklyLimit': number;
-    'visual.recolor': boolean;
-    'visual.sheenSimulator': boolean;
-    'portal.fullView': boolean;
-    'portal.advancedActionsLocked': boolean;
-    'analytics.lite': boolean;
-    'analytics.drilldowns': boolean;
-    'pdf.watermark': boolean;
-    eSign: boolean;
-    payments: boolean;
-    scheduler: boolean;
-  };
+  features: EntitlementFeatures;
 }
 
 export interface Project {
@@ -270,6 +272,7 @@ export async function deleteDocument(collectionName: string, id: string): Promis
 // Specific collection operations
 export const orgOperations = {
   get: (id: string) => getDocById<Org>('orgs', id),
+  getAll: () => getDocs<Org>('orgs'), // New method
   update: (id: string, data: Partial<Org>) => updateDocument('orgs', id, data),
 };
 
@@ -284,7 +287,7 @@ export const entitlementOperations = {
 export const projectOperations = {
   getByOrg: (orgId: string) => getOrgDocs<Project>('projects', orgId, [orderBy('createdAt', 'desc')]),
   get: (id: string) => getDocById<Project>('projects', id),
-  create: (data: Omit<Project, 'createdAt' | 'updatedAt'>) => createDoc('projects', data),
+  create: (data: Omit<Project, 'createdAt' | 'updatedAt' | 'orgId'>) => createDoc('projects', data),
   update: (id: string, data: Partial<Project>) => updateDocument('projects', id, data),
   delete: (id: string) => deleteDocument('projects', id),
 };
@@ -292,7 +295,7 @@ export const projectOperations = {
 export const clientOperations = {
   getByOrg: (orgId: string) => getOrgDocs<Client>('clients', orgId, [orderBy('createdAt', 'desc')]),
   get: (id: string) => getDocById<Client>('clients', id),
-  create: (data: Omit<Client, 'createdAt' | 'updatedAt'>) => createDoc('clients', data),
+  create: (data: Omit<Client, 'createdAt' | 'updatedAt' | 'orgId'>) => createDoc('clients', data),
   update: (id: string, data: Partial<Client>) => updateDocument('clients', id, data),
   delete: (id: string) => deleteDocument('clients', id),
 };
@@ -300,7 +303,7 @@ export const clientOperations = {
 export const roomOperations = {
   getByProject: (projectId: string) => 
     getDocs<Room>('rooms', [where('projectId', '==', projectId)]),
-  create: (data: Omit<Room, 'createdAt'>) => createDoc('rooms', data),
+  create: (data: Omit<Room, 'createdAt' | 'orgId' | 'updatedAt'>) => createDoc('rooms', data),
   update: (id: string, data: Partial<Room>) => updateDocument('rooms', id, data),
   delete: (id: string) => deleteDocument('rooms', id),
 };
@@ -309,7 +312,7 @@ export const quoteOperations = {
   getByProject: (projectId: string) =>
     getDocs<Quote>('quotes', [where('projectId', '==', projectId), orderBy('createdAt', 'desc')]),
   get: (id: string) => getDocById<Quote>('quotes', id),
-  create: (data: Omit<Quote, 'createdAt'>) => createDoc('quotes', data),
+  create: (data: Omit<Quote, 'createdAt' | 'orgId' | 'updatedAt'>) => createDoc('quotes', data),
   update: (id: string, data: Partial<Quote>) => updateDocument('quotes', id, data),
 };
 

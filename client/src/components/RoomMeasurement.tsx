@@ -73,7 +73,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
     
     if (room.id && !room.isNew) {
       try {
-        await deleteRoom.mutateAsync({ id: room.id, projectId });
+        await deleteRoom.mutateAsync(room.id);
         toast({
           title: "Room Deleted",
           description: "Room has been successfully deleted",
@@ -133,7 +133,6 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
         await updateRoom.mutateAsync({
           id: room.id,
           data: roomData,
-          projectId,
         });
         toast({
           title: "Room Updated",

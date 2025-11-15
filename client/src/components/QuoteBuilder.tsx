@@ -174,7 +174,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         await updateQuote.mutateAsync({
           id: selectedQuoteId,
           data: quoteData,
-          projectId,
         });
         toast({
           title: "Quote Updated",

@@ -32,10 +32,8 @@ async function setupUser() {
 
     console.log('\n⚙️  Setting custom claims...');
     const newClaims = {
-      global_role: 'app_owner',
-      orgs: {
-        [orgId]: 'org_owner',
-      },
+      role: 'owner', // 'owner', 'admin', or 'member'
+      orgIds: [orgId],
     };
 
     await admin.auth().setCustomUserClaims(user.uid, newClaims);

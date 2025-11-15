@@ -1,0 +1,157 @@
+You are building a production-grade, offline-first quoting app for painting companies.
+
+## Goals
+- React + Firebase (Auth, Firestore, Storage, Functions)
+- Tailwind + shadcn/ui + Framer Motion + Lucide
+- PWA with Service Worker (Workbox) + IndexedDB (Dexie) for offline
+- Entitlements system (per-org and per-user) controlling features; default plan = Free with 1 capture/week
+- Metric default; auto-detect region to set initial units; user can override
+- Stunning UI with textured backgrounds, tasteful animations, dark mode
+- AR/reference capture stubs (pluggable), recolor preview stubs, PDF rendering pipeline
+- Client Portal with locked advanced features for Free
+- Easy GitHub export; no reliance on Replit databases
+
+## File tree (create)
+- app/
+  - layout.tsx, globals.css
+  - (marketing)/page.tsx  // simple landing
+  - dashboard/
+    - page.tsx
+    - projects/[id]/page.tsx
+    - projects/[id]/rooms/[roomId]/page.tsx
+    - quotes/[id]/page.tsx
+    - settings/page.tsx
+  - portal/[token]/page.tsx  // client portal
+  - quote/[id]/print/page.tsx // server-rendered printable route for PDF
+- components/
+  - ui/* (shadcn)
+  - TexturedBackground.tsx
+  - UnitsToggle.tsx
+  - EntitlementGuard.tsx
+  - FeatureLock.tsx
+  - CaptureToolbar.tsx
+  - RecolorPreview.tsx
+  - AnalyticsLite.tsx
+  - PdfTemplatePicker.tsx
+  - Toast.tsx
+- lib/
+  - firebase.client.ts
+  - firebase.admin.ts (for server actions; use service account via env when deploying)
+  - entitlements.ts
+  - units.ts
+  - offline/db.ts (Dexie schema)
+  - sw-register.ts
+- hooks/
+  - useEntitlements.ts
+  - useOnlineStatus.ts
+  - useWeeklyCounter.ts
+- styles/textures.css  // subtle grain/paper textures
+- public/
+  - icons, manifest.json, textures/*
+- service-worker.ts  // Workbox setup
+- functions/  // Firebase Cloud Functions (Node 20)
+  - index.ts
+  - measureFromReferencePhoto.ts (stub)
+  - generateRecolorMask.ts (stub)
+  - renderQuotePdf.ts
+  - detectRegionAndUnitsOnSignup.ts
+  - countAndGateCaptures.ts
+- firestore.rules (same as provided)
+- package.json, postcss.config.js, tailwind.config.ts, tsconfig.json
+
+## Dependencies
+- next@latest react@latest react-dom@latest
+- firebase @firebase/app @firebase/auth @firebase/firestore @firebase/storage
+- framer-motion
+- @tanstack/react-query
+- tailwindcss postcss autoprefixer class-variance-authority tailwind-merge
+- lucide-react
+- @radix-ui/react-* (included via shadcn/ui)
+- dexie
+- workbox-window workbox-build
+- zod react-hook-form
+- playwright @react-pdf/renderer (or puppeteer)  // pick ONE: prefer Playwright
+- stripe (optional)
+- date-fns
+- geoip-lite or use fetch to a public IP geolocation API (client checks must be optional)
+
+## Core requirements to implement now
+
+### 1) Entitlements system
+- Read org-level entitlements from `entitlements/{orgId}` and optional per-user overrides from `userEntitlements/{uid}`.
+- `getEffectiveFeature(key)` merges user override over org default.
+- Implement keys:
+  - "capture.ar" (bool), "capture.reference" (bool), "capture.weeklyLimit" (number),
+  - "visual.recolor" (bool), "visual.sheenSimulator" (bool),
+  - "portal.fullView" (bool), "portal.advancedActionsLocked" (bool),
+  - "analytics.lite" (bool), "analytics.drilldowns" (bool),
+  - "pdf.watermark" (bool), "eSign" (bool), "payments" (bool), "scheduler" (bool)
+- Create `<EntitlementGuard feature="...">` to show children if enabled.
+- Create `<FeatureLock feature="..." tease>` that displays the locked state with tasteful frosted overlay and microcopy “Included in Pro”.
+
+### 2) Units & region detection
+- On first login: default units = "metric".
+- Attempt region detection (server-side function `detectRegionAndUnitsOnSignup` can map country to default units).
+- Store `orgs/{orgId}.defaultUnits`, allow user override in `orgUsers/{uid}.unitsOverride`.
+- `<UnitsToggle>` in navbar; write to user doc; all calculations read from effective units.
+
+### 3) Offline-first
+- Install PWA: manifest, service worker (Workbox) with:
+  - Precache: app shell, textures, fonts.
+  - Runtime caching: GET routes with stale-while-revalidate.
+  - Background Sync queue for POST/Mutation to Firestore/Functions.
+- Dexie DB schema:
+  - projects, rooms, captures, quotes, pendingJobs
+- If offline: queue measurement/recolor jobs into `pendingJobs`; a small badge shows "Queued, will run when online."
+
+### 4) Free plan with 1 capture/week
+- Cloud Function `countAndGateCaptures(orgId)` increments counters in `usageCounters/{orgId}` by ISO week number and throws when > limit.
+- Client calls this function BEFORE allowing AR or reference capture.
+- On FREE: limit = 1/week (from entitlements map).
+- UI: when exhausted, show `<FeatureLock>` overlay with “Upgrade for unlimited captures”.
+
+### 5) Capture & Visualization (stubs with real UX)
+- Capture toolbar:
+  - Buttons: "AR Capture" (disabled if not supported or not entitled), "Reference Photo" (A4/Letter helper)
+  - When user picks reference photo: show guide overlay with standardized object instructions.
+  - Store images in Storage; create `captures/{captureId}` doc; enqueue `measureFromReferencePhoto` function (stub returns demo measurements).
+- Recolor preview:
+  - Upload a room photo; call `generateRecolorMask` (stub returns mock mask); client blends color over walls with edge-aware approximation (canvas).
+  - Sheen simulator slider changes reflectance factor for preview.
+  - If `pdf.watermark` is true, exported images include a subtle watermark.
+
+### 6) Quote builder & PDF
+- Good/Better/Best editor with live BOM + labor estimates (use simple parametric formulas as placeholders).
+- Template picker with 3 styles (Minimal, Modern, Premium) and a small editable layout JSON (toggle sections).
+- Server route `/quote/[id]/print` renders a full HTML; Cloud Function `renderQuotePdf` uses Playwright to render headless PDF and saves to Storage; returns URL.
+- Free plan: watermark on PDF.
+
+### 7) Client Portal (token route)
+- `/portal/[token]` shows quote, color selections, schedule preview, analytics preview cards.
+- Advanced buttons present but `disabled` with `<FeatureLock>` teasers.
+- If offline, portal still loads cached quote and images; “accept & pay” buttons show “Requires connection”.
+
+### 8) Stunning UI & motion
+- Global textured backgrounds using `textures.css` (subtle grain/paper).
+- Cards: rounded-2xl, soft shadow, thin border, hover lift via Framer Motion.
+- Page transitions (slide/fade), micro animations on toggles.
+- Dark mode toggle; prefers-reduced-motion respected.
+
+### 9) Exportability
+- No use of Replit DB. All data via Firebase.
+- Include `README.md` with:
+  - “Export to GitHub” instructions (Replit → Git → Connect)
+  - “Local dev” steps: `npm i`, `npm run dev`, `firebase emulators:start`, how to set `.env.local`
+  - “Deploy” notes (Vercel or Firebase Hosting + Functions)
+
+## Nice-to-haves (leave TODOs if time)
+- Vendor price sync (CSV import UI)
+- Scheduler + capacity checker
+- Review/referral nudges
+- Weather guard for exteriors
+
+## Testing & lint
+- ESLint + TypeScript strict
+- Basic Playwright test that loads dashboard, toggles units, and renders a mock PDF page
+
+Begin by scaffolding the project, installing dependencies, and committing an initial git snapshot. Then print the next steps I should run (e.g., npm run dev).
