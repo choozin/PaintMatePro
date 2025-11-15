@@ -18,6 +18,7 @@ import {
   SidebarMenuItem,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import { useSidebar } from "@/components/ui/sidebar";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -52,6 +53,7 @@ const menuItems = [
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
   const { user, claims, currentOrgRole, signOut } = useAuth();
+  const { isMobile, setOpenMobile } = useSidebar();
 
   const handleLogout = async () => {
     try {
@@ -61,6 +63,13 @@ export function AppSidebar() {
       console.error('Logout error:', error);
     }
   };
+
+  const handleNav = (url: string) => {
+    setLocation(url);
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }
 
   return (
     <Sidebar>
@@ -78,7 +87,7 @@ export function AppSidebar() {
                     isActive={location === item.url}
                     data-testid={`link-${item.title.toLowerCase()}`}
                   >
-                    <a href={item.url} onClick={(e) => { e.preventDefault(); setLocation(item.url); }}>
+                    <a href={item.url} onClick={(e) => { e.preventDefault(); handleNav(item.url); }}>
                       <item.icon className="h-5 w-5" />
                       <span>{item.title}</span>
                     </a>
@@ -101,7 +110,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild data-testid="link-settings">
-              <a href="/settings" onClick={(e) => { e.preventDefault(); setLocation('/settings'); }}>
+              <a href="/settings" onClick={(e) => { e.preventDefault(); handleNav('/settings'); }}>
                 <Settings className="h-5 w-5" />
                 <span>Settings</span>
               </a>
