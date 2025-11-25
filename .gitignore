@@ -1,7 +1,7 @@
 node_modules
 dist
 ios/
-android/
+# android/
 .DS_Store
 server/public
 vite.config.ts.*

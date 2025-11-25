@@ -1,0 +1,106 @@
+2025-11-25 03:53:43.712 21940-21940 zygote64                app.paintmate.app                    W  Activation of cgroup controller +memory failed in path /sys/fs/cgroup/apps/uid_10407: Invalid argument
+2025-11-25 03:53:43.717 21940-21940 Zygote                  app.paintmate.app                    I  Process 21940 crated for app.paintmate.app
+2025-11-25 03:53:43.717 21940-21940 p.paintmate.app         app.paintmate.app                    I  Late-enabling -Xcheck:jni
+2025-11-25 03:53:43.735 21940-21940 p.paintmate.app         app.paintmate.app                    I  Using CollectorTypeCMC GC.
+2025-11-25 03:53:43.742 21940-21940 nativeloader            app.paintmate.app                    D  Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+2025-11-25 03:53:43.829 21940-21940 nativeloader            app.paintmate.app                    D  Configuring clns-9 for other apk /data/app/~~fyFIDxEsVNnX735nBnFR3g==/app.paintmate.app-4KAQcMTeAmOZUgqCIUX34Q==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~fyFIDxEsVNnX735nBnFR3g==/app.paintmate.app-4KAQcMTeAmOZUgqCIUX34Q==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/app.paintmate.app
+2025-11-25 03:53:43.830 21940-21940 CompatChangeReporter    app.paintmate.app                    D  Compat change id reported: 202956589; UID 10407; state: ENABLED
+2025-11-25 03:53:43.834 21940-21940 GraphicsEnvironment     app.paintmate.app                    V  Currently set values for:
+2025-11-25 03:53:43.834 21940-21940 GraphicsEnvironment     app.paintmate.app                    V    angle_gl_driver_selection_pkgs=[com.android.angle, com.google.android.apps.tachyon]
+2025-11-25 03:53:43.834 21940-21940 GraphicsEnvironment     app.paintmate.app                    V    angle_gl_driver_selection_values=[angle, native]
+2025-11-25 03:53:43.835 21940-21940 GraphicsEnvironment     app.paintmate.app                    V  app.paintmate.app is not listed in per-application setting
+2025-11-25 03:53:43.835 21940-21940 GraphicsEnvironment     app.paintmate.app                    V  ANGLE allowlist from config: 
+2025-11-25 03:53:43.835 21940-21940 GraphicsEnvironment     app.paintmate.app                    V  app.paintmate.app is not listed in ANGLE allowlist or settings, returning default
+2025-11-25 03:53:43.835 21940-21940 GraphicsEnvironment     app.paintmate.app                    V  Neither updatable production driver nor prerelease driver is supported.
+2025-11-25 03:53:43.841 21940-21940 CompatChangeReporter    app.paintmate.app                    D  Compat change id reported: 279646685; UID 10407; state: ENABLED
+2025-11-25 03:53:43.849 21940-21977 DisplayManager          app.paintmate.app                    I  Choreographer implicitly registered for the refresh rate.
+2025-11-25 03:53:43.858 21940-21940 AppCompatDelegate       app.paintmate.app                    D  Checking for metadata for AppLocalesMetadataHolderService : Service not found
+2025-11-25 03:53:43.862 21940-21940 ashmem                  app.paintmate.app                    E  Pinning is deprecated since Android Q. Please use trim or other methods.
+2025-11-25 03:53:43.876 21940-21940 CompatChangeReporter    app.paintmate.app                    D  Compat change id reported: 309578419; UID 10407; state: ENABLED
+2025-11-25 03:53:43.876 21940-21940 DesktopExperienceFlags  app.paintmate.app                    D  Toggle override initialized to: false
+2025-11-25 03:53:43.876 21940-21940 DesktopModeFlags        app.paintmate.app                    D  Toggle override initialized to: OVERRIDE_UNSET
+2025-11-25 03:53:43.883 21940-21940 p.paintmate.app         app.paintmate.app                    I  hiddenapi: Accessing hidden method Landroid/view/ViewGroup;->makeOptionalFitsSystemWindows()V (runtime_flags=0, domain=platform, api=unsupported) from Landroidx/appcompat/widget/ViewUtils; (domain=app, TargetSdkVersion=35) using reflection: allowed
+2025-11-25 03:53:43.887 21940-21940 WebViewFactory          app.paintmate.app                    I  Loading com.google.android.webview version 142.0.7444.102 (code 744410233)
+2025-11-25 03:53:43.891 21940-21940 ResourcesManager        app.paintmate.app                    V  The following library key has been added: ResourcesKey{ mHash=d00ee0ea mResDir=null mSplitDirs=[] mOverlayDirs=[] mLibDirs=[/data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/base.apk,/data/app/~~b3YqtRwed4957-AFKFefbg==/com.google.android.trichromelibrary_744410233-XIxnDof2gRlp4aE6KVMogQ==/base.apk,/system_ext/framework/androidx.window.extensions.jar] mDisplayId=0 mOverrideConfig=v36 mCompatInfo={420dpi always-compat} mLoaders=[]}
+2025-11-25 03:53:43.892 21940-21940 p.paintmate.app         app.paintmate.app                    W  Failed to find entry 'classes.dex': Entry not found
+2025-11-25 03:53:43.893 21940-21940 nativeloader            app.paintmate.app                    D  Configuring clns-10 for other apk /data/app/~~b3YqtRwed4957-AFKFefbg==/com.google.android.trichromelibrary_744410233-XIxnDof2gRlp4aE6KVMogQ==/base.apk. target_sdk_version=36, uses_libraries=ALL, library_path=/data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/lib/arm64:/data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/base.apk!/lib/arm64-v8a:/data/app/~~b3YqtRwed4957-AFKFefbg==/com.google.android.trichromelibrary_744410233-XIxnDof2gRlp4aE6KVMogQ==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+2025-11-25 03:53:43.893 21940-21940 ApplicationLoaders      app.paintmate.app                    D  Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+2025-11-25 03:53:43.894 21940-21940 p.paintmate.app         app.paintmate.app                    W  Loading /data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/oat/arm64/base.odex non-executable as it requires an image which we failed to load
+2025-11-25 03:53:43.894 21940-21940 nativeloader            app.paintmate.app                    D  Configuring clns-11 for other apk /data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/lib/arm64:/data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/base.apk!/lib/arm64-v8a:/data/app/~~b3YqtRwed4957-AFKFefbg==/com.google.android.trichromelibrary_744410233-XIxnDof2gRlp4aE6KVMogQ==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+2025-11-25 03:53:43.906 21940-21940 cr_WVCFactoryProvider   app.paintmate.app                    I  version=142.0.7444.102 (744410233) minSdkVersion=29 multiprocess=true packageId=2 splits=<none>
+2025-11-25 03:53:43.920 21940-21940 nativeloader            app.paintmate.app                    D  Load /data/app/~~b3YqtRwed4957-AFKFefbg==/com.google.android.trichromelibrary_744410233-XIxnDof2gRlp4aE6KVMogQ==/base.apk!/lib/arm64-v8a/libmonochrome_64.so using class loader ns clns-11 (caller=/data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/base.apk): ok
+2025-11-25 03:53:43.921 21940-21940 nativeloader            app.paintmate.app                    D  Load /system/lib64/libwebviewchromium_plat_support.so using class loader ns clns-11 (caller=/data/app/~~C0BuMY1787IJrkntsWK2tg==/com.google.android.webview-BzHnjh_gTU8uma2bRsoUEA==/base.apk): ok
+2025-11-25 03:53:43.926 21940-21940 cr_LibraryLoader        app.paintmate.app                    I  Successfully loaded native library
+2025-11-25 03:53:43.926 21940-21940 cr_CachingUmaRecorder   app.paintmate.app                    I  Flushed 19 samples from 19 histograms, 0 samples were dropped.
+2025-11-25 03:53:43.927 21940-21940 cr_CombinedPProvider    app.paintmate.app                    I  #registerProvider() provider:WV.hk@43de27c isPolicyCacheEnabled:false policyProvidersSize:0
+2025-11-25 03:53:43.928 21940-21940 cr_PolicyProvider       app.paintmate.app                    I  #setManagerAndSource() 0
+2025-11-25 03:53:43.940 21940-21940 cr_CombinedPProvider    app.paintmate.app                    I  #linkNativeInternal() 1
+2025-11-25 03:53:43.940 21940-21940 cr_AppResProvider       app.paintmate.app                    I  #getApplicationRestrictionsFromUserManager() Bundle[EMPTY_PARCEL]
+2025-11-25 03:53:43.940 21940-21940 cr_PolicyProvider       app.paintmate.app                    I  #notifySettingsAvailable() 0
+2025-11-25 03:53:43.940 21940-21940 cr_CombinedPProvider    app.paintmate.app                    I  #onSettingsAvailable() 0
+2025-11-25 03:53:43.940 21940-21940 cr_CombinedPProvider    app.paintmate.app                    I  #flushPolicies()
+2025-11-25 03:53:43.955 21940-22007 chromium                app.paintmate.app                    W  [WARNING:net/dns/dns_config_service_android.cc:69] Failed to read DnsConfig.
+2025-11-25 03:53:43.959 21940-21940 chromium                app.paintmate.app                    W  [WARNING:android_webview/browser/network_service/net_helpers.cc:143] HTTP Cache size is: 20971520
+2025-11-25 03:53:43.986 21940-21940 CompatChangeReporter    app.paintmate.app                    D  Compat change id reported: 352594277; UID 10407; state: ENABLED
+2025-11-25 03:53:43.991 21940-21940 Capacitor               app.paintmate.app                    D  Starting BridgeActivity
+2025-11-25 03:53:43.994 21940-21940 Capacitor               app.paintmate.app                    W  Using a non-standard scheme: httpss for Android. This is known to cause issues as of Android Webview 117.
+2025-11-25 03:53:44.000 21940-21940 Capacitor               app.paintmate.app                    D  Registering plugin instance: CapacitorCookies
+2025-11-25 03:53:44.001 21940-21940 Capacitor               app.paintmate.app                    D  Registering plugin instance: WebView
+2025-11-25 03:53:44.002 21940-21940 Capacitor               app.paintmate.app                    D  Registering plugin instance: CapacitorHttp
+2025-11-25 03:53:44.003 21940-21940 Capacitor               app.paintmate.app                    D  Registering plugin instance: Camera
+2025-11-25 03:53:44.016 21940-21940 Capacitor               app.paintmate.app                    W  Unable to read file at path public/plugins
+2025-11-25 03:53:44.017 21940-21940 Capacitor               app.paintmate.app                    W  Invalid url, using fallback
+2025-11-25 03:53:44.017 21940-21940 Capacitor               app.paintmate.app                    D  Loading app at httpss://localhost/
+2025-11-25 03:53:44.027 21940-22003 cr_media                app.paintmate.app                    W  BLUETOOTH_CONNECT permission is missing.
+2025-11-25 03:53:44.027 21940-22003 cr_media                app.paintmate.app                    W  getBluetoothAdapter() requires BLUETOOTH permission
+2025-11-25 03:53:44.027 21940-22003 cr_media                app.paintmate.app                    W  registerBluetoothIntentsIfNeeded: Requires BLUETOOTH permission
+2025-11-25 03:53:44.030 21940-21996 Capacitor               app.paintmate.app                    D  Handling local request: httpss://localhost/
+2025-11-25 03:53:44.035 21940-21940 Capacitor               app.paintmate.app                    D  App started
+2025-11-25 03:53:44.038 21940-21940 ContentCaptureHelper    app.paintmate.app                    I  Setting logging level to OFF
+2025-11-25 03:53:44.041 21940-21940 Capacitor               app.paintmate.app                    D  App resumed
+2025-11-25 03:53:44.046 21940-21940 CompatChangeReporter    app.paintmate.app                    D  Compat change id reported: 349153669; UID 10407; state: ENABLED
+2025-11-25 03:53:44.057 21940-22043 CameraManagerGlobal     app.paintmate.app                    I  Connecting to camera service
+2025-11-25 03:53:44.061 21940-21940 WindowOnBackDispatcher  app.paintmate.app                    D  setTopOnBackInvokedCallback (unwrapped): android.view.ViewRootImpl$$ExternalSyntheticLambda12@30857c
+2025-11-25 03:53:44.112 21940-21997 Capacitor               app.paintmate.app                    D  Handling local request: httpss://localhost/assets/index-DtmD7sxP.js
+2025-11-25 03:53:44.112 21940-21996 Capacitor               app.paintmate.app                    D  Handling local request: httpss://localhost/assets/index-CQajXwjk.css
+2025-11-25 03:53:44.123 21940-21940 ContentCaptureHelper    app.paintmate.app                    I  Setting logging level to OFF
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 3 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 6 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 7 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 5 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 0 for audio/iamf
+2025-11-25 03:53:44.144 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.149 21940-21940 ImeBackDispatcher       app.paintmate.app                    D  switch root view (mImeCallbacks.size=0)
+2025-11-25 03:53:44.153 21940-21940 InsetsController        app.paintmate.app                    D  hide(ime())
+2025-11-25 03:53:44.153 21940-21940 ImeTracker              app.paintmate.app                    I  app.paintmate.app:8623a78f: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 3 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 6 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 7 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 5 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized encoding 0 for audio/iamf
+2025-11-25 03:53:44.175 21940-22018 AudioCapabilities       app.paintmate.app                    W  Unrecognized IAMF profile 0 for audio/iamf
+2025-11-25 03:53:44.306 21940-21998 Capacitor               app.paintmate.app                    D  Handling local request: httpss://localhost/favicon.png
+2025-11-25 03:53:44.484 21940-21940 Capacitor/Console       app.paintmate.app                    E  File: httpss://localhost/assets/index-DtmD7sxP.js - Line 3739 - Msg: TypeError: Cannot read properties of undefined (reading 'getContext')
+2025-11-25 03:53:44.484 21940-22031 Capacitor               app.paintmate.app                    E  JavaScript Error: {"type":"js.error","error":{"message":"Uncaught TypeError: Cannot read properties of undefined (reading 'getContext')","url":"httpss://localhost/assets/index-DtmD7sxP.js","line":1716,"col":356,"errorObject":"{}"}}
+2025-11-25 03:53:44.484 21940-21940 Capacitor/Console       app.paintmate.app                    E  File: httpss://localhost/assets/index-DtmD7sxP.js - Line 1716 - Msg: Uncaught TypeError: Cannot read properties of undefined (reading 'getContext')
+2025-11-25 03:53:44.499 21940-21940 Capacitor/Console       app.paintmate.app                    E  File: https://apis.google.com/js/api.js?onload=__iframefcb550478 - Line 24 - Msg: Uncaught Error: t`httpss
+2025-11-25 03:53:44.555 21940-22084 HWUI                    app.paintmate.app                    I  Using FreeType backend (prop=Auto)
+2025-11-25 03:53:44.597 21940-21940 Capacitor/Console       app.paintmate.app                    E  File: httpss://localhost/ - Line 0 - Msg: Access to XMLHttpRequest at 'https://apis.google.com/_/jserror?script=httpss%3A%2F%2Flocalhost%2F&error=t%60httpss&line=Not%20available' from origin 'httpss://' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+2025-11-25 03:53:44.618 21940-21949 p.paintmate.app         app.paintmate.app                    I  Compiler allocated 4940KB to compile void android.view.ViewRootImpl.performTraversals()
+2025-11-25 03:53:49.608 21940-22089 ProfileInstaller        app.paintmate.app                    D  Installing profile for app.paintmate.app
+2025-11-25 03:54:12.044 21940-21950 p.paintmate.app         app.paintmate.app                    W  userfaultfd: MOVE ioctl seems unsupported: Connection timed out
+2025-11-25 03:54:12.055 21940-21950 p.paintmate.app         app.paintmate.app                    I  Background concurrent mark compact GC freed 5319KB AllocSpace bytes, 49(2308KB) LOS objects, 85% free, 4124KB/28MB, paused 121us,3.520ms total 109.465ms

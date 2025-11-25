@@ -53,7 +53,9 @@ service cloud.firestore {
 
     // Rooms can be managed by members of the same org
     match /rooms/{roomId} {
-      allow read, write: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow read, write: if request.auth != null &&
+                          get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId
+                          in request.auth.token.orgIds;
     }
 
     // Quotes can be managed by members of the same org

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^7.4.4",
+    "@capacitor/camera": "^7.0.2",
     "@capacitor/core": "^7.4.4",
     "@capacitor/ios": "^7.4.4",
     "@hookform/resolvers": "^3.10.0",

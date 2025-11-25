@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PaintMate</string>
+    <string name="title_activity_main">PaintMate</string>
+    <string name="package_name">app.paintmate.app</string>
+    <string name="custom_url_scheme">app.paintmate.app</string>
+</resources>
