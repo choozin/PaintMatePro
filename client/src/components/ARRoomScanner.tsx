@@ -135,14 +135,11 @@ export function ARRoomScanner({
     });
   };
 
-  const [debugLog, setDebugLog] = useState<string[]>([]);
-
-  const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toISOString().split('T')[1].slice(0, 8)}: ${msg}`]);
-
   const handleFallback = async () => {
-    const url = window.location.href;
-    addLog(`Attempting fallback...`);
-    addLog(`URL: ${url}`);
+    // Construct the production URL
+    // This replaces the internal Capacitor URL (e.g., https://localhost) with the live Vercel URL
+    const currentUrl = new URL(window.location.href);
+    const productionUrl = `https://paint-mate-pro.vercel.app${currentUrl.pathname}${currentUrl.search}`;
 
     toast({
       variant: "destructive",
@@ -153,12 +150,9 @@ export function ARRoomScanner({
     // Small delay to let the toast show
     setTimeout(async () => {
       try {
-        addLog(`Calling Browser.open...`);
-        await Browser.open({ url });
-        addLog(`Browser.open called successfully`);
+        await Browser.open({ url: productionUrl });
         onClose('cancelled');
       } catch (e: any) {
-        addLog(`ERROR: ${e.message}`);
         console.error("Browser open failed", e);
       }
     }, 1500);
@@ -311,18 +305,10 @@ export function ARRoomScanner({
           <Card className="w-full max-w-md">
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">AR Room Scanner <span className="text-xs text-muted-foreground ml-2">v1.8 Import Fixed</span></h2>
+                <h2 className="text-lg font-semibold">AR Room Scanner <span className="text-xs text-muted-foreground ml-2">v2.1 Web Fix</span></h2>
                 <Button variant="ghost" size="icon" onClick={() => onClose('cancelled')}>
                   <X className="h-5 w-5" />
                 </Button>
-              </div>
-
-              {/* Debug Info Area */}
-              <div className="bg-slate-100 p-2 rounded text-xs font-mono break-all max-h-32 overflow-y-auto">
-                <p className="font-bold text-slate-700">Debug Log:</p>
-                {debugLog.map((log, i) => (
-                  <div key={i} className="border-b border-slate-200 py-1">{log}</div>
-                ))}
               </div>
 
               {currentStep === 'name' ? (

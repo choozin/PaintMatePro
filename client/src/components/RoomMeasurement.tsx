@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Ruler, Plus, Trash2, Save, Camera as CameraIcon, AlertCircle, RefreshCw } from "lucide-react";
 import { Camera } from "@capacitor/camera";
+import { Capacitor } from "@capacitor/core";
 import { useState, useEffect, useRef } from "react";
 import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/useRooms";
 import { useToast } from "@/hooks/use-toast";
@@ -62,7 +63,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
   const [showARScanner, setShowARScanner] = useState(false);
   const [roundingPreference, setRoundingPreference] = useState<'precise' | '2inch' | '6inch' | '1foot'>('2inch');
   const [isIOSDevice] = useState(isIOS());
-  
+
   const [isArDiscouraged, setIsArDiscouraged] = useState(() => sessionStorage.getItem('ar-unsupported') === 'true');
   const [arAttemptIndex, setArAttemptIndex] = useState(0);
   const [showFallbackPrompt, setShowFallbackPrompt] = useState(false);
@@ -141,14 +142,18 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
 
   const handleScanButtonClick = async () => {
     try {
-      const permissions = await Camera.requestPermissions({ permissions: ['camera'] });
-      if (permissions.camera !== 'granted') {
-        toast({
-          variant: "destructive",
-          title: "Permission Denied",
-          description: "Camera access is required for AR measurements.",
-        });
-        return;
+      // Only request explicit permissions on native apps.
+      // On the web, WebXR will handle the permission prompt when the session starts.
+      if (Capacitor.isNativePlatform()) {
+        const permissions = await Camera.requestPermissions({ permissions: ['camera'] });
+        if (permissions.camera !== 'granted') {
+          toast({
+            variant: "destructive",
+            title: "Permission Denied",
+            description: "Camera access is required for AR measurements.",
+          });
+          return;
+        }
       }
       setArAttemptIndex(0);
       setShowARScanner(true);
