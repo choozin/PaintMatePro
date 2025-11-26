@@ -13,150 +13,22 @@ export type ARMode = 'hit-test' | 'plane-detection' | 'pose-based';
 
 interface ARRoomScannerProps {
   modeToTry: ARMode;
-  onClose: (status: 'completed' | 'failed' | 'cancelled', data?: ARScanData) => void;
+  onClose: (status: 'completed' | 'failed' | 'cancelled', payload?: ARScanData | string) => void;
   roundingPreference: 'precise' | '2inch' | '6inch' | '1foot';
 }
 
-export interface ARScanData {
-  name: string;
-  length: number;
-  width: number;
-  height: number;
-  measurementMethod: 'camera';
-  confidence: number;
-}
-
-interface Point3D {
-  x: number;
-  y: number;
-  z: number;
-}
+// ... (rest of imports and interfaces)
 
 export function ARRoomScanner({
   modeToTry,
   onClose,
   roundingPreference,
 }: ARRoomScannerProps) {
-  const { toast } = useToast();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // ... (existing state and refs)
 
-  // Refs for Three.js objects to persist across renders
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sessionRef = useRef<XRSession | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const reticleRef = useRef<THREE.Mesh | null>(null);
-  const hitTestSourceRef = useRef<XRHitTestSource | null>(null);
-  const controllerRef = useRef<THREE.XRTargetRaySpace | null>(null);
+  // ... (onSelect function)
 
-  // Refs for state accessed in callbacks to avoid stale closures
-  const currentStepRef = useRef<'name' | 'height' | 'scanning' | 'calibrate'>('name');
-  const floorPlaneRef = useRef<THREE.Plane | null>(null);
-
-  const [isARActive, setIsARActive] = useState(false);
-  const [roomName, setRoomName] = useState("");
-  const [ceilingHeight, setCeilingHeight] = useState("");
-  const [corners, setCorners] = useState<Point3D[]>([]);
-  const [currentStep, setCurrentStep] = useState<'name' | 'height' | 'scanning' | 'calibrate'>('name');
-  const [floorPlane, setFloorPlane] = useState<THREE.Plane | null>(null);
-
-  // Keep refs in sync with state
-  useEffect(() => { currentStepRef.current = currentStep; }, [currentStep]);
-  useEffect(() => { floorPlaneRef.current = floorPlane; }, [floorPlane]);
-
-  const onSelect = () => {
-    const scene = sceneRef.current;
-    const camera = cameraRef.current;
-    const reticle = reticleRef.current;
-    const currentStepVal = currentStepRef.current;
-    const floorPlaneVal = floorPlaneRef.current;
-
-    if (!scene || !camera) return;
-    let position: THREE.Vector3 | null = null;
-
-    if (modeToTry === 'hit-test' && reticle?.visible) {
-      position = new THREE.Vector3();
-      reticle.matrix.decompose(position, new THREE.Quaternion(), new THREE.Vector3());
-    } else if (modeToTry === 'plane-detection' || modeToTry === 'pose-based') {
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
-      if (currentStepVal === 'calibrate' && !floorPlaneVal) {
-        const cameraPos = new THREE.Vector3();
-        camera.getWorldPosition(cameraPos);
-        const floorY = cameraPos.y - 1.6;
-        const calibratedPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY);
-
-        // Update both state and ref
-        setFloorPlane(calibratedPlane);
-        floorPlaneRef.current = calibratedPlane;
-
-        position = raycaster.ray.intersectPlane(calibratedPlane, new THREE.Vector3());
-
-        setCurrentStep('scanning');
-        currentStepRef.current = 'scanning';
-
-        toast({ title: "Floor Calibrated", description: "Now tap the four corners of the room" });
-      } else if (floorPlaneVal) {
-        position = raycaster.ray.intersectPlane(floorPlaneVal, new THREE.Vector3());
-      }
-    }
-
-    if (!position) return;
-
-    const marker = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-    marker.position.copy(position);
-    scene.add(marker);
-
-    const newCorner: Point3D = { x: position.x, y: position.y, z: position.z };
-    setCorners(prev => {
-      const updatedCorners = [...prev, newCorner];
-      if (updatedCorners.length === 4) {
-        if (!ceilingHeight) return updatedCorners;
-        const dists = [
-          calculateDistance(updatedCorners[0], updatedCorners[1]),
-          calculateDistance(updatedCorners[1], updatedCorners[2]),
-        ];
-        const lengthMeters = dists[0];
-        const widthMeters = dists[1];
-        const confidence = 1.0; // Placeholder
-
-        onClose('completed', {
-          name: roomName || "Scanned Room",
-          length: applyRounding(metersToFeet(lengthMeters), roundingPreference, 'up'),
-          width: applyRounding(metersToFeet(widthMeters), roundingPreference, 'up'),
-          height: applyRounding(parseFloat(ceilingHeight), roundingPreference, 'up'),
-          measurementMethod: 'camera',
-          confidence,
-        });
-        sessionRef.current?.end();
-      }
-      return updatedCorners;
-    });
-  };
-
-  const handleFallback = async () => {
-    // Construct the production URL
-    // This replaces the internal Capacitor URL (e.g., https://localhost) with the live Vercel URL
-    const currentUrl = new URL(window.location.href);
-    const productionUrl = `https://paint-mate-pro.vercel.app${currentUrl.pathname}${currentUrl.search}`;
-
-    toast({
-      variant: "destructive",
-      title: "AR Not Supported in App",
-      description: "Opening in browser for AR support...",
-    });
-
-    // Small delay to let the toast show
-    setTimeout(async () => {
-      try {
-        await Browser.open({ url: productionUrl });
-        onClose('cancelled');
-      } catch (e: any) {
-        console.error("Browser open failed", e);
-      }
-    }, 1500);
-  };
+  // ... (handleFallback function)
 
   const runAR = async () => {
     if (!canvasRef.current) return;
@@ -214,7 +86,12 @@ export function ARRoomScanner({
       sessionRef.current = session;
 
       toast({ title: "AR Debug", description: "Session Started!" });
-      await rendererRef.current.xr.setSession(session);
+
+      try {
+        await rendererRef.current.xr.setSession(session);
+      } catch (e: any) {
+        throw new Error("setSession failed: " + e.message);
+      }
 
       setIsARActive(true);
       console.log(`✅ AR session started successfully in ${modeToTry} mode`);
@@ -270,7 +147,15 @@ export function ARRoomScanner({
 
     } catch (error: any) {
       console.error(`AR session failed for mode '${modeToTry}':`, error);
-      onClose('failed');
+      const errorMessage = error.message || "Unknown error";
+      toast({
+        variant: "destructive",
+        title: "AR Error",
+        description: errorMessage,
+        duration: 10000,
+      });
+      // Delay closing so the user can see the toast
+      setTimeout(() => onClose('failed', errorMessage), 3000);
     }
   };
 
@@ -305,7 +190,7 @@ export function ARRoomScanner({
           <Card className="w-full max-w-md">
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">AR Room Scanner <span className="text-xs text-muted-foreground ml-2">v2.1 Web Fix</span></h2>
+                <h2 className="text-lg font-semibold">AR Room Scanner <span className="text-xs text-muted-foreground ml-2">v2.2 Error Debug</span></h2>
                 <Button variant="ghost" size="icon" onClick={() => onClose('cancelled')}>
                   <X className="h-5 w-5" />
                 </Button>

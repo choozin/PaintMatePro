@@ -30,7 +30,7 @@ interface LocalRoom {
   hasChanges?: boolean;
 }
 
-function FallbackPrompt({ onTryNext, onManual, nextMode }: { onTryNext: () => void; onManual: () => void; nextMode?: string }) {
+function FallbackPrompt({ onTryNext, onManual, nextMode, error }: { onTryNext: () => void; onManual: () => void; nextMode?: string; error?: string | null }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <Card className="max-w-md">
@@ -42,6 +42,7 @@ function FallbackPrompt({ onTryNext, onManual, nextMode }: { onTryNext: () => vo
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">The previous camera mode was not supported by your device.</p>
+          {error && <div className="p-2 bg-destructive/10 text-destructive text-xs rounded font-mono break-all">{error}</div>}
           <div className="flex flex-col gap-2">
             {nextMode && <Button onClick={onTryNext}><RefreshCw className="h-4 w-4 mr-2" />Try Next Mode ({nextMode})</Button>}
             <Button variant="outline" onClick={onManual}>Continue with Manual Entry</Button>
@@ -67,6 +68,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
   const [isArDiscouraged, setIsArDiscouraged] = useState(() => sessionStorage.getItem('ar-unsupported') === 'true');
   const [arAttemptIndex, setArAttemptIndex] = useState(0);
   const [showFallbackPrompt, setShowFallbackPrompt] = useState(false);
+  const [arError, setArError] = useState<string | null>(null);
   const manualEntryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -120,12 +122,18 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
     setTimeout(() => manualEntryRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
-  const handleARClose = (status: 'completed' | 'failed' | 'cancelled', data?: ARScanData) => {
+  const handleARClose = (status: 'completed' | 'failed' | 'cancelled', payload?: ARScanData | string) => {
     setShowARScanner(false);
-    if (status === 'completed' && data) {
+    if (status === 'completed' && payload && typeof payload !== 'string') {
+      const data = payload as ARScanData;
       setLocalRooms(prev => [...prev, { name: data.name, length: data.length.toString(), width: data.width.toString(), height: data.height.toString(), isNew: true }]);
       toast({ title: "Room Scanned", description: `${data.name} measurements captured.` });
     } else if (status === 'failed') {
+      if (typeof payload === 'string') {
+        setArError(payload);
+      } else {
+        setArError(null);
+      }
       if (arAttemptIndex < ALL_AR_MODES.length - 1) {
         setShowFallbackPrompt(true);
       } else {
@@ -172,7 +180,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
   return (
     <>
       {showARScanner && <ARRoomScanner projectId={projectId} onClose={handleARClose} roundingPreference={roundingPreference} modeToTry={ALL_AR_MODES[arAttemptIndex]} />}
-      {showFallbackPrompt && <FallbackPrompt onTryNext={handleTryNextMode} onManual={setFinalArFailure} nextMode={ALL_AR_MODES[arAttemptIndex + 1]} />}
+      {showFallbackPrompt && <FallbackPrompt onTryNext={handleTryNextMode} onManual={setFinalArFailure} nextMode={ALL_AR_MODES[arAttemptIndex + 1]} error={arError} />}
 
       <div className="space-y-6">
         <Card>
