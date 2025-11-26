@@ -106,7 +106,17 @@ export function ARRoomScanner({
 
       session.addEventListener('end', () => setIsARActive(false));
 
+      let frameCount = 0;
       rendererRef.current.setAnimationLoop((timestamp, frame) => {
+        frameCount++;
+        if (frameCount % 60 === 0) {
+          console.log(`Rendering frame ${frameCount}`);
+        }
+
+        // Rotate debug cube
+        cube.rotation.x += 0.01;
+        cube.rotation.y += 0.01;
+
         const renderer = rendererRef.current;
         const scene = sceneRef.current;
         const camera = cameraRef.current;
@@ -190,7 +200,7 @@ export function ARRoomScanner({
           <Card className="w-full max-w-md">
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">AR Room Scanner <span className="text-xs text-muted-foreground ml-2">v2.2 Error Debug</span></h2>
+                <h2 className="text-lg font-semibold">AR Room Scanner <span className="text-xs text-muted-foreground ml-2">v2.3 Render Debug</span></h2>
                 <Button variant="ghost" size="icon" onClick={() => onClose('cancelled')}>
                   <X className="h-5 w-5" />
                 </Button>
