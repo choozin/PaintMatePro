@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import * as THREE from "three";
 import { applyRounding, calculateDistance, metersToFeet } from "@/lib/arMeasurement";
+import { Browser } from "@capacitor/browser";
 
 export type ARMode = 'hit-test' | 'plane-detection' | 'pose-based';
 
@@ -39,6 +40,19 @@ export function ARRoomScanner({
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Refs for Three.js objects to persist across renders
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sessionRef = useRef<XRSession | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const reticleRef = useRef<THREE.Mesh | null>(null);
+  const hitTestSourceRef = useRef<XRHitTestSource | null>(null);
+  const controllerRef = useRef<THREE.XRTargetRaySpace | null>(null);
+
+  // Refs for state accessed in callbacks to avoid stale closures
+  const currentStepRef = useRef<'name' | 'height' | 'scanning' | 'calibrate'>('name');
+  const floorPlaneRef = useRef<THREE.Plane | null>(null);
+
   const [isARActive, setIsARActive] = useState(false);
   const [roomName, setRoomName] = useState("");
   const [ceilingHeight, setCeilingHeight] = useState("");
@@ -46,203 +60,237 @@ export function ARRoomScanner({
   const [currentStep, setCurrentStep] = useState<'name' | 'height' | 'scanning' | 'calibrate'>('name');
   const [floorPlane, setFloorPlane] = useState<THREE.Plane | null>(null);
 
-  useEffect(() => {
-    let renderer: THREE.WebGLRenderer | null = null;
-    let session: XRSession | null = null;
-    let scene: THREE.Scene | null = null;
-    let camera: THREE.PerspectiveCamera | null = null;
-    let reticle: THREE.Mesh | null = null;
-    let hitTestSource: XRHitTestSource | null = null;
-    let controller: THREE.XRTargetRaySpace | null = null;
+  // Keep refs in sync with state
+  useEffect(() => { currentStepRef.current = currentStep; }, [currentStep]);
+  useEffect(() => { floorPlaneRef.current = floorPlane; }, [floorPlane]);
 
-    const onSelect = () => {
-      if (!scene || !camera) return;
-      let position: THREE.Vector3 | null = null;
+  const onSelect = () => {
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const reticle = reticleRef.current;
+    const currentStepVal = currentStepRef.current;
+    const floorPlaneVal = floorPlaneRef.current;
 
-      if (modeToTry === 'hit-test' && reticle?.visible) {
-        position = new THREE.Vector3();
-        reticle.matrix.decompose(position, new THREE.Quaternion(), new THREE.Vector3());
-      } else if (modeToTry === 'plane-detection' || modeToTry === 'pose-based') {
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    if (!scene || !camera) return;
+    let position: THREE.Vector3 | null = null;
 
-        if (currentStep === 'calibrate' && !floorPlane) {
-          const cameraPos = new THREE.Vector3();
-          camera.getWorldPosition(cameraPos);
-          const floorY = cameraPos.y - 1.6;
-          const calibratedPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY);
-          setFloorPlane(calibratedPlane);
-          position = raycaster.ray.intersectPlane(calibratedPlane, new THREE.Vector3());
-          setCurrentStep('scanning');
-          toast({ title: "Floor Calibrated", description: "Now tap the four corners of the room" });
-        } else if (floorPlane) {
-          position = raycaster.ray.intersectPlane(floorPlane, new THREE.Vector3());
-        }
+    if (modeToTry === 'hit-test' && reticle?.visible) {
+      position = new THREE.Vector3();
+      reticle.matrix.decompose(position, new THREE.Quaternion(), new THREE.Vector3());
+    } else if (modeToTry === 'plane-detection' || modeToTry === 'pose-based') {
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+      if (currentStepVal === 'calibrate' && !floorPlaneVal) {
+        const cameraPos = new THREE.Vector3();
+        camera.getWorldPosition(cameraPos);
+        const floorY = cameraPos.y - 1.6;
+        const calibratedPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY);
+
+        // Update both state and ref
+        setFloorPlane(calibratedPlane);
+        floorPlaneRef.current = calibratedPlane;
+
+        position = raycaster.ray.intersectPlane(calibratedPlane, new THREE.Vector3());
+
+        setCurrentStep('scanning');
+        currentStepRef.current = 'scanning';
+
+        toast({ title: "Floor Calibrated", description: "Now tap the four corners of the room" });
+      } else if (floorPlaneVal) {
+        position = raycaster.ray.intersectPlane(floorPlaneVal, new THREE.Vector3());
       }
+    }
 
-      if (!position) return;
+    if (!position) return;
 
-      const marker = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-      marker.position.copy(position);
-      scene.add(marker);
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    marker.position.copy(position);
+    scene.add(marker);
 
-      const newCorner: Point3D = { x: position.x, y: position.y, z: position.z };
-      setCorners(prev => {
-        const updatedCorners = [...prev, newCorner];
-        if (updatedCorners.length === 4) {
-          if (!ceilingHeight) return updatedCorners;
-          const dists = [
-            calculateDistance(updatedCorners[0], updatedCorners[1]),
-            calculateDistance(updatedCorners[1], updatedCorners[2]),
-          ];
-          const lengthMeters = dists[0];
-          const widthMeters = dists[1];
-          const confidence = 1.0; // Placeholder
+    const newCorner: Point3D = { x: position.x, y: position.y, z: position.z };
+    setCorners(prev => {
+      const updatedCorners = [...prev, newCorner];
+      if (updatedCorners.length === 4) {
+        if (!ceilingHeight) return updatedCorners;
+        const dists = [
+          calculateDistance(updatedCorners[0], updatedCorners[1]),
+          calculateDistance(updatedCorners[1], updatedCorners[2]),
+        ];
+        const lengthMeters = dists[0];
+        const widthMeters = dists[1];
+        const confidence = 1.0; // Placeholder
 
-          onClose('completed', {
-            name: roomName || "Scanned Room",
-            length: applyRounding(metersToFeet(lengthMeters), roundingPreference, 'up'),
-            width: applyRounding(metersToFeet(widthMeters), roundingPreference, 'up'),
-            height: applyRounding(parseFloat(ceilingHeight), roundingPreference, 'up'),
-            measurementMethod: 'camera',
-            confidence,
-          });
-          session?.end();
-        }
-        return updatedCorners;
-      });
-    };
+        onClose('completed', {
+          name: roomName || "Scanned Room",
+          length: applyRounding(metersToFeet(lengthMeters), roundingPreference, 'up'),
+          width: applyRounding(metersToFeet(widthMeters), roundingPreference, 'up'),
+          height: applyRounding(parseFloat(ceilingHeight), roundingPreference, 'up'),
+          measurementMethod: 'camera',
+          confidence,
+        });
+        sessionRef.current?.end();
+      }
+      return updatedCorners;
+    });
+  };
 
-    const handleFallback = () => {
-      toast({
-        variant: "destructive",
-        title: "AR Not Supported in App",
-        description: "Opening in browser for AR support...",
-      });
+  const [debugLog, setDebugLog] = useState<string[]>([]);
 
-      // Small delay to let the toast show
-      setTimeout(() => {
-        const url = window.location.href;
-        window.open(url, '_system');
+  const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toISOString().split('T')[1].slice(0, 8)}: ${msg}`]);
+
+  const handleFallback = async () => {
+    const url = window.location.href;
+    addLog(`Attempting fallback...`);
+    addLog(`URL: ${url}`);
+
+    toast({
+      variant: "destructive",
+      title: "AR Not Supported in App",
+      description: "Opening in browser for AR support...",
+    });
+
+    // Small delay to let the toast show
+    setTimeout(async () => {
+      try {
+        addLog(`Calling Browser.open...`);
+        await Browser.open({ url });
+        addLog(`Browser.open called successfully`);
         onClose('cancelled');
-      }, 1500);
-    };
-
-    const runAR = async () => {
-      if (currentStep !== 'scanning' || !canvasRef.current) {
-        return;
+      } catch (e: any) {
+        addLog(`ERROR: ${e.message}`);
+        console.error("Browser open failed", e);
       }
+    }, 1500);
+  };
 
-      if (!('xr' in navigator)) {
-        console.error("WebXR not supported");
+  const runAR = async () => {
+    if (!canvasRef.current) return;
+
+    if (!('xr' in navigator)) {
+      console.error("WebXR not supported");
+      handleFallback();
+      return;
+    }
+
+    console.log(`🎥 Attempting to start AR with mode: ${modeToTry}`);
+    toast({ title: "AR Debug", description: "Checking XR support..." });
+
+    try {
+      const isSupported = await (navigator as any).xr.isSessionSupported('immersive-ar');
+      toast({ title: "AR Debug", description: `XR Supported: ${isSupported}` });
+
+      if (!isSupported) {
         handleFallback();
         return;
       }
 
-      console.log(`🎥 Attempting to start AR with mode: ${modeToTry}`);
-      toast({ title: "AR Debug", description: "Checking XR support..." });
+      // Initialize Three.js objects
+      sceneRef.current = new THREE.Scene();
+      cameraRef.current = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+      const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3);
+      light.position.set(0.5, 1, 0.25);
+      sceneRef.current.add(light);
 
-      try {
-        const isSupported = await (navigator as any).xr.isSessionSupported('immersive-ar');
-        toast({ title: "AR Debug", description: `XR Supported: ${isSupported}` });
+      rendererRef.current = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: true, alpha: true });
+      rendererRef.current.setPixelRatio(window.devicePixelRatio);
+      rendererRef.current.setSize(window.innerWidth, window.innerHeight);
+      rendererRef.current.xr.enabled = true;
 
-        if (!isSupported) {
-          handleFallback();
-          return;
-        }
+      reticleRef.current = new THREE.Mesh(
+        new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+      );
+      reticleRef.current.matrixAutoUpdate = false;
+      reticleRef.current.visible = false;
+      sceneRef.current.add(reticleRef.current);
 
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
-        const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3);
-        light.position.set(0.5, 1, 0.25);
-        scene.add(light);
+      toast({ title: "AR Debug", description: "Requesting Session..." });
 
-        renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: true, alpha: true });
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true;
+      // Add a timeout to detect hangs
+      const sessionPromise = (navigator as any).xr.requestSession('immersive-ar', {
+        requiredFeatures: [modeToTry],
+        optionalFeatures: ['dom-overlay'],
+        domOverlay: { root: document.body }
+      });
 
-        reticle = new THREE.Mesh(
-          new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
-          new THREE.MeshBasicMaterial({ color: 0x00ff00 })
-        );
-        reticle.matrixAutoUpdate = false;
-        reticle.visible = false;
-        scene.add(reticle);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Session request timed out")), 5000));
 
-        toast({ title: "AR Debug", description: "Requesting Session..." });
+      const session = await Promise.race([sessionPromise, timeoutPromise]) as XRSession;
+      sessionRef.current = session;
 
-        // Add a timeout to detect hangs
-        const sessionPromise = (navigator as any).xr.requestSession('immersive-ar', {
-          requiredFeatures: [modeToTry],
-          optionalFeatures: ['dom-overlay'],
-          domOverlay: { root: document.body }
-        });
+      toast({ title: "AR Debug", description: "Session Started!" });
+      await rendererRef.current.xr.setSession(session);
 
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Session request timed out")), 5000));
+      setIsARActive(true);
+      console.log(`✅ AR session started successfully in ${modeToTry} mode`);
 
-        session = await Promise.race([sessionPromise, timeoutPromise]) as XRSession;
+      const nextStep = modeToTry === 'hit-test' ? 'scanning' : 'calibrate';
+      setCurrentStep(nextStep);
+      currentStepRef.current = nextStep;
 
-        toast({ title: "AR Debug", description: "Session Started!" });
-        await renderer.xr.setSession(session);
+      controllerRef.current = rendererRef.current.xr.getController(0);
+      controllerRef.current.addEventListener('select', onSelect);
+      sceneRef.current.add(controllerRef.current);
 
-        setIsARActive(true);
-        console.log(`✅ AR session started successfully in ${modeToTry} mode`);
-        setCurrentStep(modeToTry === 'hit-test' ? 'scanning' : 'calibrate');
+      session.addEventListener('end', () => setIsARActive(false));
 
-        controller = renderer.xr.getController(0);
-        controller.addEventListener('select', onSelect);
-        scene.add(controller);
+      rendererRef.current.setAnimationLoop((timestamp, frame) => {
+        const renderer = rendererRef.current;
+        const scene = sceneRef.current;
+        const camera = cameraRef.current;
+        const reticle = reticleRef.current;
+        const session = sessionRef.current;
 
-        session.addEventListener('end', () => setIsARActive(false));
+        if (frame && renderer && scene && camera && reticle && session) {
+          const referenceSpace = renderer.xr.getReferenceSpace();
+          if (!referenceSpace) return;
 
-        renderer.setAnimationLoop((timestamp, frame) => {
-          if (frame && renderer && scene && camera && reticle && session) {
-            const referenceSpace = renderer.xr.getReferenceSpace();
-            if (!referenceSpace) return;
-
-            if (modeToTry === 'hit-test') {
-              if (!hitTestSource && session?.requestHitTestSource) {
-                session.requestReferenceSpace('viewer').then(viewerSpace => {
-                  if (viewerSpace && session) session.requestHitTestSource({ space: viewerSpace })?.then(source => {
-                    hitTestSource = source;
-                  });
+          if (modeToTry === 'hit-test') {
+            if (!hitTestSourceRef.current && session?.requestHitTestSource) {
+              session.requestReferenceSpace('viewer').then(viewerSpace => {
+                if (viewerSpace && session) session.requestHitTestSource({ space: viewerSpace })?.then(source => {
+                  hitTestSourceRef.current = source;
                 });
-              }
-              if (hitTestSource) {
-                const hitTestResults = frame.getHitTestResults(hitTestSource);
-                if (hitTestResults.length > 0) {
-                  const hit = hitTestResults[0];
-                  const pose = hit.getPose(referenceSpace);
-                  if (pose) {
-                    reticle.visible = true;
-                    reticle.matrix.fromArray(pose.transform.matrix);
-                  }
-                } else {
-                  reticle.visible = false;
+              });
+            }
+            if (hitTestSourceRef.current) {
+              const hitTestResults = frame.getHitTestResults(hitTestSourceRef.current);
+              if (hitTestResults.length > 0) {
+                const hit = hitTestResults[0];
+                const pose = hit.getPose(referenceSpace);
+                if (pose) {
+                  reticle.visible = true;
+                  reticle.matrix.fromArray(pose.transform.matrix);
                 }
+              } else {
+                reticle.visible = false;
               }
             }
           }
-          if (scene && camera) {
-            renderer?.render(scene, camera);
-          }
-        });
+        }
+        if (scene && camera && renderer) {
+          renderer.render(scene, camera);
+        }
+      });
 
-      } catch (error: any) {
-        console.error(`AR session failed for mode '${modeToTry}':`, error);
-        onClose('failed');
-      }
-    };
+    } catch (error: any) {
+      console.error(`AR session failed for mode '${modeToTry}':`, error);
+      onClose('failed');
+    }
+  };
 
-    runAR();
-
+  useEffect(() => {
     return () => {
+      const controller = controllerRef.current;
+      const session = sessionRef.current;
+      const renderer = rendererRef.current;
+
       controller?.removeEventListener('select', onSelect);
       session?.end().catch(e => console.error("Session end error:", e));
       renderer?.dispose();
     };
-  }, [currentStep]);
+  }, []);
 
   const handleInitialNext = () => {
     if (currentStep === 'name' && roomName) {
@@ -263,10 +311,18 @@ export function ARRoomScanner({
           <Card className="w-full max-w-md">
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">AR Room Scanner <span className="text-xs text-muted-foreground ml-2">v1.2 Fallback</span></h2>
+                <h2 className="text-lg font-semibold">AR Room Scanner <span className="text-xs text-muted-foreground ml-2">v1.8 Import Fixed</span></h2>
                 <Button variant="ghost" size="icon" onClick={() => onClose('cancelled')}>
                   <X className="h-5 w-5" />
                 </Button>
+              </div>
+
+              {/* Debug Info Area */}
+              <div className="bg-slate-100 p-2 rounded text-xs font-mono break-all max-h-32 overflow-y-auto">
+                <p className="font-bold text-slate-700">Debug Log:</p>
+                {debugLog.map((log, i) => (
+                  <div key={i} className="border-b border-slate-200 py-1">{log}</div>
+                ))}
               </div>
 
               {currentStep === 'name' ? (
@@ -277,8 +333,13 @@ export function ARRoomScanner({
               ) : currentStep === 'height' ? (
                 <>
                   <div className="space-y-2"><Label>Ceiling Height (ft)</Label><Input type="number" step="0.1" value={ceilingHeight} onChange={(e) => setCeilingHeight(e.target.value)} placeholder="e.g., 9" /><p className="text-sm text-muted-foreground">Measure from floor to ceiling for accuracy</p></div>
-                  <div className="flex gap-2"><Button variant="outline" onClick={() => setCurrentStep('name')} className="flex-1">Back</Button><Button onClick={handleInitialNext} disabled={!ceilingHeight} className="flex-1">Start Scanning</Button></div>
+                  <div className="flex gap-2"><Button variant="outline" onClick={() => setCurrentStep('name')} className="flex-1">Back</Button><Button onClick={handleInitialNext} disabled={!ceilingHeight} className="flex-1">Next</Button></div>
                 </>
+              ) : currentStep === 'scanning' ? (
+                <div className="space-y-4 text-center">
+                  <p className="text-muted-foreground">Ready to start scanning. Ensure your room is well-lit.</p>
+                  <Button onClick={runAR} size="lg" className="w-full">Start AR Session</Button>
+                </div>
               ) : null}
             </CardContent>
           </Card>
