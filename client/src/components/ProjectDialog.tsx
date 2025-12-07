@@ -7,38 +7,160 @@ import { useCreateProject, useUpdateProject } from "@/hooks/useProjects";
 import { useClients } from "@/hooks/useClients";
 import { useToast } from "@/hooks/use-toast";
 import { Timestamp } from "firebase/firestore";
-import type { Project } from "@/lib/firestore";
-import { Plus, Edit } from "lucide-react";
+import { Project, crewOperations, projectOperations, ProjectStatus } from "@/lib/firestore";
+import { Plus, Edit, Users, Calendar } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useDeleteProject } from "@/hooks/useProjects";
 import { ProjectTimeline } from "@/components/ProjectTimeline";
 import { ClientComboSelector } from "./ClientComboSelector";
+import { useQuery } from "@tanstack/react-query";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTranslation } from "react-i18next";
 
 interface ProjectDialogProps {
   project?: Project & { id: string };
   trigger?: React.ReactNode;
   mode?: "create" | "edit";
   onSuccess?: () => void;
+  defaultClientId?: string;
 }
 
-import { useTranslation } from "react-i18next";
-
-export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: ProjectDialogProps) {
+export function ProjectDialog({ project, trigger, mode = "create", onSuccess, defaultClientId }: ProjectDialogProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(defaultClientId || "");
   const [location, setLocation] = useState("");
   const [startDate, setStartDate] = useState("");
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
+  const [status, setStatus] = useState<ProjectStatus>(project?.status || "lead");
+
+  // Pause Logic State
+  const [pauseStart, setPauseStart] = useState("");
+  const [pauseEnd, setPauseEnd] = useState("");
+
+  const { t } = useTranslation();
+  const { currentOrgId, currentOrgRole } = useAuth();
+
+  // Helper to determine available statuses
+  const getAvailableStatuses = () => {
+    const options: ProjectStatus[] = [];
+
+    // Base decision on the project's saved status, not the transient form state, to avoid options jumping around
+    // or bugs if state initializes to 'lead' default.
+    const currentStatus = mode === 'create' ? status : (project?.status || 'lead');
+
+    // Logic 1: Lead
+    if (mode === 'create' || currentStatus === 'lead') {
+      options.push('lead');
+    }
+
+    // Logic 2: Quoted / Pending
+    if (['lead', 'quoted', 'pending'].includes(currentStatus) || mode === 'create') {
+      options.push('quoted');
+      options.push('pending');
+    }
+
+    // Logic 3: Booked / In Progress / Paused / On Hold
+    // Always available as standard progression
+    options.push('booked');
+    options.push('in-progress');
+    options.push('paused');
+    options.push('on-hold');
+
+    // Logic 4: Completed
+    // "Only if currently the end date or later"
+    // We check the form's estimatedCompletion or startDate relative to today.
+    const end = estimatedCompletion ? new Date(estimatedCompletion) : (startDate ? new Date(new Date(startDate).getTime() + 3 * 86400000) : null);
+    if (end) {
+      // Normalize to midnight to be generous with "today"
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const endDate = new Date(end);
+      endDate.setHours(0, 0, 0, 0);
+
+      if (today >= endDate) {
+        options.push('completed');
+      }
+    } else {
+      // If no dates set, maybe allow? Or restrict? User said "only if..."
+      // If no dates, we can't verify, so let's allow it if it's already in progress? 
+      // Or strict: must set dates first. Let's start strict.
+    }
+    // Allow keeping 'completed' if already completed
+    if (status === 'completed' && !options.includes('completed')) options.push('completed');
+
+
+    // Logic 5: Invoiced / Paid
+    // Only Org/Global Admins
+    if (['owner', 'admin'].includes(currentOrgRole || '')) {
+      options.push('invoiced');
+      options.push('paid');
+    } else {
+      // If already set (e.g. by admin), keep it visible?
+      if (['invoiced', 'paid'].includes(status)) {
+        options.push(status);
+      }
+    }
+
+    return Array.from(new Set(options)); // Dedupe
+  };
+
+  const availableStatuses = getAvailableStatuses();
+
+  const [crewId, setCrewId] = useState(project?.assignedCrewId || "");
+  const [doubleBookingWarning, setDoubleBookingWarning] = useState<string | null>(null);
 
   const { data: clients = [] } = useClients();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
   const { toast } = useToast();
-  const { t } = useTranslation();
 
-  // ... (useEffect and handleSubmit remain the same)
+  const { data: crews = [] } = useQuery({
+    queryKey: ['crews', currentOrgId],
+    queryFn: () => crewOperations.getByOrg(currentOrgId!),
+    enabled: !!currentOrgId
+  });
+
+  const { data: existingProjects = [] } = useQuery({
+    queryKey: ['projects', currentOrgId],
+    queryFn: createProject.isPending ? undefined : () => projectOperations.getByOrg(currentOrgId!),
+    enabled: !!currentOrgId && !!crewId
+  });
+
+  // Check for double booking effect
+  useEffect(() => {
+    if ((!estimatedCompletion && mode === 'edit' && !startDate) || !crewId || !startDate) {
+      setDoubleBookingWarning(null);
+      return;
+    }
+
+    const start = new Date(startDate);
+    const end = estimatedCompletion ? new Date(estimatedCompletion) : new Date(start.getTime() + (3 * 86400000));
+
+    // Normalize to compare dates
+    const sTime = start.setHours(0, 0, 0, 0);
+    const eTime = end.setHours(23, 59, 59, 999);
+
+    const conflicts = existingProjects.filter(p => {
+      if (p.id === project?.id) return false; // Don't conflict with self
+      if (p.assignedCrewId !== crewId) return false;
+      if (!p.startDate) return false;
+
+      const pStart = p.startDate.toDate().getTime();
+      const pEnd = p.estimatedCompletion ? p.estimatedCompletion.toDate().getTime() : pStart + (3 * 86400000);
+
+      return (pStart <= eTime && pEnd >= sTime);
+    });
+
+    if (conflicts.length > 0) {
+      setDoubleBookingWarning(`Warning: Crew is already booked for ${conflicts.length} other project(s) during these dates!`);
+    } else {
+      setDoubleBookingWarning(null);
+    }
+  }, [crewId, startDate, estimatedCompletion, existingProjects, project, mode]);
 
   useEffect(() => {
     if (project && mode === "edit") {
@@ -47,8 +169,27 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
       setLocation(project.location);
       setStartDate(project.startDate ? new Date(project.startDate.seconds * 1000).toISOString().split('T')[0] : "");
       setEstimatedCompletion(project.estimatedCompletion ? new Date(project.estimatedCompletion.seconds * 1000).toISOString().split('T')[0] : "");
+      setCrewId(project.assignedCrewId || "");
+    } else if (mode === "create" && defaultClientId && clients.length > 0) {
+      // Pre-fill for new project if defaultClientId is provided
+      // Only if we haven't selected a different client (or it's unset) AND location is empty
+      if ((!clientId || clientId === defaultClientId) && !location) {
+        setClientId(defaultClientId);
+        const client = clients.find(c => c.id === defaultClientId);
+        if (client?.address) setLocation(client.address);
+      }
     }
-  }, [project, mode]);
+  }, [project, mode, defaultClientId, clients, clientId]);
+
+  const handleClientChange = (newClientId: string) => {
+    setClientId(newClientId);
+    if (mode === "create") {
+      const client = clients.find(c => c.id === newClientId);
+      if (client?.address) {
+        setLocation(client.address);
+      }
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,36 +203,85 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
       return;
     }
 
-    // Determine status based on start date for new projects
     // For existing projects, keep current status to avoid accidental resets
-    let statusToSave: Project["status"] = 'lead';
-    if (mode === "create") {
+    // Unless manually changed via the new dropdown
+    let statusToSave: Project["status"] = status;
+
+    // "Quoted" Logic Check: If Quoted + StartDate -> Warn or Auto-switch?
+    // User Requirement: "If accepted & StartDate -> Booked, If accepted & No StartDate -> Pending"
+    // We'll trust the explicit dropdown but apply these defaults if creating new.
+    if (mode === "create" && status === 'lead') {
       const start = new Date(startDate);
       const now = new Date();
-      // Reset time parts for accurate day comparison if needed, but simplistic is fine
       statusToSave = start > now ? 'booked' : 'in-progress';
-    } else {
-      statusToSave = project!.status;
+    } else if (status === 'quoted' && startDate) {
+      // If user manually chose Quoted but provided a date, we leave it (maybe they are tentative).
+      // But if they chose "Pending" and added a date, it should probably be Booked.
+      // We'll trust the user selection primarily.
     }
 
     try {
+      // Create dates at Noon UTC to avoid timezone shifts when formatting in local time
+      const startDateObj = new Date(startDate);
+      startDateObj.setUTCHours(12, 0, 0, 0);
+
       const projectData: any = {
         name,
         clientId,
         status: statusToSave,
         location,
-        startDate: Timestamp.fromDate(new Date(startDate)),
+        assignedCrewId: crewId || undefined,
+        startDate: Timestamp.fromDate(startDateObj), // Save as Noon UTC
         timeline: mode === "create" ? [{
           id: 'init-1',
-          type: statusToSave === 'booked' ? 'scheduled' : 'started', // Use appropriate initial event
-          label: statusToSave === 'booked' ? 'Project Scheduled' : 'Project Started',
-          date: Timestamp.now(),
+          type: statusToSave === 'booked' ? 'scheduled' : 'started',
+          label: statusToSave === 'booked' ? 'Project Booked' : 'Project Started',
+          date: Timestamp.fromDate(startDateObj),
           notes: 'Project created manually'
         }] : project?.timeline || [],
       };
 
       if (estimatedCompletion && estimatedCompletion.trim() !== '') {
-        projectData.estimatedCompletion = Timestamp.fromDate(new Date(estimatedCompletion));
+        const endDateObj = new Date(estimatedCompletion);
+        endDateObj.setUTCHours(12, 0, 0, 0);
+        projectData.estimatedCompletion = Timestamp.fromDate(endDateObj);
+      }
+
+      // Handle Pause Logic (Date Shifting)
+      if (status === 'paused' && pauseStart && pauseEnd) {
+        const pStart = new Date(pauseStart);
+        const pEnd = new Date(pauseEnd);
+        const pauseDurationMs = pEnd.getTime() - pStart.getTime();
+        const pauseDurationDays = Math.ceil(pauseDurationMs / (1000 * 60 * 60 * 24));
+
+        if (pauseDurationDays > 0) {
+          const currentEnd = projectData.estimatedCompletion
+            ? projectData.estimatedCompletion.toDate()
+            : new Date(startDateObj.getTime() + (3 * 24 * 60 * 60 * 1000));
+
+          // Shift completion
+          const newEnd = new Date(currentEnd.getTime() + pauseDurationMs);
+          projectData.estimatedCompletion = Timestamp.fromDate(newEnd);
+
+          // Add to pauses array
+          const newPause = {
+            startDate: Timestamp.fromDate(pStart),
+            endDate: Timestamp.fromDate(pEnd),
+            originalDuration: pauseDurationDays
+          };
+          projectData.pauses = [...(project?.pauses || []), newPause];
+
+          // Add event to timeline
+          const newTimeline = [...(projectData.timeline || [])];
+          newTimeline.push({
+            id: crypto.randomUUID(),
+            type: 'paused',
+            label: 'Project Paused',
+            date: Timestamp.fromDate(pStart),
+            notes: `Paused for ${pauseDurationDays} days until ${pauseEnd}`
+          });
+          projectData.timeline = newTimeline;
+        }
       }
 
       if (mode === "edit" && project) {
@@ -123,16 +313,20 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
   const resetForm = () => {
     if (mode === "create") {
       setName("");
-      setClientId("");
-      setLocation("");
+      setClientId(defaultClientId || "");
+      const defaultClient = clients.find(c => c.id === defaultClientId);
+      setLocation(defaultClient?.address || "");
       setStartDate("");
       setEstimatedCompletion("");
+      setCrewId("");
     } else if (project) {
       setName(project.name);
       setClientId(project.clientId);
       setLocation(project.location);
       setStartDate(project.startDate ? new Date(project.startDate.seconds * 1000).toISOString().split('T')[0] : "");
       setEstimatedCompletion(project.estimatedCompletion ? new Date(project.estimatedCompletion.seconds * 1000).toISOString().split('T')[0] : "");
+      setStatus(project.status);
+      setCrewId(project.assignedCrewId || "");
     }
   };
 
@@ -184,7 +378,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
             <ClientComboSelector
               clients={clients as any}
               value={clientId}
-              onChange={setClientId}
+              onChange={handleClientChange}
             />
           </div>
 
@@ -199,6 +393,44 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
               data-testid="input-project-location"
             />
           </div>
+
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Select value={status} onValueChange={(v) => setStatus(v as ProjectStatus)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Status" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableStatuses.includes('lead') && <SelectItem value="lead">Lead</SelectItem>}
+                {availableStatuses.includes('quoted') && <SelectItem value="quoted">Quoted</SelectItem>}
+                {availableStatuses.includes('pending') && <SelectItem value="pending">Pending</SelectItem>}
+                {availableStatuses.includes('booked') && <SelectItem value="booked">Booked</SelectItem>}
+                {availableStatuses.includes('in-progress') && <SelectItem value="in-progress">In Progress</SelectItem>}
+                {availableStatuses.includes('paused') && <SelectItem value="paused">Paused</SelectItem>}
+                {availableStatuses.includes('completed') && <SelectItem value="completed">Completed</SelectItem>}
+                {availableStatuses.includes('invoiced') && <SelectItem value="invoiced">Invoiced</SelectItem>}
+                {availableStatuses.includes('paid') && <SelectItem value="paid">Paid</SelectItem>}
+                {availableStatuses.includes('on-hold') && <SelectItem value="on-hold">On Hold</SelectItem>}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {status === 'paused' && (
+            <div className="grid grid-cols-2 gap-4 p-4 border border-amber-200 bg-amber-50 rounded-md">
+              <div className="col-span-2">
+                <Label className="text-amber-800 font-semibold">Pause Configuration</Label>
+                <p className="text-xs text-amber-700 mb-2">Defining a pause will automatically shift the project end date.</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Pause Start</Label>
+                <Input type="date" value={pauseStart} onChange={e => setPauseStart(e.target.value)} required={status === 'paused'} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Resume Date</Label>
+                <Input type="date" value={pauseEnd} onChange={e => setPauseEnd(e.target.value)} required={status === 'paused'} />
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -215,14 +447,45 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
 
             <div className="space-y-2">
               <Label htmlFor="estimatedCompletion">{t('projects.dialog.est_completion')}</Label>
-              <Input
-                id="estimatedCompletion"
-                type="date"
-                value={estimatedCompletion}
-                onChange={(e) => setEstimatedCompletion(e.target.value)}
-                data-testid="input-project-completion-date"
-              />
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="estimatedCompletion"
+                  type="date"
+                  value={estimatedCompletion}
+                  onChange={(e) => setEstimatedCompletion(e.target.value)}
+                  className="pl-9"
+                  min={startDate}
+                  data-testid="input-project-completion-date"
+                />
+              </div>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Assign Crew</Label>
+            <Select value={crewId} onValueChange={setCrewId}>
+              <SelectTrigger>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <SelectValue placeholder="Select a crew..." />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_unassigned">Unassigned</SelectItem>
+                {crews.map(crew => (
+                  <SelectItem key={crew.id} value={crew.id}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: crew.color }} />
+                      {crew.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {doubleBookingWarning && (
+              <p className="text-xs font-medium text-destructive mt-1 animate-pulse">{doubleBookingWarning}</p>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 pt-4">

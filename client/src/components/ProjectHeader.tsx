@@ -111,7 +111,7 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
 
         // If status suggests we haven't started, and startDate is future
         if ((project.status === 'lead' || project.status === 'quoted' || project.status === 'booked') && startDate && startDate > now) {
-            nextStepObj = { label: "Scheduled Start", date: project.startDate };
+            nextStepObj = { label: "Booked Start", date: project.startDate };
         } else if (completionDate && completionDate > now) {
             nextStepObj = { label: "Due Date", date: project.estimatedCompletion };
         }
@@ -141,6 +141,7 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
                     <ProjectDialog
                         project={project}
                         mode="edit"
+                        onSuccess={() => setLocation("/projects")}
                         trigger={
                             <Button variant="outline" size="sm">
                                 <PenSquare className="h-4 w-4 mr-2" />
@@ -148,6 +149,19 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
                             </Button>
                         }
                     />
+                    {['booked', 'in-progress'].includes(project.status) && !project.assignedCrewId && (
+                        <ProjectDialog
+                            project={project}
+                            mode="edit"
+                            onSuccess={() => setLocation("/projects")}
+                            trigger={
+                                <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse font-semibold">
+                                    <User className="h-4 w-4 mr-2" />
+                                    Assign Crew
+                                </Button>
+                            }
+                        />
+                    )}
                     <Badge className={cn("text-sm px-3 py-1", statusColors[displayStatus] || "bg-gray-100")}>
                         {t(`projects.status.${displayStatus.replace("-", "_")}`, { defaultValue: displayStatus.replace(/-/g, ' ').toUpperCase() })}
                     </Badge>

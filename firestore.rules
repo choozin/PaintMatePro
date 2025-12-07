@@ -96,6 +96,38 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
     }
 
+    // Employees can be managed by members of the same org
+    match /employees/{employeeId} {
+      allow read: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+      );
+      allow create: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && request.resource.data.orgId in request.auth.token.orgIds)
+      );
+      allow update, delete: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+      );
+    }
+
+    // Crews can be managed by members of the same org
+    match /crews/{crewId} {
+      allow read: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+      );
+      allow create: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && request.resource.data.orgId in request.auth.token.orgIds)
+      );
+      allow update, delete: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+      );
+    }
+
     // Portal tokens are for backend use
     match /portalTokens/{tokenId} {
       allow read, write: if false;

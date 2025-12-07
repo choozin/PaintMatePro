@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useClients } from "@/hooks/useClients";
 import { useProjects } from "@/hooks/useProjects";
 import type { Client, Project } from "@/lib/firestore";
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ClientDialog } from "@/components/ClientDialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, MoreHorizontal, Phone, Mail, MapPin, Tag } from "lucide-react";
+import { Search, MoreHorizontal, Phone, Mail, MapPin, Tag, ArrowUpDown } from "lucide-react";
 
 // Smart Status Logic
 function getClientStatus(client: Client & { id: string }, projects: Project[]) {
@@ -65,19 +65,119 @@ function getClientStatus(client: Client & { id: string }, projects: Project[]) {
 import { CsvImportDialog } from "@/components/CsvImportDialog";
 import { ClientDetailDialog } from "@/components/ClientDetailDialog";
 
+import { useEntitlements } from "@/hooks/useEntitlements";
+
+const Highlight = ({ text, term }: { text: string | undefined | null; term: string }) => {
+  if (!text || !term.trim()) return <>{text || ''}</>;
+  // Escape special regex chars in term
+  const escapedTerm = term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.toString().split(new RegExp(`(${escapedTerm})`, 'gi'));
+  return (
+    <span>
+      {parts.map((part, i) =>
+        part.toLowerCase() === term.toLowerCase().trim() ? (
+          <span key={i} className="bg-yellow-200 dark:bg-yellow-900/50 font-medium rounded-[1px] px-0.5 text-foreground">
+            {part}
+          </span>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  );
+};
+
 export default function Clients() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<(Client & { id: string }) | null>(null);
   const { data: clients = [], isLoading: clientsLoading } = useClients();
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const { t } = useTranslation();
+  const { hasFeature } = useEntitlements();
 
   const isLoading = clientsLoading || projectsLoading;
 
-  const filteredClients = clients.filter((client) =>
-    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredAndScoredClients = useMemo(() => {
+    if (!searchQuery.trim()) return clients.map(c => ({ ...c, score: 0 }));
+
+    const q = searchQuery.toLowerCase().trim();
+
+    return clients.map(client => {
+      let maxScore = 0;
+
+      const check = (val: string | undefined) => {
+        if (!val) return 0;
+        const v = val.toLowerCase();
+        if (v === q) return 100;
+        if (v.startsWith(q)) return 75;
+        if (v.includes(q)) return 50;
+        return 0;
+      };
+
+      maxScore = Math.max(
+        maxScore,
+        check(client.name),
+        check(client.email),
+        check(client.phone),
+        check(client.address)
+      );
+
+      return { ...client, score: maxScore };
+    }).filter(c => c.score > 0);
+  }, [clients, searchQuery]);
+
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedClients = useMemo(() => {
+    return [...filteredAndScoredClients].sort((a, b) => {
+      // 1. Explicit Sort
+      if (sortConfig) {
+        const { key, direction } = sortConfig;
+        if (key === 'name') {
+          return direction === 'asc'
+            ? a.name.localeCompare(b.name)
+            : b.name.localeCompare(a.name);
+        }
+        if (key === 'status') {
+          const statusA = getClientStatus(a, projects).label;
+          const statusB = getClientStatus(b, projects).label;
+          return direction === 'asc'
+            ? statusA.localeCompare(statusB)
+            : statusB.localeCompare(statusA);
+        }
+        if (key === 'projects') {
+          const countA = projects.filter(p => p.clientId === a.id).length;
+          const countB = projects.filter(p => p.clientId === b.id).length;
+          return direction === 'asc' ? countA - countB : countB - countA;
+        }
+        if (key === 'createdAt') {
+          const dateA = a.createdAt?.toDate().getTime() || 0;
+          const dateB = b.createdAt?.toDate().getTime() || 0;
+          return direction === 'asc' ? dateA - dateB : dateB - dateA;
+        }
+      }
+
+      // 2. Default Relevance Sort (if searching)
+      if (searchQuery.trim()) {
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+      }
+
+      // 3. Fallback: Newest First
+      const dateA = a.createdAt?.toDate().getTime() || 0;
+      const dateB = b.createdAt?.toDate().getTime() || 0;
+      return dateB - dateA;
+    });
+  }, [filteredAndScoredClients, sortConfig, searchQuery, projects]);
 
   return (
     <div className="space-y-6">
@@ -88,7 +188,7 @@ export default function Clients() {
           <p className="text-muted-foreground mt-1">Manage your customer relationships and lead pipeline.</p>
         </div>
         <div className="flex gap-2">
-          <CsvImportDialog />
+          {hasFeature('client.importCSV') && <CsvImportDialog />}
           <ClientDialog mode="create">
             <Button>
               <span className="mr-2">+</span> Add Lead
@@ -116,11 +216,23 @@ export default function Clients() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[250px]">Client / Lead</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Contact Info</TableHead>
+              <TableHead className="w-[250px] cursor-pointer hover:bg-muted/50" onClick={() => handleSort('name')}>
+                Client / Lead
+                {sortConfig?.key === 'name' && <ArrowUpDown className="ml-2 h-3 w-3 inline" />}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('status')}>
+                Status
+                {sortConfig?.key === 'status' && <ArrowUpDown className="ml-2 h-3 w-3 inline" />}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('createdAt')}>
+                Added
+                {sortConfig?.key === 'createdAt' && <ArrowUpDown className="ml-2 h-3 w-3 inline" />}
+              </TableHead>
               <TableHead>Location</TableHead>
-              <TableHead className="text-right">Projects</TableHead>
+              <TableHead className="text-right cursor-pointer hover:bg-muted/50" onClick={() => handleSort('projects')}>
+                Projects
+                {sortConfig?.key === 'projects' && <ArrowUpDown className="ml-2 h-3 w-3 inline" />}
+              </TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -136,7 +248,7 @@ export default function Clients() {
                   <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                 </TableRow>
               ))
-            ) : filteredClients.length === 0 ? (
+            ) : sortedClients.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center">
                   <div className="flex flex-col items-center justify-center text-muted-foreground">
@@ -145,7 +257,7 @@ export default function Clients() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredClients.map((client) => {
+              sortedClients.map((client) => {
                 const status = getClientStatus(client, projects);
                 const clientProjects = projects.filter(p => p.clientId === client.id);
 
@@ -167,7 +279,7 @@ export default function Clients() {
                           <AvatarFallback>{client.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col">
-                          <span className="font-medium text-foreground">{client.name}</span>
+                          <span className="font-medium text-foreground"><Highlight text={client.name} term={searchQuery} /></span>
                           <span className="text-xs text-muted-foreground">Added {client.createdAt ? format(client.createdAt.toDate(), 'MMM d, yyyy') : 'N/A'}</span>
                         </div>
                       </div>
@@ -194,13 +306,13 @@ export default function Clients() {
                         {client.email && (
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <Mail className="h-3.5 w-3.5" />
-                            <span>{client.email}</span>
+                            <span><Highlight text={client.email} term={searchQuery} /></span>
                           </div>
                         )}
                         {client.phone && (
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <Phone className="h-3.5 w-3.5" />
-                            <span>{client.phone}</span>
+                            <span><Highlight text={client.phone} term={searchQuery} /></span>
                           </div>
                         )}
                       </div>
@@ -210,7 +322,7 @@ export default function Clients() {
                     <TableCell>
                       <div className="flex items-start gap-2 max-w-[200px] text-sm text-muted-foreground">
                         <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                        <span className="truncate">{client.address || "-"}</span>
+                        <span className="truncate"><Highlight text={client.address || "-"} term={searchQuery} /></span>
                       </div>
                     </TableCell>
 

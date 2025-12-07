@@ -54,6 +54,8 @@ export function OrgEntitlementsDialog({ orgId, orgName, children }: OrgEntitleme
           'quote.tiers': false,
           'quote.profitMargin': false,
           'quote.visualScope': false,
+          'client.importCSV': true, // Default to true or false? User asked for it to be togglable. Let's default to true for convenience or false for security? Usually true if it's a new feature they want.
+
 
         }
       });

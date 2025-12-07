@@ -18,6 +18,8 @@ import { User, Phone, Mail, MapPin, Building, FileText, Star, Clock, Calendar, B
 import { format } from "date-fns";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
+import { ProjectDialog } from "@/components/ProjectDialog";
 
 interface ClientDetailDialogProps {
     client: Client & { id: string } | null;
@@ -32,10 +34,26 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
     const { toast } = useToast();
     const updateClient = useUpdateClient();
     const { data: projects = [] } = useProjects();
+    const [, setLocation] = useLocation();
 
     // Local state for editing fields
-    const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState<Partial<Client>>({});
+
+    const isDirty = (() => {
+        if (!client) return false;
+        const keys: (keyof Client)[] = ['name', 'email', 'phone', 'address', 'clientType', 'leadStatus', 'source', 'mobilePhone', 'preferences', 'notes'];
+        for (const key of keys) {
+            if ((formData[key] ?? '') !== (client[key] ?? '')) return true;
+        }
+        const secForm = formData.secondaryContact || {};
+        const secClient = client.secondaryContact || {};
+        return (
+            (secForm.name ?? '') !== (secClient.name ?? '') ||
+            (secForm.email ?? '') !== (secClient.email ?? '') ||
+            (secForm.phone ?? '') !== (secClient.phone ?? '') ||
+            (secForm.role ?? '') !== (secClient.role ?? '')
+        );
+    })();
 
     // Reset form data when client changes
     useEffect(() => {
@@ -44,7 +62,6 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                 ...client,
                 secondaryContact: client.secondaryContact || { name: "", phone: "", email: "", role: "" }
             });
-            setIsEditing(false);
         }
     }, [client, open]);
 
@@ -57,7 +74,6 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
         try {
             await updateClient.mutateAsync({ id: client.id, data: formData });
             toast({ title: "Client Updated", description: "Changes saved successfully." });
-            setIsEditing(false);
         } catch (error) {
             toast({ variant: "destructive", title: "Error", description: "Failed to save changes." });
         }
@@ -78,7 +94,7 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col p-0">
                 <DialogHeader className="p-6 pb-2">
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-end">
                         <div className="flex gap-4">
                             <Avatar className="h-16 w-16">
                                 <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${client.name}`} />
@@ -93,14 +109,21 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            {isEditing ? (
-                                <>
-                                    <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
-                                    <Button size="sm" onClick={handleSave} disabled={updateClient.isPending}>Save Changes</Button>
-                                </>
-                            ) : (
-                                <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit Details</Button>
-                            )}
+                            <div className="flex gap-2">
+                                <ProjectDialog
+                                    mode="create"
+                                    defaultClientId={client.id}
+                                    trigger={<Button variant="outline" size="sm"><Plus className="h-4 w-4 mr-2" /> New Project</Button>}
+                                />
+                                <Button
+                                    size="sm"
+                                    onClick={handleSave}
+                                    disabled={!isDirty || updateClient.isPending}
+                                    className={isDirty ? "animate-pulse" : ""}
+                                >
+                                    {updateClient.isPending ? "Saving..." : "Save Changes"}
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </DialogHeader>
@@ -170,23 +193,23 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <Label>Full Name</Label>
-                                            <Input disabled={!isEditing} value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} />
+                                            <Input value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Email</Label>
-                                            <Input disabled={!isEditing} value={formData.email || ''} onChange={(e) => handleChange('email', e.target.value)} />
+                                            <Input value={formData.email || ''} onChange={(e) => handleChange('email', e.target.value)} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Phone</Label>
-                                            <Input disabled={!isEditing} value={formData.phone || ''} onChange={(e) => handleChange('phone', e.target.value)} />
+                                            <Input value={formData.phone || ''} onChange={(e) => handleChange('phone', e.target.value)} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>SMS Mobile</Label>
-                                            <Input disabled={!isEditing} value={formData.mobilePhone || ''} onChange={(e) => handleChange('mobilePhone', e.target.value)} />
+                                            <Input value={formData.mobilePhone || ''} onChange={(e) => handleChange('mobilePhone', e.target.value)} />
                                         </div>
                                         <div className="space-y-2 col-span-2">
                                             <Label>Address</Label>
-                                            <Input disabled={!isEditing} value={formData.address || ''} onChange={(e) => handleChange('address', e.target.value)} />
+                                            <Input value={formData.address || ''} onChange={(e) => handleChange('address', e.target.value)} />
                                         </div>
                                     </div>
                                 </div>
@@ -201,7 +224,7 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <Label>Client Type</Label>
-                                            <Select disabled={!isEditing} value={formData.clientType} onValueChange={(val) => handleChange('clientType', val)}>
+                                            <Select value={formData.clientType} onValueChange={(val) => handleChange('clientType', val)}>
                                                 <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="residential">Residential Homeowner</SelectItem>
@@ -212,11 +235,11 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Source</Label>
-                                            <Input disabled={!isEditing} placeholder="e.g. Google, Referral" value={formData.source || ''} onChange={(e) => handleChange('source', e.target.value)} />
+                                            <Input placeholder="e.g. Google, Referral" value={formData.source || ''} onChange={(e) => handleChange('source', e.target.value)} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Status</Label>
-                                            <Select disabled={!isEditing} value={formData.leadStatus} onValueChange={(val) => handleChange('leadStatus', val)}>
+                                            <Select value={formData.leadStatus} onValueChange={(val) => handleChange('leadStatus', val)}>
                                                 <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="new">New Lead</SelectItem>
@@ -239,19 +262,19 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <Label>Name</Label>
-                                            <Input disabled={!isEditing} value={formData.secondaryContact?.name || ''} onChange={(e) => handleSecondaryChange('name', e.target.value)} />
+                                            <Input value={formData.secondaryContact?.name || ''} onChange={(e) => handleSecondaryChange('name', e.target.value)} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Role / Relation</Label>
-                                            <Input disabled={!isEditing} placeholder="e.g. Spouse, Site Mgr" value={formData.secondaryContact?.role || ''} onChange={(e) => handleSecondaryChange('role', e.target.value)} />
+                                            <Input placeholder="e.g. Spouse, Site Mgr" value={formData.secondaryContact?.role || ''} onChange={(e) => handleSecondaryChange('role', e.target.value)} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Phone</Label>
-                                            <Input disabled={!isEditing} value={formData.secondaryContact?.phone || ''} onChange={(e) => handleSecondaryChange('phone', e.target.value)} />
+                                            <Input value={formData.secondaryContact?.phone || ''} onChange={(e) => handleSecondaryChange('phone', e.target.value)} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Email</Label>
-                                            <Input disabled={!isEditing} value={formData.secondaryContact?.email || ''} onChange={(e) => handleSecondaryChange('email', e.target.value)} />
+                                            <Input value={formData.secondaryContact?.email || ''} onChange={(e) => handleSecondaryChange('email', e.target.value)} />
                                         </div>
                                     </div>
                                 </div>
@@ -266,7 +289,6 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                                 <div className="space-y-2">
                                     <Label>Preferences, Gate Codes, etc.</Label>
                                     <Textarea
-                                        disabled={!isEditing}
                                         className="min-h-[100px]"
                                         placeholder="e.g. Gate Code: 1234, Dog is friendly but don't let out."
                                         value={formData.preferences || ''}
@@ -282,7 +304,6 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                                 <div className="space-y-2">
                                     <Label>General Notes</Label>
                                     <Textarea
-                                        disabled={!isEditing}
                                         className="min-h-[150px]"
                                         placeholder="Keep track of general client details here..."
                                         value={formData.notes || ''}
@@ -295,7 +316,6 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
                         <TabsContent value="projects" className="space-y-4 mt-0">
                             <div className="flex justify-between items-center">
                                 <h3 className="font-semibold">Project History</h3>
-                                {/* Add Project Button could go here */}
                             </div>
 
                             {clientProjects.length === 0 ? (

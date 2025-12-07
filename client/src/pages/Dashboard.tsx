@@ -16,6 +16,7 @@ import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
+import { AlertCircle, AlertTriangle } from "lucide-react";
 
 // Helper for Project Card
 function DashboardProjectCard({ project }: { project: Project & { id: string } }) {
@@ -49,6 +50,31 @@ export default function Dashboard() {
   const completedProjects = projects.filter(p => ['completed', 'paid', 'invoiced'].includes(p.status));
   const pendingProjects = projects.filter(p => ['lead', 'quoted'].includes(p.status)); // Pipeline
 
+  // Actionable Items Logic
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const threeDaysFromNow = new Date(today.getTime() + (3 * 86400000));
+
+  const needsActionProjects = projects.filter(p => {
+    if (!['lead', 'quoted'].includes(p.status)) return false;
+    if (!p.startDate) return false;
+
+    const start = p.startDate.toDate ? p.startDate.toDate() : new Date(p.startDate.seconds * 1000);
+    // Check if start date is in the past (before today)
+    // Actually user said "passed", so strictly less than today? Or <= ?
+    // "Quoted but start date has passed" implies we missed it.
+    return start < today;
+  });
+
+  const unassignedCrewProjects = projects.filter(p => {
+    if (p.status !== 'booked') return false;
+    if (p.assignedCrewId && p.assignedCrewId !== '_unassigned') return false;
+    if (!p.startDate) return false;
+
+    const start = p.startDate.toDate ? p.startDate.toDate() : new Date(p.startDate.seconds * 1000);
+    return start >= today && start <= threeDaysFromNow;
+  });
+
   // Calculate Revenue (Approximation based on completed projects)
   // Logic: Sum laborConfig.totalCost for now, or assume avg $5k if missing
   const totalRevenue = completedProjects.reduce((acc, p) => acc + (p.laborConfig?.totalCost || 5000), 0);
@@ -81,13 +107,68 @@ export default function Dashboard() {
           <Button variant="outline" onClick={() => setLocation('/schedule')}>
             <CalendarIcon className="mr-2 h-4 w-4" /> Open Schedule
           </Button>
-          <ProjectDialog mode="create">
+          <ProjectDialog mode="create" trigger={
             <Button>
               <Plus className="mr-2 h-4 w-4" /> New Project
             </Button>
-          </ProjectDialog>
+          } />
         </div>
       </div>
+
+      {/* 1.5 Alerts / Actionable Items */}
+      {(needsActionProjects.length > 0 || unassignedCrewProjects.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {needsActionProjects.length > 0 && (
+            <Card className="border-l-4 border-l-red-500 bg-red-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg text-red-700 flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5" />
+                  Needs Action ({needsActionProjects.length})
+                </CardTitle>
+                <CardDescription className="text-red-600/80">
+                  Quoted projects with passed start dates.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {needsActionProjects.slice(0, 3).map(p => (
+                    <li key={p.id} className="text-sm font-medium flex justify-between cursor-pointer hover:underline" onClick={() => setLocation(`/projects/${p.id}`)}>
+                      <span>{p.name}</span>
+                      <span className="text-muted-foreground">{formatDate(p.startDate)}</span>
+                    </li>
+                  ))}
+                  {needsActionProjects.length > 3 && <li className="text-xs text-muted-foreground pt-1">+{needsActionProjects.length - 3} more</li>}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {unassignedCrewProjects.length > 0 && (
+            <Card className="border-l-4 border-l-amber-500 bg-amber-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg text-amber-700 flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Crew Assignment Needed ({unassignedCrewProjects.length})
+                </CardTitle>
+                <CardDescription className="text-amber-600/80">
+                  Booked jobs starting soon without crew.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {unassignedCrewProjects.slice(0, 3).map(p => (
+                    <li key={p.id} className="text-sm font-medium flex justify-between cursor-pointer hover:underline" onClick={() => setLocation(`/projects/${p.id}`)}>
+                      <span>{p.name}</span>
+                      <span className="text-muted-foreground">{formatDate(p.startDate)}</span>
+                    </li>
+                  ))}
+                  {unassignedCrewProjects.length > 3 && <li className="text-xs text-muted-foreground pt-1">+{unassignedCrewProjects.length - 3} more</li>}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* 2. Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

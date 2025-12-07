@@ -1,4 +1,5 @@
 import { clientOperations, type Client } from '@/lib/firestore';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   useFirestoreCollection,
   useFirestoreDocument,
@@ -8,7 +9,8 @@ import {
 } from './useFirestoreCrud';
 
 export function useClients() {
-  return useFirestoreCollection<Client>('clients', clientOperations, ['clients']);
+  const { currentOrgId } = useAuth();
+  return useFirestoreCollection<Client>('clients', clientOperations, ['clients', currentOrgId]);
 }
 
 export function useClient(id: string | null) {

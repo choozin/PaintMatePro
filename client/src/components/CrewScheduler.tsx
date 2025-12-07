@@ -7,6 +7,13 @@ import { useProjects } from "@/hooks/useProjects";
 import { Timestamp } from "firebase/firestore";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { crewOperations } from "@/lib/firestore";
+import { useAuth } from "@/contexts/AuthContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import { Users } from "lucide-react";
+import { CREW_PALETTES, PAUSE_STYLE } from "@/lib/crew-palettes";
 
 type ViewMode = 'week' | 'month';
 
@@ -16,6 +23,15 @@ export function CrewScheduler() {
   const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null);
   const { data: projects = [], isLoading } = useProjects();
   const [, setLocation] = useLocation();
+  const { currentOrgId } = useAuth();
+
+  const [selectedCrewId, setSelectedCrewId] = useState<string>("all");
+
+  const { data: crews = [] } = useQuery({
+    queryKey: ['crews', currentOrgId],
+    queryFn: () => crewOperations.getByOrg(currentOrgId),
+    enabled: !!currentOrgId
+  });
 
   const daysHeaders = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -99,8 +115,9 @@ export function CrewScheduler() {
     const sTime = new Date(weekStart).setHours(0, 0, 0, 0);
     const eTime = new Date(weekEnd).setHours(23, 59, 59, 999);
 
-    // Filter projects touching this week
+    // Filter projects touching this week AND match crew filter
     const relevantProjects = projects.filter(p => {
+      if (selectedCrewId !== "all" && p.assignedCrewId !== selectedCrewId) return false;
       if (!p.startDate) return false;
 
       const pStart = toDate(p.startDate);
@@ -130,7 +147,8 @@ export function CrewScheduler() {
       duration: number,
       isStart: boolean,
       isEnd: boolean,
-      trackIndex: number
+      trackIndex: number,
+      isIndefinite: boolean
     }> = [];
 
     // Tracks state: trackIndex -> occupiedUntilDayIdx
@@ -141,6 +159,8 @@ export function CrewScheduler() {
       const pEnd = project.estimatedCompletion
         ? toDate(project.estimatedCompletion)
         : new Date(pStart.getTime() + (3 * 86400000));
+
+      const isIndefinite = !project.estimatedCompletion;
 
       // Clamp to this week
       // Calculate 0-6 index
@@ -196,9 +216,11 @@ export function CrewScheduler() {
         duration,
         isStart,
         isEnd,
-        trackIndex: assignedTrack
+        trackIndex: assignedTrack,
+        isIndefinite
       });
     });
+
 
     return { items, maxTrack: Math.max(...items.map(i => i.trackIndex), 0) };
   };
@@ -300,6 +322,18 @@ export function CrewScheduler() {
       activeStatus = 'booked';
     }
 
+    // Check for explicit pauses in the pauses array
+    if (project.pauses) {
+      const tTime = targetDate.setHours(12, 0, 0, 0); // compare mid-day
+      for (const pause of project.pauses) {
+        const pStart = toDate(pause.startDate).setHours(0, 0, 0, 0);
+        const pEnd = pause.endDate ? toDate(pause.endDate).setHours(23, 59, 59, 999) : pStart + 86400000; // default 1 day if fallback
+        if (tTime >= pStart && tTime <= pEnd) {
+          return 'paused';
+        }
+      }
+    }
+
     return activeStatus;
   };
 
@@ -314,6 +348,28 @@ export function CrewScheduler() {
         </div>
 
         <div className="flex items-center gap-4">
+          <div className="w-[200px]">
+            <Select value={selectedCrewId} onValueChange={setSelectedCrewId}>
+              <SelectTrigger className="h-9">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <SelectValue placeholder="All Crews" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Crews</SelectItem>
+                {crews.map(crew => (
+                  <SelectItem key={crew.id} value={crew.id}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: crew.color }} />
+                      {crew.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="flex bg-muted rounded-lg p-1">
             <button
               onClick={() => setViewMode('week')}
@@ -435,14 +491,35 @@ export function CrewScheduler() {
                             gridColumnStart: item.startDayIdx + 1,
                             gridColumnEnd: `span ${item.duration}`,
                             gridRow: item.trackIndex + 1,
+                            WebkitMask: item.isIndefinite ? "linear-gradient(to right, black 33%, transparent 100%)" : "none",
+                            mask: item.isIndefinite ? "linear-gradient(to right, black 33%, transparent 100%)" : "none",
                           }}
-                          title={`${item.project.name} (${item.project.status})`}
+                          title={`${item.project.name} (${item.project.status})${item.isIndefinite ? " - No End Date Set" : ""}`}
                         >
                           {/* Segmented Background Layer */}
                           <div className="absolute inset-0 flex rounded-md overflow-hidden">
                             {projectDaysInWeek.map((dayDate, i) => {
                               const status = getStatusForDate(item.project, dayDate);
-                              const colorClass = statusColors[status] || "bg-gray-100 border-gray-200";
+
+                              // Determine Style
+                              let colorClass = statusColors[status] || "bg-gray-100 border-gray-200";
+
+                              if (status === 'paused') {
+                                colorClass = PAUSE_STYLE;
+                              } else if (['booked', 'in-progress'].includes(status) && item.project.assignedCrewId) {
+                                // Try to use Crew Palette
+                                const crew = crews.find(c => c.id === item.project.assignedCrewId);
+                                if (crew?.paletteId) {
+                                  const palette = CREW_PALETTES.find(p => p.id === crew.paletteId);
+                                  if (palette) colorClass = palette.class;
+                                } else if (crew?.color) {
+                                  // Fallback to simpler dynamic style if no palette but has color
+                                  // Note: Tailwind doesn't support dynamic bg-[color] interpolation easily without safelist
+                                  // So we might rely on the style attribute for background if we wanted, 
+                                  // but we used classes in standard. 
+                                  // Let's stick to the palette class if available, or default status color.
+                                }
+                              }
 
                               const dayStart = new Date(dayDate).setHours(0, 0, 0, 0);
                               const dayEnd = new Date(dayDate).setHours(23, 59, 59, 999);
@@ -452,8 +529,19 @@ export function CrewScheduler() {
                                 return eTime >= dayStart && eTime <= dayEnd;
                               }) || [];
 
+                              // Implicitly add Project Due event if matches day
+                              if (item.project.estimatedCompletion) {
+                                const dueTime = toDate(item.project.estimatedCompletion).getTime();
+                                if (dueTime >= dayStart && dueTime <= dayEnd) {
+                                  eventsOnDay.push({
+                                    type: 'scheduled',
+                                    label: 'Project Due'
+                                  });
+                                }
+                              }
+
                               const labelEvent = eventsOnDay.find((e: any) =>
-                                ['paused', 'resumed', 'started', 'finished', 'completed'].includes(e.type)
+                                ['paused', 'resumed', 'started', 'finished', 'completed', 'scheduled'].includes(e.type)
                               ) || eventsOnDay[0];
 
                               return (

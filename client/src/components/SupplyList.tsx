@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useRooms } from "@/hooks/useRooms";
 import { useProject, useUpdateProject } from "@/hooks/useProjects";
-import { PaintBucket, CheckSquare, Plus, Trash2, Save, Loader2, Clock, DollarSign, Package, RotateCcw, CheckCircle2 } from "lucide-react";
+import { PaintBucket, CheckSquare, Plus, Trash2, Save, Loader2, Clock, DollarSign, Package, RotateCcw, CheckCircle2, Check, X, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
@@ -101,6 +101,11 @@ export function SupplyList({ projectId }: SupplyListProps) {
     const [supplyItems, setSupplyItems] = useState<SupplyItem[]>([]);
     const [newSupplyName, setNewSupplyName] = useState("");
     const [newSupplyQty, setNewSupplyQty] = useState(1);
+    const [newSupplyPrice, setNewSupplyPrice] = useState<number | undefined>(undefined);
+
+    // Editing State
+    const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    const [editingValues, setEditingValues] = useState<{ name: string, price: number }>({ name: '', price: 0 });
 
     // Load supplies
     useEffect(() => {
@@ -152,11 +157,13 @@ export function SupplyList({ projectId }: SupplyListProps) {
             id: crypto.randomUUID(),
             name: newSupplyName,
             qty: newSupplyQty,
-            category: "Custom"
+            category: "Custom",
+            unitPrice: newSupplyPrice
         };
         setSupplyItems(prev => [...prev, newItem]);
         setNewSupplyName("");
         setNewSupplyQty(1);
+        setNewSupplyPrice(undefined);
     };
 
     const removeSupplyItem = (id: string) => {
@@ -165,6 +172,35 @@ export function SupplyList({ projectId }: SupplyListProps) {
 
     const updateSupplyItemQty = (id: string, qty: number) => {
         setSupplyItems(prev => prev.map(item => item.id === id ? { ...item, qty } : item));
+    };
+
+    const startEditing = (item: SupplyItem) => {
+        setEditingItemId(item.id);
+        setEditingValues({
+            name: item.name,
+            price: item.unitPrice || 0
+        });
+    };
+
+    const cancelEditing = () => {
+        setEditingItemId(null);
+        setEditingValues({ name: '', price: 0 });
+    };
+
+    const saveEditing = () => {
+        if (!editingItemId) return;
+
+        setSupplyItems(prev => prev.map(item => {
+            if (item.id === editingItemId) {
+                return {
+                    ...item,
+                    name: editingValues.name,
+                    unitPrice: editingValues.price
+                };
+            }
+            return item;
+        }));
+        setEditingItemId(null);
     };
 
     const addCatalogItem = (item: any) => {
@@ -478,6 +514,10 @@ export function SupplyList({ projectId }: SupplyListProps) {
                                                     <Label htmlFor="qty" className="text-right">Quantity</Label>
                                                     <Input id="qty" type="number" value={newSupplyQty} onChange={(e) => setNewSupplyQty(parseInt(e.target.value) || 1)} className="col-span-3" />
                                                 </div>
+                                                <div className="grid grid-cols-4 items-center gap-4">
+                                                    <Label htmlFor="price" className="text-right">Price</Label>
+                                                    <Input id="price" type="number" value={newSupplyPrice || ''} onChange={(e) => setNewSupplyPrice(parseFloat(e.target.value))} className="col-span-3" placeholder="0.00" />
+                                                </div>
                                             </div>
                                             <Button onClick={addSupplyItem} disabled={!newSupplyName.trim()}>Add Item</Button>
                                         </DialogContent>
@@ -500,28 +540,71 @@ export function SupplyList({ projectId }: SupplyListProps) {
                                 <div className="grid gap-3 sm:grid-cols-1">
                                     {supplyItems.map((item, idx) => (
                                         <div key={item.id || idx} className="flex items-center justify-between p-3 rounded-md border bg-muted/30 group hover:bg-muted/50 transition-colors">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                                                    {item.qty}
-                                                </div>
-                                                <div>
-                                                    <div className="font-medium">{item.name}</div>
-                                                    <div className="text-xs text-muted-foreground">{item.category} • {item.unit || 'each'}</div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                {item.unitPrice && (
-                                                    <div className="text-sm font-medium text-muted-foreground">
-                                                        ${(item.unitPrice * item.qty).toFixed(2)}
+                                            {editingItemId === item.id ? (
+                                                <div className="flex items-center gap-3 flex-1 mr-4">
+                                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                                        {item.qty}
                                                     </div>
-                                                )}
-                                                <div className="flex items-center gap-1">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateSupplyItemQty(item.id, Math.max(0, item.qty - 1))}>-</Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateSupplyItemQty(item.id, item.qty + 1)}>+</Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeSupplyItem(item.id)}>
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
+                                                    <div className="flex-1 grid grid-cols-2 gap-2">
+                                                        <Input
+                                                            value={editingValues.name}
+                                                            onChange={(e) => setEditingValues(prev => ({ ...prev, name: e.target.value }))}
+                                                            placeholder="Item Name"
+                                                            className="h-8"
+                                                        />
+                                                        <div className="relative">
+                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                                                            <Input
+                                                                type="number"
+                                                                value={editingValues.price}
+                                                                onChange={(e) => setEditingValues(prev => ({ ...prev, price: parseFloat(e.target.value) }))}
+                                                                placeholder="0.00"
+                                                                className="h-8 pl-6"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
+                                            ) : (
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                                        {item.qty}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-medium">{item.name}</div>
+                                                        <div className="text-xs text-muted-foreground">{item.category} • {item.unit || 'each'}</div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center gap-4">
+                                                {editingItemId === item.id ? (
+                                                    <div className="flex items-center gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-100" onClick={saveEditing}>
+                                                            <Check className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={cancelEditing}>
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        {item.unitPrice && (
+                                                            <div className="text-sm font-medium text-muted-foreground">
+                                                                ${(item.unitPrice * item.qty).toFixed(2)}
+                                                            </div>
+                                                        )}
+                                                        <div className="flex items-center gap-1">
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditing(item)}>
+                                                                <Pencil className="h-3 w-3" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateSupplyItemQty(item.id, Math.max(0, item.qty - 1))}>-</Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateSupplyItemQty(item.id, item.qty + 1)}>+</Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeSupplyItem(item.id)}>
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     ))}

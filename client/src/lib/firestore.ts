@@ -74,6 +74,29 @@ export interface Org {
   };
 }
 
+export interface Employee {
+  id: string;
+  orgId: string;
+  name: string;
+  role: string;
+  email?: string;
+  phone?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface Crew {
+  id: string;
+  orgId: string;
+  name: string;
+  color: string; // Hex code for visualization
+  memberIds: string[]; // List of Employee IDs
+  paletteId?: string; // Visual palette ID
+  specs?: Record<string, string>; // Custom attributes (e.g. "Size": "4-man", "Skill": "Exact Finish")
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface SupplyRule {
   id: string;
   name: string;
@@ -110,6 +133,7 @@ export interface EntitlementFeatures {
   'quote.tiers': boolean;
   'quote.profitMargin': boolean;
   'quote.visualScope': boolean;
+  'client.importCSV': boolean;
 }
 
 export interface Entitlement {
@@ -133,6 +157,7 @@ export const ALL_BOOLEAN_FEATURES: (keyof EntitlementFeatures)[] = [
   'quote.tiers',
   'quote.profitMargin',
   'quote.visualScope',
+  'client.importCSV',
 ];
 
 export interface ProjectEvent {
@@ -150,10 +175,20 @@ export interface Project {
   orgId: string;
   name: string;
   clientId: string;
+  assignedCrewId?: string; // Link to Crew
   status: ProjectStatus;
   location: string;
   startDate: Timestamp; // This can now represent "Scheduled Start" or "Actual Start" depending on interpreted logic, or we can add specific fields if strict separation is needed. For now, let's keep it as primary "Start" but rely on timeline for specifics.
   estimatedCompletion?: Timestamp;
+  // Advanced Scheduling
+  dailyAssignments?: Record<string, string>; // Map of YYYY-MM-DD to CrewID
+  pauses?: Array<{
+    startDate: Timestamp;
+    endDate?: Timestamp;
+    originalDuration?: number; // Duration of project before pause
+  }>;
+  autoShifted?: boolean;
+
   timeline?: ProjectEvent[]; // New Timeline Array
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
@@ -461,6 +496,22 @@ export const orgOperations = {
   getAll: () => getDocs<Org>('orgs'),
   create: (data: Org) => createDoc('orgs', data),
   update: (id: string, data: Partial<Org>) => updateDocument('orgs', id, data),
+};
+
+export const crewOperations = {
+  getByOrg: (orgId: string) => getOrgDocs<Crew>('crews', orgId),
+  get: (id: string) => getDocById<Crew>('crews', id),
+  create: (data: Omit<Crew, 'id' | 'createdAt' | 'updatedAt'>) => createDoc('crews', data),
+  update: (id: string, data: Partial<Crew>) => updateDocument('crews', id, data),
+  delete: (id: string) => deleteDocument('crews', id),
+};
+
+export const employeeOperations = {
+  getByOrg: (orgId: string) => getOrgDocs<Employee>('employees', orgId),
+  get: (id: string) => getDocById<Employee>('employees', id),
+  create: (data: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>) => createDoc('employees', data),
+  update: (id: string, data: Partial<Employee>) => updateDocument('employees', id, data),
+  delete: (id: string) => deleteDocument('employees', id),
 };
 
 export const entitlementOperations = {

@@ -1,4 +1,5 @@
 import { projectOperations, type Project } from '@/lib/firestore';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   useFirestoreCollection,
   useFirestoreDocument,
@@ -8,7 +9,8 @@ import {
 } from './useFirestoreCrud';
 
 export function useProjects() {
-  return useFirestoreCollection<Project>('projects', projectOperations, ['projects']);
+  const { currentOrgId } = useAuth();
+  return useFirestoreCollection<Project>('projects', projectOperations, ['projects', currentOrgId]);
 }
 
 export function useProject(id: string | null) {

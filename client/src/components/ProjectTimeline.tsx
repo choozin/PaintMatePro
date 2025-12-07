@@ -14,6 +14,7 @@ import { Plus, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { cn } from "@/lib/utils";
+import { ProjectDialog } from "@/components/ProjectDialog";
 
 interface ProjectTimelineProps {
     project: Project & { id: string };
@@ -23,7 +24,7 @@ const EVENT_TYPES: { type: ProjectEvent['type']; label: string; color: string }[
     { type: 'lead_created', label: 'Lead Created', color: 'bg-blue-500' },
     { type: 'quote_provided', label: 'Quote Provided', color: 'bg-purple-500' },
     { type: 'quote_accepted', label: 'Quote Accepted', color: 'bg-emerald-500' },
-    { type: 'scheduled', label: 'Scheduled', color: 'bg-indigo-500' },
+    { type: 'scheduled', label: 'Booked', color: 'bg-indigo-500' },
     { type: 'started', label: 'Project Started', color: 'bg-blue-600' },
     { type: 'paused', label: 'Paused', color: 'bg-amber-500' },
     { type: 'resumed', label: 'Resumed', color: 'bg-blue-500' },
@@ -63,11 +64,13 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
             type: 'started',
             label: 'Project Started',
             date: project.startDate,
-            notes: 'Scheduled start date'
+            notes: 'Booked start date'
         });
     }
 
-    if (!timeline.some(e => e.type === 'scheduled') && project.estimatedCompletion) {
+    const hasDueDate = timeline.some(e => e.label === 'Project Due');
+
+    if (!hasDueDate && project.estimatedCompletion) {
         timeline.push({
             id: 'implicit-due',
             type: 'scheduled',
@@ -75,7 +78,7 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
             date: project.estimatedCompletion,
             notes: 'Estimated completion date'
         });
-    } else if (!timeline.some(e => e.type === 'scheduled') && !project.estimatedCompletion) {
+    } else if (!hasDueDate && !project.estimatedCompletion) {
         timeline.push({
             id: 'implicit-due-unknown',
             type: 'scheduled',
@@ -224,9 +227,21 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
                                 <div className="flex flex-col gap-1">
                                     <div className="flex items-center justify-between">
                                         <span className="font-semibold text-sm">{event.label}</span>
-                                        <span className="text-xs text-muted-foreground mr-2">
-                                            {event.date?.toDate ? format(event.date.toDate(), "MMM d, yyyy") : "Unknown Date"}
-                                        </span>
+                                        {event.id === 'implicit-due-unknown' ? (
+                                            <ProjectDialog
+                                                project={project}
+                                                mode="edit"
+                                                trigger={
+                                                    <Button variant="link" size="sm" className="h-auto p-0 text-xs text-red-500 hover:text-red-700 font-medium">
+                                                        End date not specified. Add now
+                                                    </Button>
+                                                }
+                                            />
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground mr-2">
+                                                {event.date?.toDate ? format(event.date.toDate(), "MMM d, yyyy") : "Unknown Date"}
+                                            </span>
+                                        )}
                                     </div>
                                     {event.notes && (
                                         <p className="text-xs text-muted-foreground bg-muted p-2 rounded">
