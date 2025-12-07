@@ -1,0 +1,187 @@
+{
+    "app": {
+        "name": "PaintPro"
+    },
+    "auth": {
+        "login": "Se connecter",
+        "login_description": "Connectez-vous pour gérer votre entreprise de peinture",
+        "email": "E-mail",
+        "password": "Mot de passe",
+        "forgot_password": "Mot de passe oublié ?",
+        "signing_in": "Connexion...",
+        "sign_in_button": "Se connecter",
+        "reset_password": "Réinitialiser le mot de passe",
+        "reset_description": "Entrez votre adresse e-mail et nous vous enverrons un lien pour réinitialiser votre mot de passe.",
+        "send_reset": "Envoyer l'e-mail",
+        "sending": "Envoi..."
+    },
+    "nav": {
+        "dashboard": "Tableau de bord",
+        "projects": "Projets",
+        "clients": "Clients",
+        "quotes": "Devis",
+        "invoices": "Factures",
+        "schedule": "Calendrier",
+        "team": "Équipe",
+        "reports": "Rapports",
+        "settings": "Paramètres",
+        "admin": "Administration",
+        "logout": "Se déconnecter"
+    },
+    "common": {
+        "loading": "Chargement...",
+        "error": "Erreur",
+        "success": "Succès",
+        "cancel": "Annuler",
+        "save": "Enregistrer",
+        "delete": "Supprimer",
+        "edit": "Modifier",
+        "back": "Retour",
+        "next": "Suivant",
+        "search": "Rechercher..."
+    },
+    "dashboard": {
+        "welcome": "Bon retour, {{name}} !",
+        "welcome_fallback": "Bon retour !",
+        "overview": "Voici un aperçu de votre entreprise.",
+        "total_revenue": "Revenu Total",
+        "active_projects": "Projets Actifs",
+        "total_clients": "Clients Totaux",
+        "completed_jobs": "Travaux Terminés",
+        "recent_projects": "Projets Récents",
+        "no_projects": "Pas encore de projets. Créez votre premier projet pour commencer !",
+        "loading_projects": "Chargement des projets..."
+    },
+    "projects": {
+        "title": "Projets",
+        "subtitle": "Gérez tous vos projets de peinture.",
+        "search_placeholder": "Rechercher des projets...",
+        "no_results": "Aucun projet ne correspond à votre recherche.",
+        "create_new": "Nouveau Projet",
+        "status": {
+            "pending": "En attente",
+            "in_progress": "En cours",
+            "completed": "Terminé",
+            "on_hold": "En pause"
+        },
+        "view_details": "Voir les détails",
+        "dialog": {
+            "add_title": "Ajouter un nouveau projet",
+            "edit_title": "Modifier le projet",
+            "add_description": "Créer un nouveau projet de peinture",
+            "edit_description": "Mettre à jour les détails du projet",
+            "name": "Nom du projet",
+            "client": "Client",
+            "location": "Lieu",
+            "status": "Statut",
+            "start_date": "Date de début",
+            "est_completion": "Est. Achèvement",
+            "delete_title": "Êtes-vous absolument sûr ?",
+            "delete_description": "Cette action est irréversible. Cela supprimera définitivement votre projet et ses données de nos serveurs.",
+            "delete_confirm": "Continuer",
+            "create_button": "Créer le projet",
+            "update_button": "Mettre à jour"
+        }
+    },
+    "clients": {
+        "title": "Clients",
+        "subtitle": "Gérez vos relations clients.",
+        "search_placeholder": "Rechercher des clients...",
+        "no_results": "Aucun client ne correspond à votre recherche.",
+        "no_clients": "Pas encore de clients. Ajoutez votre premier client pour commencer !",
+        "create_new": "Ajouter un client",
+        "project_count_one": "{{count}} projet",
+        "project_count_other": "{{count}} projets",
+        "view_details": "Voir les détails",
+        "dialog": {
+            "add_title": "Ajouter un nouveau client",
+            "edit_title": "Modifier le client",
+            "add_description": "Ajouter un nouveau client à votre système",
+            "edit_description": "Mettre à jour les détails du client",
+            "name": "Nom complet",
+            "email": "E-mail",
+            "phone": "Téléphone",
+            "address": "Adresse",
+            "create_button": "Créer le client",
+            "update_button": "Mettre à jour"
+        }
+    },
+    "quotes": {
+        "title": "Devis",
+        "subtitle": "Créez et gérez des devis de projets.",
+        "tabs": {
+            "measurements": "Mesures",
+            "builder": "Générateur de devis"
+        }
+    },
+    "project_details": {
+        "loading": "Chargement du projet...",
+        "not_found": "Projet introuvable",
+        "back_to_projects": "Retour aux projets",
+        "subtitle": "Gérer les détails du projet, les mesures des pièces et les devis",
+        "info_card": {
+            "title": "Informations sur le projet",
+            "client": "Client",
+            "location": "Lieu",
+            "start_date": "Date de début"
+        },
+        "tabs": {
+            "rooms": "Mesures des pièces",
+            "quotes": "Devis"
+        }
+    },
+    "settings": {
+        "title": "Paramètres de l'application",
+        "subtitle": "Gérez votre organisation, votre profil et vos utilisateurs.",
+        "profile": {
+            "title": "Mon profil",
+            "description": "Gérez vos informations personnelles et votre mot de passe.",
+            "display_name": "Nom d'affichage",
+            "email": "E-mail",
+            "save": "Enregistrer",
+            "saving": "Enregistrement...",
+            "send_reset": "Envoyer l'e-mail de réinitialisation",
+            "sending_reset": "Envoi...",
+            "success_update": "Profil mis à jour",
+            "success_update_desc": "Votre nom d'affichage a été mis à jour avec succès.",
+            "success_reset": "E-mail de réinitialisation envoyé",
+            "success_reset_desc": "Veuillez vérifier votre boîte de réception pour les instructions."
+        },
+        "users": {
+            "title": "Gestion des utilisateurs",
+            "description": "Gérez les utilisateurs au sein de votre organisation.",
+            "role": "Rôle",
+            "select_role": "Sélectionner un rôle",
+            "delete_user": "Supprimer",
+            "delete_title": "Êtes-vous absolument sûr ?",
+            "delete_description": "Cette action est irréversible. Cela supprimera définitivement le compte utilisateur et toutes les données associées.",
+            "delete_confirm": "Continuer",
+            "success_delete": "Utilisateur supprimé",
+            "success_delete_desc": "L'utilisateur a été supprimé avec succès."
+        }
+    },
+    "admin_page": {
+        "title": "Administration de l'application",
+        "subtitle": "Gérez toutes les organisations et les paramètres de l'application.",
+        "orgs": {
+            "title": "Organisations",
+            "description": "Voir et gérer les droits pour toutes les organisations.",
+            "no_orgs": "Aucune organisation trouvée.",
+            "plan": "Plan",
+            "users": "Utilisateurs",
+            "manage": "Gérer"
+        },
+        "access_denied": {
+            "title": "Accès refusé",
+            "description": "Vous n'avez pas la permission d'accéder à cette page."
+        }
+    },
+    "supplies": {
+        "title": "Liste des fournitures",
+        "paint_calculator": "Calculateur de peinture",
+        "total_area": "Surface totale des murs",
+        "gallons_needed": "Gallons nécessaires",
+        "coverage_note": "Basé sur une couverture de 350 pi²/gallon",
+        "additional_items": "Articles supplémentaires"
+    }
+}

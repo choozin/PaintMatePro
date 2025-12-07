@@ -4,6 +4,7 @@ import {
   getDoc,
   getDocs as getDocsFromFirestore,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -14,14 +15,76 @@ import {
   DocumentData,
   CollectionReference,
 } from 'firebase/firestore';
+export { Timestamp };
 import { db } from './firebase';
 
 // Type definitions matching your Firestore schema
+export interface CatalogItem {
+  id?: string;
+  name: string;
+  category: 'material' | 'labor' | 'other';
+  unit: string;
+  unitPrice: number;
+  unitCost?: number; // Contractor cost for margin calc
+  description?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface Org {
   name: string;
   defaultUnits: 'metric' | 'imperial';
   plan: 'free' | 'pro' | 'enterprise';
   region: string;
+
+  // Quoting System Phase 1: Global Defaults
+  estimatingSettings?: {
+    defaultLaborRate: number; // $/hr
+    defaultProductionRate: number; // sq ft/hr
+    defaultCoverage: number; // sq ft/gal
+    defaultWallCoats: number;
+    defaultTrimCoats: number;
+    defaultCeilingCoats: number;
+    defaultTaxRate?: number; // % (e.g., 8.25)
+    defaultPricePerGallon?: number; // New: Default price
+    defaultCostPerGallon?: number; // New: Default cost
+  };
+
+  // Quoting System Phase 2: Customizable Supply Rules
+  supplyRules?: SupplyRule[];
+
+  // Quoting System Phase 2: Branding & Settings
+  branding?: {
+    logoUrl?: string;
+    primaryColor?: string; // Hex code
+    secondaryColor?: string; // Hex code
+    companyName?: string;
+    companyAddress?: string;
+    companyPhone?: string;
+    companyEmail?: string;
+    website?: string;
+    logoBase64?: string; // Base64 string for PDF generation (bypasses CORS)
+  };
+
+  quoteSettings?: {
+    defaultTerms?: string;
+    defaultExpirationDays?: number;
+    defaultTaxRate?: number; // Moved/Synced from estimatingSettings?
+    templateLayout?: 'standard' | 'modern' | 'minimal';
+  };
+}
+
+export interface SupplyRule {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  unitPrice: number;
+  unitCost?: number; // New: Cost for margin analysis
+  catalogItemId?: string; // Optional link to catalog
+  condition: 'always' | 'if_ceiling' | 'if_trim' | 'if_primer' | 'if_floor_area';
+  quantityType: 'fixed' | 'per_sqft_wall' | 'per_sqft_floor' | 'per_gallon_total' | 'per_linear_ft_perimeter' | 'per_gallon_primer';
+  quantityBase: number; // The "X" in "1 item per X units" (or the fixed quantity)
 }
 
 export interface OrgWithId extends Org {
@@ -42,6 +105,11 @@ export interface EntitlementFeatures {
   eSign: boolean;
   payments: boolean;
   scheduler: boolean;
+
+  // Quoting System Phase 2
+  'quote.tiers': boolean;
+  'quote.profitMargin': boolean;
+  'quote.visualScope': boolean;
 }
 
 export interface Entitlement {
@@ -49,16 +117,83 @@ export interface Entitlement {
   features: EntitlementFeatures;
 }
 
+export const ALL_BOOLEAN_FEATURES: (keyof EntitlementFeatures)[] = [
+  'capture.ar',
+  'capture.reference',
+  'visual.recolor',
+  'visual.sheenSimulator',
+  'portal.fullView',
+  'portal.advancedActionsLocked',
+  'analytics.lite',
+  'analytics.drilldowns',
+  'pdf.watermark',
+  'eSign',
+  'payments',
+  'scheduler',
+  'quote.tiers',
+  'quote.profitMargin',
+  'quote.visualScope',
+];
+
+export interface ProjectEvent {
+  id: string;
+  type: 'lead_created' | 'quote_provided' | 'quote_accepted' | 'scheduled' | 'started' | 'paused' | 'resumed' | 'finished' | 'invoice_issued' | 'payment_received' | 'custom';
+  label: string;
+  date: Timestamp;
+  notes?: string;
+  createdBy?: string;
+}
+
+export type ProjectStatus = 'lead' | 'quoted' | 'booked' | 'in-progress' | 'paused' | 'completed' | 'invoiced' | 'paid' | 'on-hold' | 'pending'; // keeping pending/on-hold for migration safety
+
 export interface Project {
   orgId: string;
   name: string;
   clientId: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'on-hold';
+  status: ProjectStatus;
   location: string;
-  startDate: Timestamp;
+  startDate: Timestamp; // This can now represent "Scheduled Start" or "Actual Start" depending on interpreted logic, or we can add specific fields if strict separation is needed. For now, let's keep it as primary "Start" but rely on timeline for specifics.
   estimatedCompletion?: Timestamp;
+  timeline?: ProjectEvent[]; // New Timeline Array
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+
+  // Supply Hub v2 Configuration
+  supplyConfig?: {
+    coveragePerGallon: number;
+    wallCoats: number;
+    ceilingCoats: number;
+    trimCoats: number;
+    includePrimer: boolean;
+    includeCeiling: boolean;
+    includeTrim: boolean;
+    deductionFactor: number; // 0-1 range (e.g., 0.15 for 15%)
+    ceilingSamePaint?: boolean; // New: Use wall paint for ceiling
+    deductionMethod?: 'percent' | 'exact'; // New: Deduction mode
+    deductionExactSqFt?: number; // New: Exact deduction amount
+    pricePerGallon?: number; // New: Price per gallon for estimates
+    costPerGallon?: number; // New: Cost per gallon for margin analysis
+  };
+
+  // Quoting System Phase 1: Labor Config
+  laborConfig?: {
+    hourlyRate: number;
+    productionRate: number; // sq ft/hr
+    difficultyFactor: number; // 1.0 - 2.0 multiplier
+    ceilingProductionRate?: number; // New: Specific rate for ceilings
+    totalHours?: number;
+    totalCost?: number;
+  };
+
+  customSupplies?: Array<{
+    id: string;
+    name: string;
+    qty: number;
+    category: string;
+    unitPrice?: number;
+    unitCost?: number;
+    unit?: string;
+  }>;
 }
 
 export interface Client {
@@ -66,7 +201,23 @@ export interface Client {
   name: string;
   email: string;
   phone: string;
+  mobilePhone?: string; // For texting
   address: string;
+  tags?: string[]; // Flexible labeling
+  leadStatus?: 'new' | 'interested' | 'cold' | 'archived'; // Manual status override
+
+  // Extended Details
+  clientType?: 'residential' | 'commercial' | 'property_manager';
+  source?: string;
+  notes?: string;
+  preferences?: string;
+  secondaryContact?: {
+    name: string;
+    phone?: string;
+    email?: string;
+    role?: string;
+  };
+
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -102,31 +253,47 @@ export interface Room {
   orgId: string;
   projectId: string;
   name: string;
-  
+
   // Basic dimensions (backward compatible with existing data)
   length: number;
   width: number;
   height: number;
-  
+
   // Measurement method tracking
   measurementMethod?: 'manual' | 'camera' | 'lidar';
   measurementMetadata?: MeasurementMetadata;
-  
+
   // Complex room shape support (future)
   walls?: Wall[];
   shape?: 'rectangular' | 'complex';
-  
+
   // Optional photo storage references (Firebase Storage URLs)
   photoUrls?: string[];
-  
+
   // Pre-calculated areas (cached for performance)
   calculatedAreas?: {
     floor: number;
     wall: number;
     total: number;
   };
-  
+
   createdAt?: Timestamp;
+}
+
+export interface QuoteOption {
+  id: string;
+  name: string;
+  description?: string;
+  lineItems: Array<{
+    description: string;
+    quantity: number;
+    unit: string;
+    rate: number;
+    unitCost?: number;
+  }>;
+  subtotal: number;
+  tax: number;
+  total: number;
 }
 
 export interface Quote {
@@ -137,12 +304,31 @@ export interface Quote {
     quantity: number;
     unit: string;
     rate: number;
+    unitCost?: number; // Contractor cost for margin calc
   }>;
   subtotal: number;
   tax: number;
   total: number;
   validUntil: Timestamp;
+
   createdAt?: Timestamp;
+  createdBy?: string; // User UID
+  createdByName?: string; // Display Name
+  updatedAt?: Timestamp;
+  updatedBy?: string;
+  updatedByName?: string;
+
+  // Status & Metadata (Phase 1.5)
+  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+  notes?: string; // Client visible notes
+  discount?: number;
+  discountType?: 'percent' | 'fixed';
+  options?: QuoteOption[] | null;
+  selectedOptionId?: string | null;
+
+  // Digital Signature (Phase 3)
+  signature?: string | null; // Base64 signature image
+  signedAt?: Timestamp | null;
 }
 
 export interface PortalToken {
@@ -165,7 +351,7 @@ export async function getDocById<T>(collectionName: string, id: string): Promise
   try {
     const docRef = doc(db, collectionName, id);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       return { id: docSnap.id, ...docSnap.data() } as (T & { id: string });
     }
@@ -187,7 +373,7 @@ export async function getDocs<T>(
   try {
     const q = query(getCollection<T>(collectionName), ...constraints);
     const querySnapshot = await getDocsFromFirestore(q);
-    
+
     return querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
@@ -272,7 +458,8 @@ export async function deleteDocument(collectionName: string, id: string): Promis
 // Specific collection operations
 export const orgOperations = {
   get: (id: string) => getDocById<Org>('orgs', id),
-  getAll: () => getDocs<Org>('orgs'), // New method
+  getAll: () => getDocs<Org>('orgs'),
+  create: (data: Org) => createDoc('orgs', data),
   update: (id: string, data: Partial<Org>) => updateDocument('orgs', id, data),
 };
 
@@ -282,6 +469,13 @@ export const entitlementOperations = {
     const fieldPath = `features.${featureKey}`;
     return updateDocument('entitlements', orgId, { [fieldPath]: value });
   },
+  create: (orgId: string, data: Entitlement) => {
+    return setDoc(doc(db, 'entitlements', orgId), {
+      ...data,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  }
 };
 
 export const projectOperations = {
@@ -301,7 +495,7 @@ export const clientOperations = {
 };
 
 export const roomOperations = {
-  getByProject: (projectId: string) => 
+  getByProject: (projectId: string) =>
     getDocs<Room>('rooms', [where('projectId', '==', projectId)]),
   create: (data: Omit<Room, 'createdAt' | 'orgId' | 'updatedAt'>) => createDoc('rooms', data),
   update: (id: string, data: Partial<Room>) => updateDocument('rooms', id, data),
@@ -309,10 +503,16 @@ export const roomOperations = {
 };
 
 export const quoteOperations = {
-  getByProject: (projectId: string) =>
-    getDocs<Quote>('quotes', [where('projectId', '==', projectId), orderBy('createdAt', 'desc')]),
+  getByProject: (projectId: string, orgId?: string) => {
+    const constraints: any[] = [where('projectId', '==', projectId)];
+    if (orgId) {
+      constraints.push(where('orgId', '==', orgId));
+    }
+    // Note: re-add orderBy once composite index is created
+    return getDocs<Quote>('quotes', constraints);
+  },
   get: (id: string) => getDocById<Quote>('quotes', id),
-  create: (data: Omit<Quote, 'createdAt' | 'orgId' | 'updatedAt'>) => createDoc('quotes', data),
+  create: (data: Omit<Quote, 'createdAt' | 'updatedAt'>) => createDoc('quotes', data),
   update: (id: string, data: Partial<Quote>) => updateDocument('quotes', id, data),
 };
 

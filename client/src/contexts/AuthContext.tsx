@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { 
-  onAuthChange, 
-  signIn as authSignIn, 
-  signOut as authSignOut, 
+import {
+  onAuthChange,
+  signIn as authSignIn,
+  signOut as authSignOut,
   sendPasswordReset as authSendPasswordReset,
   updateUserProfile as authUpdateUserProfile,
   getUserClaims as getAuthClaims
@@ -31,6 +31,7 @@ interface AuthContextType {
   sendPasswordReset: (email: string) => Promise<void>;
   updateUserProfile: (profile: { displayName?: string }) => Promise<void>;
   refetchEntitlements: () => Promise<void>;
+  setCurrentOrgId: (id: string) => void;
 }
 
 // Create the context with a default value
@@ -71,11 +72,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthChange(async (firebaseUser) => {
       setUser(firebaseUser);
-      
+
       if (firebaseUser) {
         const userClaims = await getAuthClaims();
         console.log('🔑 Custom claims loaded:', userClaims);
-        
+
         if (!userClaims) {
           setClaims(null);
           setCurrentOrgId(null);
@@ -91,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setClaims(parsedClaims);
 
         let firstOrgId = parsedClaims.orgIds[0] || null;
-        
+
         // If no orgs in claims, check for a fallback in localStorage
         if (!firstOrgId) {
           const fallbackOrgId = localStorage.getItem('fallbackOrgId');
@@ -107,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setCurrentOrgId(firstOrgId);
         // The role is now a single string, not per-org.
-        setCurrentOrgRole(parsedClaims.role); 
+        setCurrentOrgRole(parsedClaims.role);
         setClaims(parsedClaims); // Update claims again if fallback modified orgIds
 
       } else {
@@ -115,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setCurrentOrgId(null);
         setCurrentOrgRole(null);
       }
-      
+
       setLoading(false);
     });
 
@@ -158,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sendPasswordReset,
     updateUserProfile,
     refetchEntitlements,
+    setCurrentOrgId,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

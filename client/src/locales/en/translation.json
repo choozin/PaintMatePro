@@ -1,0 +1,266 @@
+{
+    "app": {
+        "name": "PaintPro"
+    },
+    "auth": {
+        "login": "Sign In",
+        "login_description": "Sign in to manage your painting business",
+        "email": "Email",
+        "password": "Password",
+        "forgot_password": "Forgot password?",
+        "signing_in": "Signing in...",
+        "sign_in_button": "Sign In",
+        "reset_password": "Reset Password",
+        "reset_description": "Enter your email address and we'll send you a link to reset your password.",
+        "send_reset": "Send Reset Email",
+        "sending": "Sending..."
+    },
+    "nav": {
+        "dashboard": "Dashboard",
+        "projects": "Projects",
+        "clients": "Clients",
+        "quotes": "Quotes",
+        "invoices": "Invoices",
+        "schedule": "Schedule",
+        "team": "Team",
+        "reports": "Reports",
+        "settings": "Settings",
+        "organization": "Organization",
+        "profile": "Profile",
+        "admin": "Admin",
+        "logout": "Log out"
+    },
+    "common": {
+        "loading": "Loading...",
+        "error": "Error",
+        "success": "Success",
+        "cancel": "Cancel",
+        "save": "Save",
+        "delete": "Delete",
+        "edit": "Edit",
+        "back": "Back",
+        "next": "Next",
+        "search": "Search..."
+    },
+    "dashboard": {
+        "welcome": "Welcome back, {{name}}!",
+        "welcome_fallback": "Welcome back!",
+        "overview": "Here's your business overview.",
+        "total_revenue": "Total Revenue",
+        "active_projects": "Active Projects",
+        "total_clients": "Total Clients",
+        "completed_jobs": "Completed Jobs",
+        "recent_projects": "Recent Projects",
+        "no_projects": "No projects yet. Create your first project to get started!",
+        "loading_projects": "Loading projects..."
+    },
+    "projects": {
+        "title": "Projects",
+        "subtitle": "Manage all your painting projects.",
+        "search_placeholder": "Search projects...",
+        "no_results": "No projects match your search.",
+        "create_new": "New Project",
+        "status": {
+            "lead": "Lead",
+            "quoted": "Quoted",
+            "booked": "Scheduled",
+            "pending": "Pending",
+            "in_progress": "In Progress",
+            "paused": "Paused",
+            "completed": "Completed",
+            "invoiced": "Invoiced",
+            "paid": "Paid",
+            "on_hold": "On Hold"
+        },
+        "view_details": "View Details",
+        "dialog": {
+            "add_title": "Add New Project",
+            "edit_title": "Edit Project",
+            "add_description": "Create a new painting project",
+            "edit_description": "Update project details",
+            "name": "Project Name",
+            "client": "Client",
+            "location": "Location",
+            "status": "Status",
+            "start_date": "Start Date",
+            "est_completion": "Est. Completion",
+            "delete_title": "Are you absolutely sure?",
+            "delete_description": "This action cannot be undone. This will permanently delete your project and remove its data from our servers.",
+            "delete_confirm": "Continue",
+            "create_button": "Create Project",
+            "update_button": "Update Project"
+        }
+    },
+    "clients": {
+        "title": "Clients",
+        "subtitle": "Manage your client relationships.",
+        "search_placeholder": "Search clients...",
+        "no_results": "No clients match your search.",
+        "no_clients": "No clients yet. Add your first client to get started!",
+        "create_new": "Add Client",
+        "project_count_one": "{{count}} project",
+        "project_count_other": "{{count}} projects",
+        "view_details": "View Details",
+        "dialog": {
+            "add_title": "Add New Client",
+            "edit_title": "Edit Client",
+            "add_description": "Add a new client to your system",
+            "edit_description": "Update client details",
+            "name": "Full Name",
+            "email": "Email",
+            "phone": "Phone",
+            "address": "Address",
+            "create_button": "Create Client",
+            "update_button": "Update Client"
+        }
+    },
+    "quotes": {
+        "title": "Quotes",
+        "subtitle": "Create and manage project quotes.",
+        "tabs": {
+            "measurements": "Measurements",
+            "builder": "Quote Builder"
+        }
+    },
+    "project_details": {
+        "loading": "Loading project...",
+        "not_found": "Project not found",
+        "back_to_projects": "Back to Projects",
+        "subtitle": "Manage project details, room measurements, and quotes",
+        "info_card": {
+            "title": "Project Information",
+            "client": "Client",
+            "location": "Location",
+            "start_date": "Start Date"
+        },
+        "tabs": {
+            "rooms": "Room Measurements",
+            "quotes": "Quotes"
+        }
+    },
+    "admin_page": {
+        "title": "App Administration",
+        "subtitle": "Manage all organizations and app-level settings.",
+        "orgs": {
+            "title": "Organizations",
+            "description": "View and manage entitlements for all organizations.",
+            "no_orgs": "No organizations found.",
+            "plan": "Plan",
+            "users": "Users",
+            "manage": "Manage"
+        },
+        "features": {
+            "capture": {
+                "ar": "AR Measurement",
+                "reference": "Reference Photos",
+                "weeklyLimit": "Weekly Capture Limit"
+            },
+            "visual": {
+                "recolor": "Visualizer (Recolor)",
+                "sheenSimulator": "Sheen Simulator"
+            },
+            "portal": {
+                "fullView": "Client Portal (Full View)",
+                "advancedActionsLocked": "Lock Advanced Actions"
+            },
+            "analytics": {
+                "lite": "Basic Analytics",
+                "drilldowns": "Advanced Drilldowns"
+            },
+            "pdf": {
+                "watermark": "PDF Watermark"
+            },
+            "quote": {
+                "tiers": "Quote Tiers (Good/Better/Best)",
+                "profitMargin": "Profit Margin Analysis",
+                "visualScope": "Visual Scope of Work"
+            },
+            "eSign": "Digital Signatures",
+            "payments": "Online Payments",
+            "scheduler": "Scheduler / Calendar"
+        },
+        "access_denied": {
+            "title": "Access Denied",
+            "description": "You do not have permission to access this page."
+        }
+    },
+    "settings": {
+        "title": "App Settings",
+        "subtitle": "Manage your organization, profile, and users.",
+        "profile": {
+            "title": "My Profile",
+            "description": "Manage your personal information and password.",
+            "personal_info": {
+                "title": "Personal Information",
+                "description": "Update your contact details and display name."
+            },
+            "display_name": "Display Name",
+            "display_name_placeholder": "Enter your name",
+            "email": "Email",
+            "save_changes": "Save Changes",
+            "password": {
+                "title": "Password Security",
+                "description": "Manage your password and security settings."
+            },
+            "send_reset_email": "Send Password Reset Email",
+            "update": {
+                "success_title": "Profile Updated",
+                "success_description": "Your profile information has been saved.",
+                "error_title": "Update Failed"
+            },
+            "password_reset": {
+                "success_title": "Email Sent",
+                "success_description": "Check your email for password reset instructions.",
+                "error_title": "Reset Failed"
+            }
+        },
+        "users": {
+            "title": "User Management",
+            "description": "Manage users within your organization.",
+            "role": "Role",
+            "select_role": "Select Role",
+            "delete_user": "Delete",
+            "delete_title": "Are you absolutely sure?",
+            "delete_description": "This action cannot be undone. This will permanently delete the user account and all associated data.",
+            "delete_confirm": "Continue",
+            "success_delete": "User Deleted",
+            "success_delete_desc": "The user has been successfully deleted."
+        },
+        "organization": {
+            "title": "Organization Settings",
+            "description": "Manage your organization's members and default settings.",
+            "members": "Members",
+            "estimating": "Estimating Defaults"
+        },
+        "app": {
+            "title": "Application Settings",
+            "description": "Manage global application preferences.",
+            "language": "Language",
+            "language_desc": "Select your preferred language."
+        }
+    },
+    "supplies": {
+        "title": "Supply List",
+        "paint_calculator": "Paint Calculator",
+        "total_area": "Total Wall Area",
+        "gallons_needed": "Gallons Needed",
+        "coverage_note": "Based on 350 sq ft/gallon coverage",
+        "additional_items": "Additional Items",
+        "configuration": "Configuration",
+        "presets": "Presets",
+        "save_as_org_default": "Save as Org Default",
+        "reset_to_defaults": "Reset to Defaults",
+        "configuration_saved": "Configuration Saved",
+        "configuration_saved_desc": "Supply & Labor settings updated.",
+        "defaults_saved": "Defaults Saved",
+        "defaults_saved_desc": "Organization estimating defaults updated.",
+        "reset_complete": "Reset Complete",
+        "reset_complete_desc": "Loaded organization defaults.",
+        "no_defaults": "No Defaults",
+        "no_defaults_desc": "This organization has no saved defaults.",
+        "save_failed": "Save Failed",
+        "save_failed_desc": "Could not save configuration.",
+        "reset_failed": "Reset Failed",
+        "reset_failed_desc": "Could not load defaults."
+    }
+}

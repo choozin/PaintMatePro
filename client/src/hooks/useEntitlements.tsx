@@ -12,7 +12,7 @@ export function useEntitlements(targetOrgId?: string) {
 
   // If a targetOrgId is provided, fetch entitlements for that org
   // Otherwise, use the entitlements from the AuthContext (for the current user's org)
-  const { data: adminFetchedEntitlements, isLoading: adminEntitlementsLoading } = useQuery<Entitlement | null, Error>({
+  const { data: adminFetchedEntitlements, isLoading: adminEntitlementsLoading, refetch } = useQuery<Entitlement | null, Error>({
     queryKey: ['entitlements', targetOrgId],
     queryFn: () => entitlementOperations.get(targetOrgId!),
     enabled: !!targetOrgId, // Only fetch if targetOrgId is provided
@@ -23,36 +23,36 @@ export function useEntitlements(targetOrgId?: string) {
 
   const hasFeature = (featureKey: string): boolean => {
     if (!entitlements) return false;
-    
+
     // Navigate nested feature keys like "capture.ar"
     const keys = featureKey.split('.');
     let current: any = entitlements.features;
-    
+
     for (const key of keys) {
       if (current === undefined || current === null) return false;
       current = current[key];
     }
-    
+
     return Boolean(current);
   };
 
   const getFeatureValue = <T,>(featureKey: string, defaultValue: T): T => {
     if (!entitlements) return defaultValue;
-    
+
     const keys = featureKey.split('.');
     let current: any = entitlements.features;
-    
+
     for (const key of keys) {
       if (current === undefined || current === null) return defaultValue;
       current = current[key];
     }
-    
+
     return current !== undefined ? current : defaultValue;
   };
 
   const isPlanType = (planType: 'free' | 'pro' | 'enterprise'): boolean => {
     // If targetOrgId is provided, we don't have the org object here, so we can't check plan type
-    if (targetOrgId) return false; 
+    if (targetOrgId) return false;
     return org?.plan === planType;
   };
 
@@ -66,5 +66,6 @@ export function useEntitlements(targetOrgId?: string) {
     isProPlan: isPlanType('pro'),
     isEnterprisePlan: isPlanType('enterprise'),
     isLoading: targetOrgId ? adminEntitlementsLoading : false, // Only show loading for admin-fetched entitlements
+    refetch,
   };
 }

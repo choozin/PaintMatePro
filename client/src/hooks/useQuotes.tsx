@@ -13,7 +13,7 @@ export function useQuotes(projectId: string | null) {
     ['quotes', projectId],
     (orgId) => {
       if (!projectId) throw new Error('No project ID provided');
-      return quoteOperations.getByProject(projectId);
+      return quoteOperations.getByProject(projectId, orgId);
     },
     !!projectId // enabled state
   );

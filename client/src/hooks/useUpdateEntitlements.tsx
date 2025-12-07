@@ -5,7 +5,7 @@ import type { Entitlement } from '@/lib/firestore';
 
 export function useUpdateEntitlements() {
   const queryClient = useQueryClient();
-  const { refetchEntitlements } = useAuth(); // Keep refetch for the current user's entitlements
+  const { refetchEntitlements, org } = useAuth(); // Keep refetch for the current user's entitlements
 
   return useMutation({
     mutationFn: ({ orgId, featureKey, value }: { orgId: string; featureKey: string; value: boolean }) => {
@@ -16,7 +16,6 @@ export function useUpdateEntitlements() {
       queryClient.invalidateQueries({ queryKey: ['entitlements', variables.orgId] });
       // If the updated org is the current user's org, also refetch the AuthContext entitlements
       // This is important for the user's own view to update
-      const { org } = useAuth(); // Re-get org from context to check if it's the current one
       if (org?.id === variables.orgId) {
         refetchEntitlements();
       }

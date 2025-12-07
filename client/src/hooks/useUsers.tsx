@@ -27,9 +27,9 @@ async function fetchUsers(orgId: string): Promise<AppUser[]> {
   return users;
 }
 
-export function useUsers() {
+export function useUsers(orgIdOverride?: string) {
   const { claims } = useAuth();
-  const orgId = claims?.orgIds[0];
+  const orgId = orgIdOverride || claims?.orgIds[0];
 
   return useQuery<AppUser[], Error>({
     queryKey: ['users', orgId],

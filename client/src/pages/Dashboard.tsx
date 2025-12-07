@@ -1,17 +1,26 @@
+
 import { StatCard } from "@/components/StatCard";
 import { ProjectCard } from "@/components/ProjectCard";
 import { ProjectDialog } from "@/components/ProjectDialog";
-import { DollarSign, FolderKanban, Users, CheckCircle } from "lucide-react";
+import { ClientDialog } from "@/components/ClientDialog";
+import { ActivityFeed } from "@/components/ActivityFeed";
+import { DollarSign, FolderKanban, Users, CheckCircle, Plus, FileText, Calendar as CalendarIcon, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { useProjects } from "@/hooks/useProjects";
 import { useClients } from "@/hooks/useClients";
-import { useClient } from "@/hooks/useClients";
+import { useClient } from "@/hooks/useClients"; // Keep for DashboardProjectCard
 import { formatDate } from "@/lib/utils/dateFormat";
-import type { Project, Client } from "@/lib/firestore";
+import type { Project } from "@/lib/firestore";
+import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useAuth } from "@/contexts/AuthContext";
+import { format } from "date-fns";
 
+// Helper for Project Card
 function DashboardProjectCard({ project }: { project: Project & { id: string } }) {
   const { data: client } = useClient(project.clientId);
+  const [, setLocation] = useLocation();
 
   return (
     <ProjectCard
@@ -19,83 +28,159 @@ function DashboardProjectCard({ project }: { project: Project & { id: string } }
       name={project.name}
       clientName={client?.name || 'Loading...'}
       status={project.status}
+      timeline={project.timeline}
       location={project.location}
       startDate={formatDate(project.startDate)}
       estimatedCompletion={project.estimatedCompletion ? formatDate(project.estimatedCompletion) : undefined}
-      onClick={() => console.log(`View project ${project.id}`)}
+      onClick={() => setLocation(`/projects/${project.id}`)}
     />
   );
 }
 
-import { useAuth } from "@/contexts/AuthContext";
-
-// ... (existing imports)
-
 export default function Dashboard() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
   const { data: clients = [], isLoading: clientsLoading } = useClients();
+  const { t } = useTranslation();
 
-  const activeProjects = projects.filter(p => p.status === 'in-progress' || p.status === 'pending');
-  const completedProjects = projects.filter(p => p.status === 'completed');
-  const recentProjects = projects.slice(0, 3);
+  // Metrics Logic
+  const activeProjects = projects.filter(p => ['in-progress', 'booked'].includes(p.status));
+  const completedProjects = projects.filter(p => ['completed', 'paid', 'invoiced'].includes(p.status));
+  const pendingProjects = projects.filter(p => ['lead', 'quoted'].includes(p.status)); // Pipeline
+
+  // Calculate Revenue (Approximation based on completed projects)
+  // Logic: Sum laborConfig.totalCost for now, or assume avg $5k if missing
+  const totalRevenue = completedProjects.reduce((acc, p) => acc + (p.laborConfig?.totalCost || 5000), 0);
+
+  // Pipeline Value (Potential revenue from unbooked jobs)
+  const pipelineValue = pendingProjects.reduce((acc, p) => acc + (p.laborConfig?.totalCost || 3000), 0);
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-bold">Welcome back, {user?.displayName || 'User'}!</h1>
-          <p className="text-muted-foreground mt-2">Here's your business overview.</p>
-        </div>
-        <ProjectDialog mode="create" />
-      </div>
-// ... (rest of the file)
+    <div className="space-y-8 animate-in fade-in duration-500">
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* 1. Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+        <div>
+          <div className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">
+            {format(new Date(), 'EEEE, MMMM do, yyyy')}
+          </div>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">
+            {t('dashboard.welcome', { name: user?.displayName?.split(' ')[0] || 'Painter' })}
+          </h1>
+          <p className="text-muted-foreground mt-1 text-lg">
+            Here's what's happening with your business today.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <ClientDialog mode="create" trigger={
+            <Button variant="outline">
+              <Users className="mr-2 h-4 w-4" /> Add Lead
+            </Button>
+          } />
+          <Button variant="outline" onClick={() => setLocation('/schedule')}>
+            <CalendarIcon className="mr-2 h-4 w-4" /> Open Schedule
+          </Button>
+          <ProjectDialog mode="create">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" /> New Project
+            </Button>
+          </ProjectDialog>
+        </div>
+      </div>
+
+      {/* 2. Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Revenue"
-          value="$48,250"
+          value={`$${totalRevenue.toLocaleString()}`}
           icon={DollarSign}
-          trend={{ value: "+12.5% from last month", isPositive: true }}
-          testId="card-revenue"
+          trend={{ value: "YTD Estimate", isPositive: true }}
+          className="bg-card shadow-sm border-l-4 border-l-green-500"
         />
         <StatCard
-          title="Active Projects"
+          title="Pipeline Value"
+          value={`$${pipelineValue.toLocaleString()}`}
+          icon={FileText}
+          trend={{ value: `${pendingProjects.length} Potential Jobs`, isPositive: true }} // Neutral trend
+          className="bg-card shadow-sm border-l-4 border-l-blue-500"
+        />
+        <StatCard
+          title="Active Jobs"
           value={activeProjects.length}
           icon={FolderKanban}
-          testId="card-projects"
+          trend={{ value: "Currently Running", isPositive: true }}
+          className="bg-card shadow-sm border-l-4 border-l-amber-500"
         />
         <StatCard
           title="Total Clients"
           value={clients.length}
           icon={Users}
-          testId="card-clients"
-        />
-        <StatCard
-          title="Completed Jobs"
-          value={completedProjects.length}
-          icon={CheckCircle}
-          testId="card-completed"
+          trend={{ value: "Lifetime", isPositive: true }}
+          className="bg-card shadow-sm border-l-4 border-l-purple-500"
         />
       </div>
 
-      <div>
-        <h2 className="text-2xl font-semibold mb-6">Recent Projects</h2>
-        {projectsLoading ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">Loading projects...</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        {/* 3. Main Content (Active & Recent) */}
+        <div className="lg:col-span-2 space-y-8">
+
+          {/* Active Projects List */}
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold tracking-tight">Active Projects</h2>
+              <Button variant="ghost" size="sm" onClick={() => setLocation('/projects')}>View All <ArrowRight className="ml-1 h-3 w-3" /></Button>
+            </div>
+
+            {projectsLoading ? (
+              <div className=" py-12 text-center text-muted-foreground">Loading projects...</div>
+            ) : activeProjects.length === 0 ? (
+              <Card className="border-dashed">
+                <CardContent className="py-12 flex flex-col items-center justify-center text-center">
+                  <FolderKanban className="h-10 w-10 text-muted-foreground mb-4 opacity-20" />
+                  <h3 className="font-semibold text-lg">No Active Projects</h3>
+                  <p className="text-muted-foreground max-w-sm mt-1">You don't have any jobs marked as "In Progress" or "Booked" right now.</p>
+                  <ProjectDialog mode="create" trigger={<Button className="mt-4">Start a Project</Button>} />
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {activeProjects.slice(0, 4).map(project => (
+                  <DashboardProjectCard key={project.id} project={project} />
+                ))}
+              </div>
+            )}
           </div>
-        ) : recentProjects.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No projects yet. Create your first project to get started!</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {recentProjects.map((project) => (
-              <DashboardProjectCard key={project.id} project={project} />
-            ))}
-          </div>
-        )}
+
+        </div>
+
+        {/* 4. Sidebar (Activity & Insights) */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Recent Activity</CardTitle>
+              <CardDescription>Latest updates across all projects</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 pb-4">
+              <ActivityFeed projects={projects} />
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-none shadow-none">
+            <CardHeader>
+              <CardTitle className="text-lg text-primary">Pro Tip</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Did you know? Sending quotes within 24 hours increases acceptance rates by 40%.
+                <br /><br />
+                <span className="font-medium text-foreground cursor-pointer hover:underline" onClick={() => setLocation('/quotes')}>Review Draft Quotes →</span>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
       </div>
     </div>
   );

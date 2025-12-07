@@ -146,11 +146,34 @@ Template A/B tests: Iterate on quote layout/emails/SMS; measure open, click, acc
 
 
 
-Cost drift alerts: Notifies when vendor prices or labor costs move enough to warrant template updates.
+H. Commercial & Growth (New)
 
+Digital Blueprint Takeoff (Commercial Mode): Upload PDF floorplans; set scale; click-to-measure walls/ceilings for bidding large commercial jobs without site visits.
 
+Subcontractor Portal & Work Orders: "Sub-view" hiding financial/margin data; displays Scope of Work, colors, safety notes; digital "Accept Work Order".
 
-Tech approach \& stack notes (so we stay aligned)
+Recurring Maintenance Subscription Manager: Automate "Annual Touch-up" packages; auto-schedule 11-month follow-ups; generate recurring work orders.
+
+I. Operational Efficiency (New)
+
+"Virtual Crew Chief" (AI Translation): Auto-translate foreman notes/chats (English <-> Spanish/Portuguese) for multilingual crews.
+
+Smart Asset & Equipment Tracking: QR codes on sprayers/ladders; track "Checked Out" status and maintenance logs.
+
+"Safe-to-Touch" Notifications: Calculate drying time (product + humidity); auto-SMS client: "The Living Room is now safe to re-enter!"
+
+J. Financial Intelligence (New)
+
+Job Profitability "Autopsy": Compare Estimated vs. Actual hours/materials; highlight margin leakage per phase.
+
+Deep Accounting Sync: Two-way sync with QuickBooks/Xero; push invoices; pull timesheets for profitability analysis.
+
+K. Sales & Marketing (New)
+Live Quote Interaction Tracking: Notify sales reps when clients view quotes; score lead warmth by time spent on "Premium" options.
+
+Color Consultant Collaboration Mode: Restricted login for Color Consultants to build/propose palettes for contractor approval.
+
+L. Nice-to-haves (leave TODOs if time)
 
 
 

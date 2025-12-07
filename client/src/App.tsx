@@ -1,12 +1,7 @@
 import { Switch, Route, useLocation } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 import Dashboard from "@/pages/Dashboard";
@@ -15,10 +10,14 @@ import ProjectDetail from "@/pages/ProjectDetail";
 import Clients from "@/pages/Clients";
 import Quotes from "@/pages/Quotes";
 import Schedule from "@/pages/Schedule";
-import Settings from "@/pages/Settings";
+import Profile from "@/pages/Profile";
+import Organization from "@/pages/Organization";
+import AppSettings from "@/pages/AppSettings";
 import AdminPage from "@/pages/Admin";
 import Login from "@/pages/Login";
 import ClientPortal from "@/pages/ClientPortal";
+import Catalog from "@/pages/Catalog";
+import AllQuotes from "@/pages/AllQuotes";
 import NotFound from "@/pages/not-found";
 
 function AppLayout({ children }: { children: React.ReactNode }) {
@@ -80,8 +79,15 @@ function Router() {
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/clients" component={Clients} />
           <Route path="/projects/:projectId/quotes" component={Quotes} />
+          <Route path="/quotes" component={AllQuotes} />
           <Route path="/schedule" component={Schedule} />
-          <Route path="/settings" component={Settings} />
+
+          {/* Settings Routes */}
+          <Route path="/settings" component={AppSettings} />
+          <Route path="/profile" component={Profile} />
+          <Route path="/organization" component={Organization} />
+
+          <Route path="/catalog" component={Catalog} />
           <Route path="/admin" component={AdminPage} />
           <Route component={NotFound} />
         </Switch>
@@ -97,16 +103,9 @@ function App() {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <SidebarProvider style={style as React.CSSProperties}>
-            <Router />
-          </SidebarProvider>
-          <Toaster />
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <SidebarProvider style={style as React.CSSProperties}>
+      <Router />
+    </SidebarProvider>
   );
 }
 

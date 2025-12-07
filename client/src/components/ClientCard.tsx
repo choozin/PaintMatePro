@@ -13,6 +13,8 @@ interface ClientCardProps {
   onClick?: () => void;
 }
 
+import { useTranslation } from "react-i18next";
+
 export function ClientCard({
   id,
   name,
@@ -22,6 +24,7 @@ export function ClientCard({
   projectCount,
   onClick,
 }: ClientCardProps) {
+  const { t } = useTranslation();
   const initials = name
     .split(" ")
     .map((n) => n[0])
@@ -40,7 +43,7 @@ export function ClientCard({
           <div className="flex-1 min-w-0">
             <CardTitle className="text-lg truncate">{name}</CardTitle>
             <p className="text-sm text-muted-foreground">
-              {projectCount} {projectCount === 1 ? "project" : "projects"}
+              {t('clients.project_count', { count: projectCount })}
             </p>
           </div>
         </div>
@@ -67,7 +70,7 @@ export function ClientCard({
               onClick={onClick}
               data-testid={`button-view-client-${id}`}
             >
-              View Details
+              {t('clients.view_details')}
             </Button>
           )}
         </div>

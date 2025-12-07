@@ -2,7 +2,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
 import { useCreateProject, useUpdateProject } from "@/hooks/useProjects";
 import { useClients } from "@/hooks/useClients";
@@ -12,6 +11,8 @@ import type { Project } from "@/lib/firestore";
 import { Plus, Edit } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useDeleteProject } from "@/hooks/useProjects";
+import { ProjectTimeline } from "@/components/ProjectTimeline";
+import { ClientComboSelector } from "./ClientComboSelector";
 
 interface ProjectDialogProps {
   project?: Project & { id: string };
@@ -20,11 +21,12 @@ interface ProjectDialogProps {
   onSuccess?: () => void;
 }
 
+import { useTranslation } from "react-i18next";
+
 export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: ProjectDialogProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [clientId, setClientId] = useState("");
-  const [status, setStatus] = useState<"pending" | "in-progress" | "completed" | "on-hold">("pending");
   const [location, setLocation] = useState("");
   const [startDate, setStartDate] = useState("");
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
@@ -34,12 +36,14 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
   const { toast } = useToast();
+  const { t } = useTranslation();
+
+  // ... (useEffect and handleSubmit remain the same)
 
   useEffect(() => {
     if (project && mode === "edit") {
       setName(project.name);
       setClientId(project.clientId);
-      setStatus(project.status);
       setLocation(project.location);
       setStartDate(project.startDate ? new Date(project.startDate.seconds * 1000).toISOString().split('T')[0] : "");
       setEstimatedCompletion(project.estimatedCompletion ? new Date(project.estimatedCompletion.seconds * 1000).toISOString().split('T')[0] : "");
@@ -52,21 +56,40 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
     if (!name || !clientId || !location || !startDate) {
       toast({
         variant: "destructive",
-        title: "Validation Error",
+        title: t('common.error'),
         description: "Please fill in all required fields",
       });
       return;
+    }
+
+    // Determine status based on start date for new projects
+    // For existing projects, keep current status to avoid accidental resets
+    let statusToSave: Project["status"] = 'lead';
+    if (mode === "create") {
+      const start = new Date(startDate);
+      const now = new Date();
+      // Reset time parts for accurate day comparison if needed, but simplistic is fine
+      statusToSave = start > now ? 'booked' : 'in-progress';
+    } else {
+      statusToSave = project!.status;
     }
 
     try {
       const projectData: any = {
         name,
         clientId,
-        status,
+        status: statusToSave,
         location,
         startDate: Timestamp.fromDate(new Date(startDate)),
+        timeline: mode === "create" ? [{
+          id: 'init-1',
+          type: statusToSave === 'booked' ? 'scheduled' : 'started', // Use appropriate initial event
+          label: statusToSave === 'booked' ? 'Project Scheduled' : 'Project Started',
+          date: Timestamp.now(),
+          notes: 'Project created manually'
+        }] : project?.timeline || [],
       };
-      
+
       if (estimatedCompletion && estimatedCompletion.trim() !== '') {
         projectData.estimatedCompletion = Timestamp.fromDate(new Date(estimatedCompletion));
       }
@@ -74,13 +97,13 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
       if (mode === "edit" && project) {
         await updateProject.mutateAsync({ id: project.id, data: projectData });
         toast({
-          title: "Project Updated",
+          title: t('common.success'),
           description: "Project has been successfully updated",
         });
       } else {
         await createProject.mutateAsync(projectData);
         toast({
-          title: "Project Created",
+          title: t('common.success'),
           description: "Project has been successfully created",
         });
       }
@@ -91,7 +114,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Error",
+        title: t('common.error'),
         description: error.message || "Failed to save project",
       });
     }
@@ -101,14 +124,12 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
     if (mode === "create") {
       setName("");
       setClientId("");
-      setStatus("pending");
       setLocation("");
       setStartDate("");
       setEstimatedCompletion("");
     } else if (project) {
       setName(project.name);
       setClientId(project.clientId);
-      setStatus(project.status);
       setLocation(project.location);
       setStartDate(project.startDate ? new Date(project.startDate.seconds * 1000).toISOString().split('T')[0] : "");
       setEstimatedCompletion(project.estimatedCompletion ? new Date(project.estimatedCompletion.seconds * 1000).toISOString().split('T')[0] : "");
@@ -125,7 +146,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
   const defaultTrigger = mode === "create" ? (
     <Button data-testid="button-add-project">
       <Plus className="h-4 w-4 mr-2" />
-      Add Project
+      {t('projects.create_new')}
     </Button>
   ) : (
     <Button variant="ghost" size="sm" data-testid={`button-edit-project-${project?.id}`}>
@@ -138,16 +159,16 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
       <DialogTrigger asChild>
         {trigger || defaultTrigger}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{mode === "create" ? "Add New Project" : "Edit Project"}</DialogTitle>
+          <DialogTitle>{mode === "create" ? t('projects.dialog.add_title') : t('projects.dialog.edit_title')}</DialogTitle>
           <DialogDescription>
-            {mode === "create" ? "Create a new painting project" : "Update project details"}
+            {mode === "create" ? t('projects.dialog.add_description') : t('projects.dialog.edit_description')}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Project Name *</Label>
+            <Label htmlFor="name">{t('projects.dialog.name')} *</Label>
             <Input
               id="name"
               value={name}
@@ -159,23 +180,16 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="client">Client *</Label>
-            <Select value={clientId} onValueChange={setClientId} required>
-              <SelectTrigger data-testid="select-project-client">
-                <SelectValue placeholder="Select a client" />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map((client) => (
-                  <SelectItem key={client.id} value={client.id}>
-                    {client.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="client">{t('projects.dialog.client')} *</Label>
+            <ClientComboSelector
+              clients={clients as any}
+              value={clientId}
+              onChange={setClientId}
+            />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="location">Location *</Label>
+            <Label htmlFor="location">{t('projects.dialog.location')} *</Label>
             <Input
               id="location"
               value={location}
@@ -186,24 +200,9 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="status">Status</Label>
-            <Select value={status} onValueChange={(v: any) => setStatus(v)}>
-              <SelectTrigger data-testid="select-project-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="in-progress">In Progress</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="on-hold">On Hold</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="startDate">Start Date *</Label>
+              <Label htmlFor="startDate">{t('projects.dialog.start_date')} *</Label>
               <Input
                 id="startDate"
                 type="date"
@@ -215,7 +214,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="estimatedCompletion">Est. Completion</Label>
+              <Label htmlFor="estimatedCompletion">{t('projects.dialog.est_completion')}</Label>
               <Input
                 id="estimatedCompletion"
                 type="date"
@@ -231,25 +230,24 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" data-testid="button-delete-project">
-                    Delete
+                    {t('common.delete')}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogTitle>{t('projects.dialog.delete_title')}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete your project
-                      and remove its data from our servers.
+                      {t('projects.dialog.delete_description')}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={async () => {
                         try {
                           await deleteProject.mutateAsync(project.id);
                           toast({
-                            title: "Project Deleted",
+                            title: t('common.success'),
                             description: "Project has been successfully deleted",
                           });
                           setOpen(false);
@@ -257,7 +255,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
                         } catch (error: any) {
                           toast({
                             variant: "destructive",
-                            title: "Error",
+                            title: t('common.error'),
                             description: error.message || "Failed to delete project",
                           });
                         }
@@ -265,7 +263,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       disabled={deleteProject.isPending}
                     >
-                      {deleteProject.isPending ? "Deleting..." : "Continue"}
+                      {deleteProject.isPending ? "Deleting..." : t('projects.dialog.delete_confirm')}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -277,7 +275,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
               onClick={() => handleOpenChange(false)}
               data-testid="button-cancel-project"
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               type="submit"
@@ -287,8 +285,8 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess }: 
               {createProject.isPending || updateProject.isPending
                 ? "Saving..."
                 : mode === "create"
-                ? "Create Project"
-                : "Update Project"}
+                  ? t('projects.dialog.create_button')
+                  : t('projects.dialog.update_button')}
             </Button>
           </div>
         </form>

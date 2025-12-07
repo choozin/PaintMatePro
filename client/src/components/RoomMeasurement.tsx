@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Room } from "@/lib/firestore";
 import { isIOS } from "@/lib/deviceDetection";
 import { ARRoomScanner, type ARScanData, type ARMode } from "./ARRoomScanner";
+import { useEntitlements } from "@/hooks/useEntitlements";
 
 const ALL_AR_MODES: ARMode[] = ['hit-test', 'plane-detection', 'pose-based'];
 
@@ -59,6 +60,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
   const updateRoom = useUpdateRoom();
   const deleteRoom = useDeleteRoom();
   const { toast } = useToast();
+  const { entitlements, hasFeature } = useEntitlements();
 
   const [localRooms, setLocalRooms] = useState<LocalRoom[]>([]);
   const [showARScanner, setShowARScanner] = useState(false);
@@ -179,38 +181,40 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
 
   return (
     <>
-      {showARScanner && <ARRoomScanner projectId={projectId} onClose={handleARClose} roundingPreference={roundingPreference} modeToTry={ALL_AR_MODES[arAttemptIndex]} />}
+      {showARScanner && <ARRoomScanner onClose={handleARClose} roundingPreference={roundingPreference} modeToTry={ALL_AR_MODES[arAttemptIndex]} />}
       {showFallbackPrompt && <FallbackPrompt onTryNext={handleTryNextMode} onManual={setFinalArFailure} nextMode={ALL_AR_MODES[arAttemptIndex + 1]} error={arError} />}
 
       <div className="space-y-6">
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Camera-Assisted Measurement</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
-              <Label className="text-sm font-semibold">Measurement Precision</Label>
-              <Select value={roundingPreference} onValueChange={(value: any) => setRoundingPreference(value)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="precise">Precise (0.1 ft)</SelectItem>
-                  <SelectItem value="2inch">2 Inches</SelectItem>
-                  <SelectItem value="6inch">6 Inches</SelectItem>
-                  <SelectItem value="1foot">1 Foot</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-3">
-              <Button onClick={handleScanButtonClick} disabled={isIOSDevice || isArDiscouraged} size="lg" variant={isArDiscouraged ? "outline" : "default"} className="w-full">
-                {isArDiscouraged ? <AlertCircle className="h-5 w-5 mr-2" /> : <CameraIcon className="h-5 w-5 mr-2" />}
-                {isArDiscouraged ? "AR Not Supported on Device" : "Scan Room with Camera"}
-              </Button>
-              {(isIOSDevice || isArDiscouraged) && (
-                <p className="text-sm text-muted-foreground text-center">
-                  {isIOSDevice ? "iOS support coming soon." : "Please use manual entry."}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        {hasFeature('capture.ar') && (
+          <Card>
+            <CardHeader><CardTitle className="text-lg">Camera-Assisted Measurement</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+                <Label className="text-sm font-semibold">Measurement Precision</Label>
+                <Select value={roundingPreference} onValueChange={(value: any) => setRoundingPreference(value)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="precise">Precise (0.1 ft)</SelectItem>
+                    <SelectItem value="2inch">2 Inches</SelectItem>
+                    <SelectItem value="6inch">6 Inches</SelectItem>
+                    <SelectItem value="1foot">1 Foot</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-3">
+                <Button onClick={handleScanButtonClick} disabled={isIOSDevice || isArDiscouraged} size="lg" variant={isArDiscouraged ? "outline" : "default"} className="w-full">
+                  {isArDiscouraged ? <AlertCircle className="h-5 w-5 mr-2" /> : <CameraIcon className="h-5 w-5 mr-2" />}
+                  {isArDiscouraged ? "AR Not Supported on Device" : "Scan Room with Camera"}
+                </Button>
+                {(isIOSDevice || isArDiscouraged) && (
+                  <p className="text-sm text-muted-foreground text-center">
+                    {isIOSDevice ? "iOS support coming soon." : "Please use manual entry."}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div ref={manualEntryRef} className="flex items-center justify-between gap-4 scroll-mt-4">
           <div className="flex items-center gap-2"><Ruler className="h-5 w-5" /><h2 className="text-2xl font-semibold">Manual Entry</h2></div>
@@ -243,7 +247,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
                     <div className="flex flex-wrap gap-3">
                       <Badge variant="secondary" className="font-mono">Floor: {floorArea.toFixed(0)} ft²</Badge>
                       <Badge variant="secondary" className="font-mono">Walls: {wallArea.toFixed(0)} ft²</Badge>
-                      <Badge variant="outline" className="font-mono">Paint: ~{paintGallons} gal</Badge>
+
                     </div>
                   </CardContent>
                 </Card>
@@ -260,7 +264,7 @@ export function RoomMeasurement({ projectId }: RoomMeasurementProps) {
                 <div><p className="text-sm text-muted-foreground">Total Floor Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).floorArea, 0).toFixed(0)} ft²</p></div>
                 <div><p className="text-sm text-muted-foreground">Total Wall Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).wallArea, 0).toFixed(0)} ft²</p></div>
                 <div><p className="text-sm text-muted-foreground">Total Paintable Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).totalArea, 0).toFixed(0)} ft²</p></div>
-                <div><p className="text-sm text-muted-foreground">Est. Paint Needed</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculatePaintNeeded(calculateArea(r).wallArea), 0)} gal</p></div>
+                <div><p className="text-sm text-muted-foreground">Est. Paint Needed</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + Math.ceil(calculateArea(r).wallArea / 350), 0)} gal <span className="text-xs font-normal text-muted-foreground">(1 coat)</span></p></div>
               </div>
             </CardContent>
           </Card>

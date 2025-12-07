@@ -21,8 +21,7 @@ export function useFirestoreCollection<T>(
   enabled: boolean = true, // Allow overriding enabled state
   fetchAll: boolean = false // New parameter
 ) {
-  const { claims } = useAuth();
-  const orgId = claims?.orgIds?.[0];
+  const { currentOrgId: orgId } = useAuth();
 
   return useQuery({
     queryKey: queryKey,
@@ -34,8 +33,8 @@ export function useFirestoreCollection<T>(
       }
 
       // If a custom queryFn is provided, use it
-      if (queryFn) return queryFn(orgId);
-      
+      if (queryFn) return queryFn(orgId || undefined);
+
       // Default to fetching by orgId
       if (!orgId) throw new Error('No organization selected');
       if (!operations.getByOrg) throw new Error(`getByOrg not implemented for ${collectionName}`);
@@ -69,8 +68,7 @@ export function useCreateFirestoreDocument<T>(
   queryKeysToInvalidate: (string | null | undefined)[] = [] // New parameter
 ) {
   const queryClient = useQueryClient();
-  const { claims } = useAuth();
-  const orgId = claims?.orgIds?.[0];
+  const { currentOrgId: orgId } = useAuth();
 
   return useMutation({
     mutationFn: async (data: Omit<T, 'createdAt' | 'updatedAt' | 'orgId'>) => {
@@ -97,8 +95,7 @@ export function useUpdateFirestoreDocument<T>(
   queryKeysToInvalidate: (string | null | undefined)[] = [] // New parameter
 ) {
   const queryClient = useQueryClient();
-  const { claims } = useAuth();
-  const orgId = claims?.orgIds?.[0];
+  const { currentOrgId: orgId } = useAuth();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<T> }) => {
@@ -124,8 +121,7 @@ export function useDeleteFirestoreDocument<T>( // Add <T> here
   queryKeysToInvalidate: (string | null | undefined)[] = [] // New parameter
 ) {
   const queryClient = useQueryClient();
-  const { claims } = useAuth();
-  const orgId = claims?.orgIds?.[0];
+  const { currentOrgId: orgId } = useAuth();
 
   return useMutation({
     mutationFn: (id: string) => {

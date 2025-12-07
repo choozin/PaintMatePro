@@ -1,0 +1,187 @@
+{
+    "app": {
+        "name": "PaintPro"
+    },
+    "auth": {
+        "login": "Iniciar Sesión",
+        "login_description": "Inicia sesión para administrar tu negocio de pintura",
+        "email": "Correo Electrónico",
+        "password": "Contraseña",
+        "forgot_password": "¿Olvidaste tu contraseña?",
+        "signing_in": "Iniciando sesión...",
+        "sign_in_button": "Iniciar Sesión",
+        "reset_password": "Restablecer Contraseña",
+        "reset_description": "Ingresa tu correo electrónico y te enviaremos un enlace para restablecer tu contraseña.",
+        "send_reset": "Enviar Correo",
+        "sending": "Enviando..."
+    },
+    "nav": {
+        "dashboard": "Tablero",
+        "projects": "Proyectos",
+        "clients": "Clientes",
+        "quotes": "Presupuestos",
+        "invoices": "Facturas",
+        "schedule": "Calendario",
+        "team": "Equipo",
+        "reports": "Reportes",
+        "settings": "Configuración",
+        "admin": "Administración",
+        "logout": "Cerrar Sesión"
+    },
+    "common": {
+        "loading": "Cargando...",
+        "error": "Error",
+        "success": "Éxito",
+        "cancel": "Cancelar",
+        "save": "Guardar",
+        "delete": "Eliminar",
+        "edit": "Editar",
+        "back": "Atrás",
+        "next": "Siguiente",
+        "search": "Buscar..."
+    },
+    "dashboard": {
+        "welcome": "¡Bienvenido de nuevo, {{name}}!",
+        "welcome_fallback": "¡Bienvenido!",
+        "overview": "Aquí está el resumen de tu negocio.",
+        "total_revenue": "Ingresos Totales",
+        "active_projects": "Proyectos Activos",
+        "total_clients": "Clientes Totales",
+        "completed_jobs": "Trabajos Completados",
+        "recent_projects": "Proyectos Recientes",
+        "no_projects": "Aún no hay proyectos. ¡Crea tu primer proyecto para comenzar!",
+        "loading_projects": "Cargando proyectos..."
+    },
+    "projects": {
+        "title": "Proyectos",
+        "subtitle": "Administra todos tus proyectos de pintura.",
+        "search_placeholder": "Buscar proyectos...",
+        "no_results": "Ningún proyecto coincide con tu búsqueda.",
+        "create_new": "Nuevo Proyecto",
+        "status": {
+            "pending": "Pendiente",
+            "in_progress": "En Progreso",
+            "completed": "Completado",
+            "on_hold": "En Espera"
+        },
+        "view_details": "Ver Detalles",
+        "dialog": {
+            "add_title": "Agregar Nuevo Proyecto",
+            "edit_title": "Editar Proyecto",
+            "add_description": "Crear un nuevo proyecto de pintura",
+            "edit_description": "Actualizar detalles del proyecto",
+            "name": "Nombre del Proyecto",
+            "client": "Cliente",
+            "location": "Ubicación",
+            "status": "Estado",
+            "start_date": "Fecha de Inicio",
+            "est_completion": "Est. Finalización",
+            "delete_title": "¿Estás absolutamente seguro?",
+            "delete_description": "Esta acción no se puede deshacer. Esto eliminará permanentemente tu proyecto y sus datos de nuestros servidores.",
+            "delete_confirm": "Continuar",
+            "create_button": "Crear Proyecto",
+            "update_button": "Actualizar Proyecto"
+        }
+    },
+    "clients": {
+        "title": "Clientes",
+        "subtitle": "Administra tus relaciones con los clientes.",
+        "search_placeholder": "Buscar clientes...",
+        "no_results": "Ningún cliente coincide con tu búsqueda.",
+        "no_clients": "Aún no hay clientes. ¡Agrega tu primer cliente para comenzar!",
+        "create_new": "Agregar Cliente",
+        "project_count_one": "{{count}} proyecto",
+        "project_count_other": "{{count}} proyectos",
+        "view_details": "Ver Detalles",
+        "dialog": {
+            "add_title": "Agregar Nuevo Cliente",
+            "edit_title": "Editar Cliente",
+            "add_description": "Agrega un nuevo cliente a tu sistema",
+            "edit_description": "Actualizar detalles del cliente",
+            "name": "Nombre Completo",
+            "email": "Correo Electrónico",
+            "phone": "Teléfono",
+            "address": "Dirección",
+            "create_button": "Crear Cliente",
+            "update_button": "Actualizar Cliente"
+        }
+    },
+    "quotes": {
+        "title": "Presupuestos",
+        "subtitle": "Crea y administra presupuestos de proyectos.",
+        "tabs": {
+            "measurements": "Mediciones",
+            "builder": "Generador de Presupuestos"
+        }
+    },
+    "project_details": {
+        "loading": "Cargando proyecto...",
+        "not_found": "Proyecto no encontrado",
+        "back_to_projects": "Volver a Proyectos",
+        "subtitle": "Administra detalles del proyecto, mediciones de habitaciones y presupuestos",
+        "info_card": {
+            "title": "Información del Proyecto",
+            "client": "Cliente",
+            "location": "Ubicación",
+            "start_date": "Fecha de Inicio"
+        },
+        "tabs": {
+            "rooms": "Mediciones de Habitaciones",
+            "quotes": "Presupuestos"
+        }
+    },
+    "settings": {
+        "title": "Configuración de la Aplicación",
+        "subtitle": "Administra tu organización, perfil y usuarios.",
+        "profile": {
+            "title": "Mi Perfil",
+            "description": "Administra tu información personal y contraseña.",
+            "display_name": "Nombre para mostrar",
+            "email": "Correo Electrónico",
+            "save": "Guardar",
+            "saving": "Guardando...",
+            "send_reset": "Enviar Correo de Restablecimiento",
+            "sending_reset": "Enviando...",
+            "success_update": "Perfil Actualizado",
+            "success_update_desc": "Tu nombre para mostrar ha sido actualizado exitosamente.",
+            "success_reset": "Correo de Restablecimiento Enviado",
+            "success_reset_desc": "Por favor revisa tu bandeja de entrada para las instrucciones."
+        },
+        "users": {
+            "title": "Gestión de Usuarios",
+            "description": "Administra usuarios dentro de tu organización.",
+            "role": "Rol",
+            "select_role": "Seleccionar Rol",
+            "delete_user": "Eliminar",
+            "delete_title": "¿Estás absolutamente seguro?",
+            "delete_description": "Esta acción no se puede deshacer. Esto eliminará permanentemente la cuenta de usuario y todos los datos asociados.",
+            "delete_confirm": "Continuar",
+            "success_delete": "Usuario Eliminado",
+            "success_delete_desc": "El usuario ha sido eliminado exitosamente."
+        }
+    },
+    "admin_page": {
+        "title": "Administración de la Aplicación",
+        "subtitle": "Administra todas las organizaciones y configuraciones de la aplicación.",
+        "orgs": {
+            "title": "Organizaciones",
+            "description": "Ver y administrar derechos para todas las organizaciones.",
+            "no_orgs": "No se encontraron organizaciones.",
+            "plan": "Plan",
+            "users": "Usuarios",
+            "manage": "Administrar"
+        },
+        "access_denied": {
+            "title": "Acceso Denegado",
+            "description": "No tienes permiso para acceder a esta página."
+        }
+    },
+    "supplies": {
+        "title": "Lista de Suministros",
+        "paint_calculator": "Calculadora de Pintura",
+        "total_area": "Área Total de Pared",
+        "gallons_needed": "Galones Necesarios",
+        "coverage_note": "Basado en una cobertura de 350 pies cuadrados/galón",
+        "additional_items": "Artículos Adicionales"
+    }
+}

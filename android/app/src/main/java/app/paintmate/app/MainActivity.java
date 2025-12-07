@@ -10,6 +10,12 @@ import com.getcapacitor.BridgeWebViewClient;
 
 public class MainActivity extends BridgeActivity {
   @Override
+  public void onCreate(android.os.Bundle savedInstanceState) {
+    registerPlugin(app.paintmate.app.plugins.ARMeasurementPlugin.class);
+    super.onCreate(savedInstanceState);
+  }
+
+  @Override
   public void onStart() {
       super.onStart();
       WebView webView = getBridge().getWebView();

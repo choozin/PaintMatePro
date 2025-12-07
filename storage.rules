@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /orgs/{orgId}/{allPaths=**} {
+      // Allow read access to everyone (for logos on quotes)
+      allow read: if true;
+      
+      // Allow write access only to authenticated users who belong to the org
+      // Note: In a real production app, you'd want to check custom claims or Firestore
+      // to verify the user is an admin/owner of this specific orgId.
+      // For now, we'll allow any authenticated user to upload, 
+      // relying on the app logic to only upload to their own org path.
+      allow write: if request.auth != null;
+    }
+  }
+}

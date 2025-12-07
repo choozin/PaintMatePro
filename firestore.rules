@@ -15,52 +15,85 @@ service cloud.firestore {
 
     // Users can be read by anyone in the same org
     match /users/{userId} {
-      allow read: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
-      // User creation is handled by backend functions.
-      // Users can update their own data.
-      allow update: if request.auth != null && request.auth.uid == userId;
-      // Only owners/admins can delete users (via a cloud function, not direct client access)
-      allow delete: if false;
-      allow create: if false;
+      allow read: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+      );
+      allow create: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && request.resource.data.orgId in request.auth.token.orgIds)
+      );
+      allow update: if request.auth != null && (
+        request.auth.uid == userId ||
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+      );
+      allow delete: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+      );
     }
 
     // Orgs can be read by their members
     match /orgs/{orgId} {
       allow list: if request.auth != null && hasRole('owner');
       allow read: if request.auth != null && orgId in request.auth.token.orgIds;
-      // Only owners can update org settings
-      allow update: if request.auth != null && orgId in request.auth.token.orgIds && hasRole('owner');
-      allow create, delete: if false;
+      // Only owners and admins can update org settings
+      allow update: if request.auth != null && orgId in request.auth.token.orgIds && (hasRole('owner') || hasRole('admin'));
+      allow create: if request.auth != null;
+      allow delete: if false;
+
+      // Catalog items can be read by org members, written by owners/admins
+      match /catalogItems/{itemId} {
+        allow read: if request.auth != null && orgId in request.auth.token.orgIds;
+        allow write: if request.auth != null && orgId in request.auth.token.orgIds && (hasRole('owner') || hasRole('admin'));
+      }
     }
     
     // Entitlements can be read by org members
     match /entitlements/{orgId} {
-      allow read: if request.auth != null && orgId in request.auth.token.orgIds;
-      // Only owners can update entitlements
-      allow update: if request.auth != null && orgId in request.auth.token.orgIds && hasRole('owner');
-      allow create, delete: if false; // Managed by backend/console
+      allow read: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && orgId in request.auth.token.orgIds)
+      );
+      allow update: if request.auth != null && (
+        hasRole('owner') || hasRole('admin') ||
+        (request.auth.token.orgIds != null && orgId in request.auth.token.orgIds && hasRole('owner'))
+      );
+      allow create: if request.auth != null;
+      allow delete: if false;
     }
 
     // Projects can be managed by members of the same org
     match /projects/{projectId} {
-      allow read, write: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow read: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow create: if request.auth != null && request.resource.data.orgId in request.auth.token.orgIds;
+      allow update, delete: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
     }
 
     // Clients can be managed by members of the same org
     match /clients/{clientId} {
-      allow read, write: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow read: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow create: if request.auth != null && request.resource.data.orgId in request.auth.token.orgIds;
+      allow update, delete: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
     }
 
     // Rooms can be managed by members of the same org
     match /rooms/{roomId} {
-      allow read, write: if request.auth != null &&
-                          get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId
-                          in request.auth.token.orgIds;
+      allow read: if request.auth != null &&
+                  get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId
+                  in request.auth.token.orgIds;
+      allow create: if request.auth != null && request.resource.data.orgId in request.auth.token.orgIds;
+      allow update, delete: if request.auth != null &&
+                            get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId
+                            in request.auth.token.orgIds;
     }
 
     // Quotes can be managed by members of the same org
     match /quotes/{quoteId} {
-      allow read, write: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow read: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow create: if request.auth != null && request.resource.data.orgId in request.auth.token.orgIds;
+      allow update, delete: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
     }
 
     // Portal tokens are for backend use
