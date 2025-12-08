@@ -74,13 +74,16 @@ export interface Org {
   };
 }
 
+import { OrgRole } from '@/lib/permissions';
+
 export interface Employee {
   id: string;
   orgId: string;
   name: string;
-  role: string;
+  role: OrgRole | string; // Relaxed for legacy compatibility but prefers OrgRole
   email?: string;
   phone?: string;
+  hourlyRate?: number; // For Payroll
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -373,6 +376,32 @@ export interface PortalToken {
   createdAt?: Timestamp;
 }
 
+export interface TimeEntry {
+  id: string;
+  orgId: string;
+  projectId: string;
+  crewId?: string;
+  employeeId: string;
+  date: Timestamp; // Noon-normalized date for grouping
+
+  // Time & Pay Details
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+  breakDurationMinutes?: number;
+  totalHours: number;
+
+  workType: 'regular' | 'overtime' | 'double_time' | 'travel';
+  notes?: string;
+
+  // Approval Workflow
+  status: 'draft' | 'submitted' | 'approved' | 'processed';
+  approvedBy?: string;
+  approvedAt?: Timestamp;
+
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 // Generic collection helpers
 function getCollection<T = DocumentData>(collectionName: string): CollectionReference<T> {
   return collection(db, collectionName) as CollectionReference<T>;
@@ -456,6 +485,28 @@ export async function createDoc<T>(
 }
 
 /**
+ * Create a new document with a specific ID
+ */
+export async function createDocWithId<T>(
+  collectionName: string,
+  id: string,
+  data: Partial<T>
+): Promise<string> {
+  try {
+    const docRef = doc(db, collectionName, id);
+    await setDoc(docRef, {
+      ...data,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+    return id;
+  } catch (error) {
+    console.error(`Error creating document in ${collectionName}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Update an existing document
  */
 export async function updateDocument<T>(
@@ -508,8 +559,15 @@ export const crewOperations = {
 
 export const employeeOperations = {
   getByOrg: (orgId: string) => getOrgDocs<Employee>('employees', orgId),
+  getByEmail: (email: string) => getDocs<Employee>('employees', [where('email', '==', email)]),
   get: (id: string) => getDocById<Employee>('employees', id),
-  create: (data: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>) => createDoc('employees', data),
+  create: (data: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => {
+    if (data.id) {
+      // If ID provided (e.g. for Owner linked to Auth ID), use setDoc
+      return createDocWithId('employees', data.id, { ...data, id: undefined });
+    }
+    return createDoc('employees', data);
+  },
   update: (id: string, data: Partial<Employee>) => updateDocument('employees', id, data),
   delete: (id: string) => deleteDocument('employees', id),
 };
@@ -573,4 +631,35 @@ export const portalTokenOperations = {
     return tokens[0] || null;
   },
   create: (data: Omit<PortalToken, 'createdAt'>) => createDoc('portalTokens', data),
+};
+
+export interface User {
+  email: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  orgIds?: string[];
+  globalRole?: string; // e.g. 'platform_admin'
+  roles?: Record<string, string>; // orgId -> role mapping
+  // Other profile info
+}
+
+export const userOperations = {
+  getAll: () => getDocs<User>('users'),
+  get: (uid: string) => getDocById<User>('users', uid),
+  update: (uid: string, data: Partial<User>) => updateDocument('users', uid, data),
+  set: (uid: string, data: User) => createDocWithId('users', uid, data),
+};
+
+export const timeEntryOperations = {
+  getByOrg: (orgId: string) => getOrgDocs<TimeEntry>('time_entries', orgId, [orderBy('date', 'desc')]),
+  getByEmployee: (employeeId: string, startDate: Date, endDate: Date) =>
+    getDocs<TimeEntry>('time_entries', [
+      where('employeeId', '==', employeeId),
+      where('date', '>=', Timestamp.fromDate(startDate)),
+      where('date', '<=', Timestamp.fromDate(endDate))
+    ]),
+  getByProject: (projectId: string) => getDocs<TimeEntry>('time_entries', [where('projectId', '==', projectId)]),
+  create: (data: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => createDoc('time_entries', data),
+  update: (id: string, data: Partial<TimeEntry>) => updateDocument('time_entries', id, data),
+  delete: (id: string) => deleteDocument('time_entries', id),
 };

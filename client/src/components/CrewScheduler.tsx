@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useProjects } from "@/hooks/useProjects";
 import { Timestamp } from "firebase/firestore";
 import { useLocation } from "wouter";
-import { cn } from "@/lib/utils";
+import { cn, getContrastColor } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { crewOperations } from "@/lib/firestore";
 import { useAuth } from "@/contexts/AuthContext";
@@ -568,9 +568,24 @@ export function CrewScheduler() {
                           {/* Always visible at the start of the ribbon segment (each row) */}
                           {/* Standardized padding: pl-1.5 to match the event label's left-1.5 */}
                           <div className="absolute inset-0 flex items-end px-0 py-1 pointer-events-none">
-                            <span className="text-xs font-bold truncate leading-tight drop-shadow-sm text-foreground/90 pl-1.5">
-                              {item.project.name}
-                            </span>
+                            <div className="flex items-center gap-1.5 pl-1.5 overflow-hidden">
+                              {item.project.assignedCrewId && (() => {
+                                const crew = crews.find(c => c.id === item.project.assignedCrewId);
+                                if (crew) {
+                                  return (
+                                    <div
+                                      className="w-2 h-2 rounded-full shrink-0 shadow-sm"
+                                      style={{ backgroundColor: crew.color || '#94a3b8' }}
+                                      title={`Assigned to ${crew.name}`}
+                                    />
+                                  );
+                                }
+                                return null;
+                              })()}
+                              <span className="text-xs font-bold truncate leading-tight drop-shadow-sm text-foreground/90">
+                                {item.project.name}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       );

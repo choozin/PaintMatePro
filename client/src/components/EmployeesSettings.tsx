@@ -15,6 +15,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Edit2, User, MoreHorizontal, Mail, Phone, Briefcase } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -25,9 +26,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { OrgRole, canHaveRole, normalizeRole } from '@/lib/permissions';
+
+const ALL_ROLES: OrgRole[] = [
+    'org_owner',
+    'org_admin',
+    'manager',
+    'estimator',
+    'foreman',
+    'painter',
+    'subcontractor'
+];
 
 export function EmployeesSettings() {
-    const { org: currentOrg, loading: authLoading } = useAuth();
+    const { org: currentOrg, loading: authLoading, currentOrgRole, user } = useAuth();
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -35,7 +47,7 @@ export function EmployeesSettings() {
 
     // Form State
     const [name, setName] = useState('');
-    const [role, setRole] = useState('');
+    const [role, setRole] = useState<string>('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
 
@@ -46,6 +58,13 @@ export function EmployeesSettings() {
     });
 
     const isLoading = authLoading || queryLoading;
+
+    // Filter roles based on permissions
+    const availableRoles = ALL_ROLES.filter(r =>
+        canHaveRole(currentOrgRole as OrgRole, r)
+    );
+
+    const canEditRole = !editingEmployee || (editingEmployee.email !== user?.email);
 
     const createMutation = useMutation({
         mutationFn: (data: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>) => employeeOperations.create(data),
@@ -86,7 +105,7 @@ export function EmployeesSettings() {
     const handleEdit = (employee: Employee) => {
         setEditingEmployee(employee);
         setName(employee.name);
-        setRole(employee.role);
+        setRole(normalizeRole(employee.role) as string);
         setEmail(employee.email || '');
         setPhone(employee.phone || '');
         setIsDialogOpen(true);
@@ -94,17 +113,8 @@ export function EmployeesSettings() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("Submitting employee form with:", { name, role, email, phone, orgId: currentOrg?.id });
 
-        if (!currentOrg) {
-            console.error("No organization found in context");
-            toast({
-                variant: "destructive",
-                title: "Error",
-                description: "Organization context is missing. Please try refreshing the page.",
-            });
-            return;
-        }
+        if (!currentOrg) return;
 
         const employeeData = {
             orgId: currentOrg.id,
@@ -125,7 +135,7 @@ export function EmployeesSettings() {
             toast({
                 variant: "destructive",
                 title: "Error",
-                description: "Failed to save employee. See console for details.",
+                description: "Failed to save employee.",
             });
         }
     };
@@ -146,48 +156,67 @@ export function EmployeesSettings() {
                     <CardTitle>Employees</CardTitle>
                     <CardDescription>Manage your staff members.</CardDescription>
                 </div>
-                <Dialog open={isDialogOpen} onOpenChange={(open) => {
-                    setIsDialogOpen(open);
-                    if (!open) resetForm();
-                }}>
-                    <DialogTrigger asChild>
-                        <Button onClick={resetForm} disabled={!currentOrg || isLoading}><Plus className="h-4 w-4 mr-2" /> Add Employee</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>{editingEmployee ? 'Edit Employee' : 'Add New Employee'}</DialogTitle>
-                            <DialogDescription>Enter employee details.</DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Full Name</Label>
-                                <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. John Doe" required />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Role / Title</Label>
-                                <Input value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Painter, Foreman" required />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                {/* Only users who can assign at least one role can add employees (roughly) */}
+                {availableRoles.length > 0 && (
+                    <Dialog open={isDialogOpen} onOpenChange={(open) => {
+                        setIsDialogOpen(open);
+                        if (!open) resetForm();
+                    }}>
+                        <DialogTrigger asChild>
+                            <Button onClick={resetForm} disabled={!currentOrg || isLoading}><Plus className="h-4 w-4 mr-2" /> Add Employee</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>{editingEmployee ? 'Edit Employee' : 'Add New Employee'}</DialogTitle>
+                                <DialogDescription>Enter employee details.</DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleSubmit} className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label>Email (Optional)</Label>
-                                    <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="john@example.com" />
+                                    <Label>Full Name</Label>
+                                    <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. John Doe" required />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Phone (Optional)</Label>
-                                    <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" />
-                                </div>
-                            </div>
 
-                            <DialogFooter>
-                                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                                    {editingEmployee ? 'Save Changes' : 'Add Employee'}
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                                <div className="space-y-2">
+                                    <Label>Role</Label>
+                                    <Select
+                                        value={role}
+                                        onValueChange={setRole}
+                                        disabled={!canEditRole}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a role" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {availableRoles.map(r => (
+                                                <SelectItem key={r} value={r}>
+                                                    {r.replace('org_', '').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {!canEditRole && <p className="text-xs text-muted-foreground">You cannot change your own role.</p>}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Email (Optional)</Label>
+                                        <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="john@example.com" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Phone (Optional)</Label>
+                                        <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" />
+                                    </div>
+                                </div>
+
+                                <DialogFooter>
+                                    <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                                        {editingEmployee ? 'Save Changes' : 'Add Employee'}
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                )}
             </CardHeader>
             <CardContent>
                 {isLoading ? (
@@ -209,8 +238,12 @@ export function EmployeesSettings() {
                                     </Avatar>
                                     <div>
                                         <h3 className="font-semibold">{employee.name}</h3>
-                                        <div className="flex items-center text-sm text-muted-foreground gap-3">
-                                            <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" /> {employee.role}</span>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <Badge variant="outline" className="capitalize">
+                                                {normalizeRole(employee.role).toString().replace('org_', '').replace('_', ' ')}
+                                            </Badge>
+                                        </div>
+                                        <div className="flex items-center text-sm text-muted-foreground gap-3 mt-1">
                                             {employee.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {employee.email}</span>}
                                             {employee.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {employee.phone}</span>}
                                         </div>

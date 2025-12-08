@@ -3,132 +3,120 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if a user has a specific role
-    function hasRole(role) {
-      return request.auth.token.role == role;
-    }
-    
-    // Helper function to check if a user has one of several roles
-    function hasOneOfRoles(roles) {
-      return request.auth.token.role in roles;
+    // --- HELPER FUNCTIONS ---
+
+    // Check if user is an Owner (checks Firestore 'users' doc directly)
+    function isOrgOwner(orgId) {
+       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+       return userDoc.data.roles[orgId] == 'org_owner' || userDoc.data.roles[orgId] == 'owner';
     }
 
-    // Users can be read by anyone in the same org
+    // Check if user is a Member of the Org (checks Firestore 'users' doc directly)
+    function isOrgMember(orgId) {
+       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+       return orgId in userDoc.data.orgIds;
+    }
+
+    // Check if user is a Platform Admin (checks Firestore 'users' doc directly)
+    function isPlatformAdmin() {
+       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+       return userDoc.data.globalRole == 'platform_owner' || userDoc.data.globalRole == 'platform_admin';
+    }
+
+    // --- RULES ---
+
+    // Users: Allow reading/writing own profile
     match /users/{userId} {
-      allow read: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+      allow read, update: if request.auth != null && (
+        request.auth.uid == userId || isPlatformAdmin()
       );
-      allow create: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && request.resource.data.orgId in request.auth.token.orgIds)
-      );
-      allow update: if request.auth != null && (
-        request.auth.uid == userId ||
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
-      );
-      allow delete: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
-      );
+      // Allow creation if it matches auth UID (Critical for registration)
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && isPlatformAdmin();
     }
 
-    // Orgs can be read by their members
+    // Orgs
     match /orgs/{orgId} {
-      allow list: if request.auth != null && hasRole('owner');
-      allow read: if request.auth != null && orgId in request.auth.token.orgIds;
-      // Only owners and admins can update org settings
-      allow update: if request.auth != null && orgId in request.auth.token.orgIds && (hasRole('owner') || hasRole('admin'));
-      allow create: if request.auth != null;
+      allow list: if request.auth != null && isPlatformAdmin();
+      // Allow read if member
+      allow read: if request.auth != null && (isOrgMember(orgId) || isPlatformAdmin());
+      // Allow update if Owner or Admin
+      allow update: if request.auth != null && (isOrgOwner(orgId) || isPlatformAdmin());
+      // Allow create by anyone (Authentication required)
+      allow create: if request.auth != null; 
       allow delete: if false;
 
-      // Catalog items can be read by org members, written by owners/admins
       match /catalogItems/{itemId} {
-        allow read: if request.auth != null && orgId in request.auth.token.orgIds;
-        allow write: if request.auth != null && orgId in request.auth.token.orgIds && (hasRole('owner') || hasRole('admin'));
+        allow read: if request.auth != null && (isOrgMember(orgId) || isPlatformAdmin());
+        allow write: if request.auth != null && (isOrgOwner(orgId) || isPlatformAdmin());
       }
     }
     
-    // Entitlements can be read by org members
+    // Entitlements
     match /entitlements/{orgId} {
-      allow read: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && orgId in request.auth.token.orgIds)
-      );
-      allow update: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && orgId in request.auth.token.orgIds && hasRole('owner'))
-      );
-      allow create: if request.auth != null;
+      allow read: if request.auth != null && (isOrgMember(orgId) || isPlatformAdmin());
+      allow update: if request.auth != null && (isOrgOwner(orgId) || isPlatformAdmin());
+      allow create: if request.auth != null; 
       allow delete: if false;
     }
 
-    // Projects can be managed by members of the same org
+    // Projects
     match /projects/{projectId} {
-      allow read: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
-      allow create: if request.auth != null && request.resource.data.orgId in request.auth.token.orgIds;
-      allow update, delete: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow read: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+      allow create: if request.auth != null && (isOrgMember(request.resource.data.orgId) || isPlatformAdmin());
+      allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
     }
 
-    // Clients can be managed by members of the same org
+    // Clients
     match /clients/{clientId} {
-      allow read: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
-      allow create: if request.auth != null && request.resource.data.orgId in request.auth.token.orgIds;
-      allow update, delete: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow read: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+      allow create: if request.auth != null && (isOrgMember(request.resource.data.orgId) || isPlatformAdmin());
+      allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
     }
 
-    // Rooms can be managed by members of the same org
+    // Rooms (Nested lookup required)
     match /rooms/{roomId} {
+       // Note: complex nested gets can be expensive, but necessary here
       allow read: if request.auth != null &&
-                  get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId
-                  in request.auth.token.orgIds;
-      allow create: if request.auth != null && request.resource.data.orgId in request.auth.token.orgIds;
+                  isOrgMember(get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId);
+      allow create: if request.auth != null && isOrgMember(request.resource.data.orgId);
       allow update, delete: if request.auth != null &&
-                            get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId
-                            in request.auth.token.orgIds;
+                            isOrgMember(get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId);
     }
 
-    // Quotes can be managed by members of the same org
+    // Quotes
     match /quotes/{quoteId} {
-      allow read: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
-      allow create: if request.auth != null && request.resource.data.orgId in request.auth.token.orgIds;
-      allow update, delete: if request.auth != null && resource.data.orgId in request.auth.token.orgIds;
+      allow read: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+      allow create: if request.auth != null && (isOrgMember(request.resource.data.orgId) || isPlatformAdmin());
+      allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
     }
 
-    // Employees can be managed by members of the same org
+    // Employees
     match /employees/{employeeId} {
       allow read: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+        request.auth.uid == employeeId ||
+        isOrgMember(resource.data.orgId) || 
+        isPlatformAdmin()
       );
+      // Critical: Allow self-creation matching UID
       allow create: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && request.resource.data.orgId in request.auth.token.orgIds)
+        request.auth.uid == employeeId || 
+        (isOrgOwner(request.resource.data.orgId)) || 
+        isPlatformAdmin()
       );
       allow update, delete: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
+        (isOrgOwner(resource.data.orgId)) || 
+        isPlatformAdmin()
       );
     }
 
-    // Crews can be managed by members of the same org
+    // Crews
     match /crews/{crewId} {
-      allow read: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
-      );
-      allow create: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && request.resource.data.orgId in request.auth.token.orgIds)
-      );
-      allow update, delete: if request.auth != null && (
-        hasRole('owner') || hasRole('admin') ||
-        (request.auth.token.orgIds != null && resource.data.orgId in request.auth.token.orgIds)
-      );
+      allow read: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+      allow create: if request.auth != null && (isOrgOwner(request.resource.data.orgId) || isPlatformAdmin());
+      allow update, delete: if request.auth != null && (isOrgOwner(resource.data.orgId) || isPlatformAdmin());
     }
 
-    // Portal tokens are for backend use
     match /portalTokens/{tokenId} {
       allow read, write: if false;
     }

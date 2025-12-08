@@ -19,6 +19,8 @@ import ClientPortal from "@/pages/ClientPortal";
 import Catalog from "@/pages/Catalog";
 import AllQuotes from "@/pages/AllQuotes";
 import NotFound from "@/pages/not-found";
+import TimeTracking from "@/pages/TimeTracking";
+import Payroll from "@/pages/Payroll";
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -40,24 +42,20 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 import { PublicLayout } from "@/components/PublicLayout";
+import { OrgSelection } from "@/components/OrgSelection";
 import { OrgSetup } from "@/components/OrgSetup";
 import { useAuth } from "@/contexts/AuthContext";
 
 function Router() {
-  const { user, claims, loading } = useAuth();
+  const { user, claims, loading, currentOrgId } = useAuth();
   const [location] = useLocation();
   const isPublicRoute = location === "/login" || location.startsWith("/portal");
 
   if (loading) {
-    // You might want to show a global loading spinner here
     return null;
   }
 
-  // If user is logged in but has no orgs, show the setup screen
-  if (user && claims && claims.orgIds.length === 0) {
-    return <OrgSetup onOrgIdSet={() => window.location.reload()} />;
-  }
-
+  // 1. Public Route Logic: Allow access to login/portal regardless of auth state
   if (isPublicRoute) {
     return (
       <PublicLayout>
@@ -68,6 +66,21 @@ function Router() {
         </Switch>
       </PublicLayout>
     );
+  }
+
+  // 2. Global Admin Logic: Always show OrgSelection if no current org is active (or if we force switch)
+  if (user && claims?.globalRole && (claims.globalRole === 'platform_owner' || claims.globalRole === 'platform_admin') && !currentOrgId) {
+    return <OrgSelection />;
+  }
+
+  // 3. Multi-Org User Logic: If >1 orgs and no selection -> Org Selection
+  if (user && claims && claims.orgIds.length > 1 && !currentOrgId) {
+    return <OrgSelection />;
+  }
+
+  // 4. Fallback/Legacy Logic: If 0 orgs and NOT an admin -> Org Setup/Error
+  if (user && claims && claims.orgIds.length === 0 && !claims.globalRole) {
+    return <OrgSetup onOrgIdSet={() => window.location.reload()} />;
   }
 
   return (
@@ -81,6 +94,8 @@ function Router() {
           <Route path="/projects/:projectId/quotes" component={Quotes} />
           <Route path="/quotes" component={AllQuotes} />
           <Route path="/schedule" component={Schedule} />
+          <Route path="/time-tracking" component={TimeTracking} />
+          <Route path="/payroll" component={Payroll} />
 
           {/* Settings Routes */}
           <Route path="/settings" component={AppSettings} />

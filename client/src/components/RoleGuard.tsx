@@ -1,30 +1,41 @@
 import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { OrgRole, GlobalRole, Permission, hasPermission } from '@/lib/permissions';
 
 interface RoleGuardProps {
-  allowedRoles: string[];
+  allowedRoles?: (OrgRole | GlobalRole | string)[];
+  permission?: Permission;
   children: React.ReactNode;
   fallback?: React.ReactNode;
-  scope?: 'global' | 'org'; // New prop to specify role scope
+  scope?: 'global' | 'org';
 }
 
-export function RoleGuard({ allowedRoles, children, fallback = null, scope = 'org' }: RoleGuardProps) {
+export function RoleGuard({ allowedRoles, permission, children, fallback = null, scope = 'org' }: RoleGuardProps) {
   const { claims, currentOrgRole, loading } = useAuth();
 
   if (loading) {
-    // You might want to show a loading spinner here
-    return null;
+    return null; // Or spinner
   }
 
-  let userRole: string | null = null;
-  if (scope === 'global') {
-    userRole = claims?.role || null;
-  } else { // scope === 'org'
-    userRole = currentOrgRole;
+  // 1. Permission Check (Preferred)
+  if (permission && scope === 'org') {
+    if (hasPermission(currentOrgRole as OrgRole, permission)) {
+      return <>{children}</>;
+    }
   }
 
-  if (userRole && allowedRoles.includes(userRole)) {
-    return <>{children}</>;
+  // 2. Role Check (Legacy/Specific)
+  if (allowedRoles) {
+    let userRole: string | null = null;
+    if (scope === 'global') {
+      userRole = claims?.role || null;
+    } else { // scope === 'org'
+      userRole = currentOrgRole;
+    }
+
+    if (userRole && allowedRoles.includes(userRole)) {
+      return <>{children}</>;
+    }
   }
 
   return <>{fallback}</>;

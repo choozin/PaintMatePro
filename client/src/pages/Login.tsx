@@ -27,22 +27,38 @@ export default function Login() {
   const [isResetLoading, setIsResetLoading] = useState(false);
 
   const [, setLocation] = useLocation();
-  const { signIn, sendPasswordReset } = useAuth();
+  const { signIn, register, sendPasswordReset } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [orgName, setOrgName] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      await signIn(email, password);
-      setLocation('/');
+      if (isLogin) {
+        await signIn(email, password);
+        setLocation('/');
+      } else {
+        if (password !== confirmPassword) {
+          throw new Error("Passwords do not match");
+        }
+        await register(email, password, orgName);
+        toast({
+          title: "Account Created",
+          description: "You have successfully registered. You are now logged in.",
+        });
+        setLocation('/');
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: t('common.error'),
-        description: error.message || "Invalid email or password",
+        description: error.message || "Authentication failed",
       });
     } finally {
       setIsLoading(false);
@@ -81,11 +97,11 @@ export default function Login() {
         <CardHeader className="space-y-2">
           <CardTitle className="text-3xl font-bold text-center">{t('app.name')}</CardTitle>
           <CardDescription className="text-center">
-            {t('auth.login_description')}
+            {isLogin ? t('auth.login_description') : "Create a new account to get started"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email">{t('auth.email')}</Label>
               <Input
@@ -105,46 +121,91 @@ export default function Login() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
                 data-testid="input-password"
               />
-              <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" className="px-0 text-sm font-normal justify-start">
-                    {t('auth.forgot_password')}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>{t('auth.reset_password')}</DialogTitle>
-                    <DialogDescription>
-                      {t('auth.reset_description')}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handlePasswordReset} className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="resetEmail">{t('auth.email')}</Label>
-                      <Input
-                        id="resetEmail"
-                        type="email"
-                        placeholder="you@company.com"
-                        value={resetEmail}
-                        onChange={(e) => setResetEmail(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit" disabled={isResetLoading}>
-                        {isResetLoading ? t('auth.sending') : t('auth.send_reset')}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
+              {!isLogin && (
+                <div className="space-y-4 mt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="orgName">Organization Name</Label>
+                    <Input
+                      id="orgName"
+                      type="text"
+                      placeholder="My Painting Co."
+                      value={orgName}
+                      onChange={(e) => setOrgName(e.target.value)}
+                      required
+                    />
+                    <p className="text-[10px] text-muted-foreground">This will create a new organization where you are the owner.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm Password</Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+              {isLogin && (
+                <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" className="px-0 text-sm font-normal justify-start">
+                      {t('auth.forgot_password')}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                      <DialogTitle>{t('auth.reset_password')}</DialogTitle>
+                      <DialogDescription>
+                        {t('auth.reset_description')}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handlePasswordReset} className="grid gap-4 py-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="resetEmail">{t('auth.email')}</Label>
+                        <Input
+                          id="resetEmail"
+                          type="email"
+                          placeholder="you@company.com"
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <DialogFooter>
+                        <Button type="submit" disabled={isResetLoading}>
+                          {isResetLoading ? t('auth.sending') : t('auth.send_reset')}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={isLoading} data-testid="button-login">
-              {isLoading ? t('auth.signing_in') : t('auth.sign_in_button')}
+              {isLoading ? (isLogin ? t('auth.signing_in') : "Creating Account...") : (isLogin ? t('auth.sign_in_button') : "Create Account")}
             </Button>
+
+            <div className="text-center text-sm">
+              <span className="text-muted-foreground">
+                {isLogin ? "Don't have an account? " : "Already have an account? "}
+              </span>
+              <Button
+                variant="ghost"
+                className="p-0 h-auto font-semibold underline"
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setPassword("");
+                  setConfirmPassword("");
+                }}
+                type="button"
+              >
+                {isLogin ? "Register" : "Sign In"}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

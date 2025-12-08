@@ -9,7 +9,9 @@ import {
   Shield,
   User,
   Building2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Clock,
+  DollarSign
 } from "lucide-react";
 import {
   Sidebar,
@@ -28,13 +30,24 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
+import { Permission, hasPermission, OrgRole } from '@/lib/permissions';
+
+interface MenuItem {
+  title: string;
+  url: string;
+  icon: any;
+  testId: string;
+  requiredPermission?: Permission;
+  globalAdminOnly?: boolean;
+}
+
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
-  const { user, claims, currentOrgRole, signOut } = useAuth();
+  const { user, claims, currentOrgRole, signOut, org } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
   const { t } = useTranslation();
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     {
       title: t('nav.dashboard'),
       url: "/",
@@ -71,6 +84,19 @@ export function AppSidebar() {
       icon: FolderKanban,
       testId: "catalog"
     },
+    {
+      title: "Time & Pay",
+      url: "/time-tracking",
+      icon: Clock,
+      testId: "time-tracking"
+    },
+    {
+      title: "Payroll",
+      url: "/payroll",
+      icon: DollarSign,
+      testId: "payroll",
+      requiredPermission: 'view_payroll'
+    }
   ];
 
   const handleLogout = async () => {
@@ -89,8 +115,7 @@ export function AppSidebar() {
     }
   }
 
-  const canManageOrg = currentOrgRole === 'owner' || currentOrgRole === 'admin';
-  const isGlobalAdmin = claims?.role === 'owner' || claims?.role === 'admin';
+  const isGlobalAdmin = claims?.role === 'owner' || claims?.role === 'admin' || claims?.role === 'platform_owner';
 
   return (
     <Sidebar>
@@ -101,20 +126,29 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location === item.url}
-                    data-testid={`link-${item.testId}`}
-                  >
-                    <a href={item.url} onClick={(e) => { e.preventDefault(); handleNav(item.url); }}>
-                      <item.icon className="h-5 w-5" />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {menuItems.map((item) => {
+                // Permission Check
+                if (item.requiredPermission && !hasPermission(currentOrgRole as OrgRole, item.requiredPermission)) {
+                  return null;
+                }
+                // Global Admin Check
+                if (item.globalAdminOnly && !isGlobalAdmin) return null;
+
+                return (
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === item.url}
+                      data-testid={`link-${item.testId}`}
+                    >
+                      <a href={item.url} onClick={(e) => { e.preventDefault(); handleNav(item.url); }}>
+                        <item.icon className="h-5 w-5" />
+                        <span>{item.title}</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -124,8 +158,21 @@ export function AppSidebar() {
           <p className="font-semibold text-sm">{user?.displayName || 'User'}</p>
           <p className="text-xs text-muted-foreground">{user?.email}</p>
           <div className="text-xs text-muted-foreground pt-2">
-            <p>Global Role: <span className="font-medium text-foreground">{claims?.role || 'N/A'}</span></p>
-            <p>Org Role: <span className="font-medium text-foreground">{currentOrgRole || 'N/A'}</span></p>
+            <div className="flex justify-between items-center">
+              <p>Org: <span className="font-medium text-foreground">{org?.name || (claims?.orgIds?.length === 1 ? 'Current' : 'Selected')}</span></p>
+              {(isGlobalAdmin || (claims?.orgIds && claims.orgIds.length > 1)) && (
+                <button
+                  className="text-primary hover:underline cursor-pointer"
+                  onClick={() => {
+                    localStorage.removeItem('fallbackOrgId');
+                    window.location.reload();
+                  }}
+                >
+                  Switch
+                </button>
+              )}
+            </div>
+            <p>Role: <span className="font-medium text-foreground capitalize">{isGlobalAdmin ? 'App Owner' : (currentOrgRole?.replace('_', ' ') || 'N/A')}</span></p>
           </div>
         </div>
 
@@ -153,12 +200,12 @@ export function AppSidebar() {
           </SidebarMenuItem>
 
           {/* Organization Settings (Conditional) */}
-          {canManageOrg && (
+          {hasPermission(currentOrgRole as OrgRole, 'manage_org') && (
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={location === '/organization'} data-testid="link-org-settings">
                 <a href="/organization" onClick={(e) => { e.preventDefault(); handleNav('/organization'); }}>
                   <Building2 className="h-5 w-5" />
-                  <span>{t('nav.organization')}</span>
+                  <span>{org?.name || t('nav.organization')}</span>
                 </a>
               </SidebarMenuButton>
             </SidebarMenuItem>

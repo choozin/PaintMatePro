@@ -50,11 +50,13 @@ export function OrgSetup({ onOrgIdSet }: { onOrgIdSet: () => void }) {
             </Button>
 
             <div className="text-sm text-muted-foreground border-t pt-4">
-              <p className="font-semibold mb-2">For permanent setup:</p>
-              <p>Set Firebase custom claims using Firebase Admin SDK:</p>
-              <code className="block bg-muted p-2 rounded mt-2 text-xs">
-                admin.auth().setCustomUserClaims(uid, {'{'}orgIds: ['your-org-id'], role: 'owner'{'}'})
-              </code>
+              <Button
+                variant="ghost"
+                className="w-full text-red-500 hover:text-red-600 hover:bg-red-50"
+                onClick={() => import('@/lib/firebaseAuth').then(m => m.signOut().then(() => window.location.reload()))}
+              >
+                Sign Out / Try Different Account
+              </Button>
             </div>
           </form>
         </CardContent>

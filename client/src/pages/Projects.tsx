@@ -16,9 +16,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { ArrowUpDown, Filter } from "lucide-react";
 
-function ProjectCardWithClient({ project }: { project: Project & { id: string } }) {
+import { Crew } from "@/lib/firestore";
+
+function ProjectCardWithClient({ project, crews }: { project: Project & { id: string }, crews: Crew[] }) {
   const [, setLocation] = useLocation();
   const { data: client } = useClient(project.clientId);
+
+  const assignedCrew = project.assignedCrewId ? crews.find(c => c.id === project.assignedCrewId) : undefined;
+  const showCrew = ['booked', 'in-progress'].includes(project.status) && assignedCrew;
 
   return (
     <ProjectCard
@@ -31,6 +36,7 @@ function ProjectCardWithClient({ project }: { project: Project & { id: string } 
       startDate={formatDate(project.startDate)}
       estimatedCompletion={project.estimatedCompletion ? formatDate(project.estimatedCompletion) : undefined}
       onClick={() => setLocation(`/projects/${project.id}`)}
+      crewName={showCrew ? assignedCrew?.name : undefined}
     />
   );
 }
@@ -183,7 +189,7 @@ export default function Projects() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProjects.map((project) => (
-            <ProjectCardWithClient key={project.id} project={project} />
+            <ProjectCardWithClient key={project.id} project={project} crews={crews} />
           ))}
         </div>
       )}

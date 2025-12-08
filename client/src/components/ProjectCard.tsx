@@ -18,18 +18,18 @@ interface ProjectCardProps {
   onClick?: () => void;
 }
 
-const statusColors: Record<string, string> = {
-  lead: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  quoted: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-  booked: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
-  "in-progress": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  paused: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  resumed: "bg-blue-200 text-blue-900 dark:bg-blue-800/40 dark:text-blue-300",
-  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  invoiced: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  paid: "bg-green-300 text-green-900 dark:bg-green-800/40 dark:text-green-300",
-  "on-hold": "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
-  pending: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+const statusConfig: Record<string, { color: string; label: string }> = {
+  lead: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Lead" },
+  quoted: { color: "bg-purple-100 text-purple-700 border-purple-200", label: "Quoted" },
+  booked: { color: "bg-sky-100 text-sky-700 border-sky-200", label: "Booked" },
+  "in-progress": { color: "bg-emerald-100 text-emerald-700 border-emerald-200", label: "In Progress" },
+  paused: { color: "bg-orange-100 text-orange-700 border-orange-200", label: "Paused" },
+  resumed: { color: "bg-blue-100 text-blue-700 border-blue-200", label: "Resumed" },
+  completed: { color: "bg-teal-100 text-teal-700 border-teal-200", label: "Completed" },
+  invoiced: { color: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Invoiced" },
+  paid: { color: "bg-green-100 text-green-800 border-green-200", label: "Paid" },
+  "on-hold": { color: "bg-rose-100 text-rose-700 border-rose-200", label: "On Hold" },
+  pending: { color: "bg-gray-100 text-gray-700 border-gray-200", label: "Pending" },
 };
 
 import { useTranslation } from "react-i18next";
@@ -44,50 +44,92 @@ export function ProjectCard({
   startDate,
   estimatedCompletion,
   onClick,
-}: ProjectCardProps) {
+  crewName,
+}: ProjectCardProps & { crewName?: string }) {
   const { t } = useTranslation();
   const displayStatus = getDerivedStatus(timeline, status, !!startDate);
 
+  const statusStyle = statusConfig[displayStatus] || statusConfig.pending;
+
+  // Derive an accent color border based on status for the left edge
+  // Derive an accent color border based on status for the left edge
+  const accentBorderColor =
+    displayStatus === 'completed' || displayStatus === 'paid' ? 'border-l-teal-500' :
+      displayStatus === 'booked' ? 'border-l-sky-500' :
+        displayStatus === 'in-progress' ? 'border-l-emerald-500' :
+          displayStatus === 'quoted' ? 'border-l-purple-500' :
+            displayStatus === 'lead' ? 'border-l-slate-400' :
+              'border-l-transparent';
+
   return (
-    <Card className="hover-elevate" data-testid={`card-project-${id}`}>
-      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-4">
-        <div className="flex-1 min-w-0">
-          <CardTitle className="text-xl font-semibold truncate">{name}</CardTitle>
-          <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-            <User className="h-4 w-4" />
-            <span className="truncate">{clientName}</span>
+    <Card
+      className={`group relative overflow-hidden transition-all duration-300 border border-border/50 hover:border-primary/20 hover:shadow-lg hover:-translate-y-1 ${accentBorderColor} border-l-4 ${onClick ? 'cursor-pointer' : ''}`}
+      data-testid={`card-project-${id}`}
+      onClick={onClick}
+    >
+      <CardContent className="p-5 space-y-4">
+
+        {/* Header Section */}
+        <div className="flex justify-between items-start gap-4">
+          <div className="space-y-1 min-w-0 flex-1">
+            <h3 className="font-bold text-lg leading-tight tracking-tight text-foreground truncate group-hover:text-primary transition-colors">
+              {name}
+            </h3>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground/80">
+              <User className="h-3.5 w-3.5" />
+              <span className="truncate font-medium">{clientName}</span>
+            </div>
           </div>
+          <Badge
+            variant="outline"
+            className={`${statusStyle.color} px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider shrink-0 border`}
+          >
+            {t(`projects.status.${displayStatus}`, { defaultValue: statusStyle.label })}
+          </Badge>
         </div>
-        <Badge className={`${statusColors[displayStatus] || statusColors.pending} shrink-0`} data-testid={`badge-status-${id}`}>
-          {t(`projects.status.${displayStatus}`, { defaultValue: displayStatus.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) })}
-        </Badge>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm">
-            <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-muted-foreground truncate">{location}</span>
+
+        {/* Divider */}
+        <div className="w-full h-px bg-border/40" />
+
+        {/* Details Grid */}
+        {/* Details Vertical Stack */}
+        <div className="flex flex-col gap-2.5 text-sm">
+          {/* Location */}
+          <div className="flex items-start gap-3 text-muted-foreground">
+            <div className="p-1.5 rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mt-0.5 shrink-0">
+              <MapPin className="h-3.5 w-3.5 group-hover:text-primary transition-colors" />
+            </div>
+            <span className="leading-tight py-0.5">{location || "No Location"}</span>
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-muted-foreground">
+
+          {/* Date */}
+          <div className="flex items-start gap-3 text-muted-foreground">
+            <div className="p-1.5 rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mt-0.5 shrink-0">
+              <Calendar className="h-3.5 w-3.5 group-hover:text-primary transition-colors" />
+            </div>
+            <span className="leading-tight py-0.5">
               {startDate}
-              {estimatedCompletion && ` - ${estimatedCompletion}`}
+              {estimatedCompletion ? ` - ${estimatedCompletion}` : ''}
             </span>
           </div>
-          {onClick && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full mt-4"
-              onClick={onClick}
-              data-testid={`button-view-project-${id}`}
-            >
-              {t('projects.view_details')}
-            </Button>
+
+          {/* Crew (Conditional) */}
+          {crewName && (
+            <div className="flex items-center gap-3 text-foreground/90 mt-1">
+              <div className="p-1.5 rounded-full bg-indigo-50 text-indigo-600 shrink-0">
+                <User className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Assigned Crew</span>
+                <span className="font-medium text-sm leading-none">{crewName}</span>
+              </div>
+            </div>
           )}
         </div>
       </CardContent>
+
+      {/* Hover Reveal Action */}
+      <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
     </Card>
   );
 }

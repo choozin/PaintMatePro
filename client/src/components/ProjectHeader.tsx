@@ -11,8 +11,9 @@ import {
 import { ProjectTimelineSheet } from "@/components/ProjectTimelineSheet";
 import { ProjectDialog } from "@/components/ProjectDialog";
 import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/utils";
+import { cn, getContrastColor } from "@/lib/utils";
 import { format } from "date-fns";
+import { CrewManagementDialog } from "@/components/CrewManagementDialog";
 
 interface ProjectHeaderProps {
     project: Project & { id: string };
@@ -25,24 +26,35 @@ interface ProjectHeaderProps {
 
 import { getDerivedStatus } from "@/lib/project-status";
 
+import { useQuery } from "@tanstack/react-query";
+import { crewOperations } from "@/lib/firestore";
+
 export function ProjectHeader({ project, clientName, clientPhone, clientMobilePhone, clientEmail, className }: ProjectHeaderProps) {
     const [, setLocation] = useLocation();
     const { t } = useTranslation();
 
     const displayStatus = getDerivedStatus(project.timeline, project.status, !!project.startDate);
 
+    // Fetch Assigned Crew
+    const { data: assignedCrew } = useQuery({
+        queryKey: ['crew', project.assignedCrewId],
+        queryFn: () => crewOperations.get(project.assignedCrewId!),
+        enabled: !!project.assignedCrewId
+    });
+
     // Status Logic
     const statusColors: Record<string, string> = {
-        lead: "bg-blue-100 text-blue-800 border-blue-200",
-        quoted: "bg-purple-100 text-purple-800 border-purple-200",
-        booked: "bg-indigo-100 text-indigo-800 border-indigo-200",
-        "in-progress": "bg-blue-100 text-blue-600 border-blue-200",
-        paused: "bg-orange-100 text-orange-800 border-orange-200",
-        completed: "bg-green-100 text-green-600 border-green-200",
+        lead: "bg-slate-100 text-slate-700 border-slate-200",
+        quoted: "bg-purple-100 text-purple-700 border-purple-200",
+        booked: "bg-sky-100 text-sky-700 border-sky-200",
+        "in-progress": "bg-emerald-100 text-emerald-700 border-emerald-200",
+        paused: "bg-orange-100 text-orange-700 border-orange-200",
+        resumed: "bg-blue-100 text-blue-700 border-blue-200",
+        completed: "bg-teal-100 text-teal-700 border-teal-200",
         invoiced: "bg-yellow-100 text-yellow-800 border-yellow-200",
-        paid: "bg-green-300 text-green-900 border-green-400",
-        "on-hold": "bg-gray-100 text-gray-800 border-gray-200",
-        pending: "bg-gray-100 text-gray-800 border-gray-200",
+        paid: "bg-green-100 text-green-800 border-green-200",
+        "on-hold": "bg-rose-100 text-rose-700 border-rose-200",
+        pending: "bg-gray-100 text-gray-700 border-gray-200",
     };
 
     const handleCall = () => {
@@ -156,9 +168,23 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
                             onSuccess={() => setLocation("/projects")}
                             trigger={
                                 <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse font-semibold">
-                                    <User className="h-4 w-4 mr-2" />
                                     Assign Crew
                                 </Button>
+                            }
+                        />
+                    )}
+                    {assignedCrew && (
+                        <CrewManagementDialog
+                            project={project}
+                            currentCrew={assignedCrew}
+                            trigger={
+                                <div
+                                    className="flex items-center gap-2 px-3 py-1 bg-background rounded-md border text-sm cursor-pointer hover:opacity-80 transition-opacity"
+                                    style={assignedCrew.color ? { backgroundColor: assignedCrew.color, borderColor: assignedCrew.color } : undefined}
+                                >
+                                    <User className={cn("h-4 w-4", assignedCrew.color ? (getContrastColor(assignedCrew.color) === 'white' ? "text-white" : "text-black") : "text-muted-foreground")} />
+                                    <span className={cn("font-medium", assignedCrew.color ? (getContrastColor(assignedCrew.color) === 'white' ? "text-white" : "text-black") : "text-foreground")}>{assignedCrew.name}</span>
+                                </div>
                             }
                         />
                     )}

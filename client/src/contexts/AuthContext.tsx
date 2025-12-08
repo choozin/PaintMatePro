@@ -7,26 +7,32 @@ import {
   signOut as authSignOut,
   sendPasswordReset as authSendPasswordReset,
   updateUserProfile as authUpdateUserProfile,
-  getUserClaims as getAuthClaims
+  getUserClaims as getAuthClaims,
+  registerUser as authRegisterUser
 } from '@/lib/firebaseAuth';
 import { getDocById } from '@/lib/firestore';
 import type { Org, Entitlement, OrgWithId } from '@/lib/firestore';
 
+import { OrgRole, normalizeRole, GlobalRole } from '@/lib/permissions';
+
 // Define the full context type
 export interface UserClaims {
   orgIds: string[];
-  role: 'owner' | 'admin' | 'member';
+  role: OrgRole | string;
+  globalRole?: string;
+  rolesMap?: Record<string, string>;
 }
 
 interface AuthContextType {
   user: User | null;
   claims: UserClaims | null;
   currentOrgId: string | null;
-  currentOrgRole: 'owner' | 'admin' | 'member' | null;
+  currentOrgRole: OrgRole | string | null;
   org: OrgWithId | null;
   entitlements: Entitlement | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, orgName?: string) => Promise<void>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   updateUserProfile: (profile: { displayName?: string }) => Promise<void>;
@@ -42,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [claims, setClaims] = useState<UserClaims | null>(null);
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
-  const [currentOrgRole, setCurrentOrgRole] = useState<'owner' | 'admin' | 'member' | null>(null);
+  const [currentOrgRole, setCurrentOrgRole] = useState<OrgRole | string | null>(null);
   const [org, setOrg] = useState<OrgWithId | null>(null);
   const [entitlements, setEntitlements] = useState<Entitlement | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,6 +71,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, currentOrgId]);
 
+  // Update currentOrgRole when org changes or claims update
+  useEffect(() => {
+    if (claims && currentOrgId) {
+      // Priority 1: Check rolesMap from DB
+      if (claims.rolesMap && claims.rolesMap[currentOrgId]) {
+        const role = claims.rolesMap[currentOrgId];
+        setCurrentOrgRole(normalizeRole(role));
+        return;
+      }
+      // Priority 2: Check if global admin
+      if (claims.globalRole === 'platform_owner') {
+        setCurrentOrgRole('org_owner');
+        return;
+      }
+      // Priority 3: Fallback to token role
+      setCurrentOrgRole(normalizeRole(claims.role as string));
+    } else {
+      setCurrentOrgRole(null);
+    }
+  }, [user, currentOrgId, claims]);
+
   useEffect(() => {
     loadOrgData();
   }, [loadOrgData]);
@@ -85,30 +112,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        const globalRole = userClaims.globalRole;
         const parsedClaims: UserClaims = {
           orgIds: userClaims.orgIds || [],
-          role: userClaims.role as UserClaims['role'] || 'member', // Assert type
+          role: userClaims.role as OrgRole || 'painter',
+          globalRole: globalRole,
+          rolesMap: userClaims.rolesMap
         };
         setClaims(parsedClaims);
 
-        let firstOrgId = parsedClaims.orgIds[0] || null;
+        // Determine Initial Org ID
+        let targetOrgId: string | null = null;
+        const savedOrgId = localStorage.getItem('fallbackOrgId');
 
-        // If no orgs in claims, check for a fallback in localStorage
-        if (!firstOrgId) {
-          const fallbackOrgId = localStorage.getItem('fallbackOrgId');
-          if (fallbackOrgId) {
-            console.log(`Using fallback orgId from localStorage: ${fallbackOrgId}`);
-            firstOrgId = fallbackOrgId;
-            // Add fallbackOrgId to orgIds if it's not already there
-            if (!parsedClaims.orgIds.includes(fallbackOrgId)) {
-              parsedClaims.orgIds.push(fallbackOrgId);
-            }
+        if (savedOrgId) {
+          // Priority 1: Explicitly selected org from storage
+          targetOrgId = savedOrgId;
+          console.log(`Using selected orgId: ${targetOrgId}`);
+        } else {
+          // Priority 2: Auto-select only if unambiguous
+          const isGlobalAdmin = globalRole === 'platform_owner' || globalRole === 'platform_admin';
+          const isMultiOrg = parsedClaims.orgIds.length > 1;
+
+          if (!isGlobalAdmin && !isMultiOrg && parsedClaims.orgIds.length === 1) {
+            targetOrgId = parsedClaims.orgIds[0];
           }
+          // If Global Admin or Multi-Org and no saved selection -> Remain null to trigger selection screen
         }
 
-        setCurrentOrgId(firstOrgId);
-        // The role is now a single string, not per-org.
-        setCurrentOrgRole(parsedClaims.role);
+        // Add savedOrgId to orgIds if valid and missing (fallback for direct linking)
+        if (savedOrgId && !parsedClaims.orgIds.includes(savedOrgId)) {
+          // For global admins they might select an org not in their token claims
+          // We allow this temporarily so the context can load that org's data
+          parsedClaims.orgIds.push(savedOrgId);
+        }
+
+        setCurrentOrgId(targetOrgId);
         setClaims(parsedClaims); // Update claims again if fallback modified orgIds
 
       } else {
@@ -125,6 +164,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     await authSignIn(email, password);
+  };
+
+  const register = async (email: string, password: string, orgName?: string) => {
+    const cred = await authRegisterUser(email, password, orgName);
+
+    // Force immediate refresh of claims/profile now that DB is fully populated
+    // Force immediate refresh of claims/profile now that DB is fully populated
+    // This fixes the race condition where onAuthStateChanged fired before DB updates
+    const freshClaims = await getAuthClaims(cred.user);
+    setClaims(freshClaims);
+
+    if (freshClaims?.orgIds && freshClaims.orgIds.length > 0) {
+      setCurrentOrgId(freshClaims.orgIds[0]);
+    }
+
+    await loadOrgData();
   };
 
   const signOut = async () => {
@@ -155,6 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     entitlements,
     loading,
     signIn,
+    register,
     signOut,
     sendPasswordReset,
     updateUserProfile,

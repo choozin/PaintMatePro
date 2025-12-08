@@ -9,16 +9,18 @@ import { EmployeesSettings } from '@/components/EmployeesSettings';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'wouter';
+import { hasPermission, OrgRole } from '@/lib/permissions';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Organization() {
     const { t } = useTranslation();
     const [, setLocation] = useLocation();
-    const { currentOrgRole } = useAuth();
+    const { currentOrgRole, org } = useAuth();
 
-    // Redirect if not owner/admin
+    // Redirect if can't manage org
     React.useEffect(() => {
-        if (currentOrgRole && currentOrgRole !== 'owner' && currentOrgRole !== 'admin') {
+        if (!currentOrgRole) return; // Wait for load
+        if (!hasPermission(currentOrgRole as OrgRole, 'manage_org')) {
             setLocation('/dashboard');
         }
     }, [currentOrgRole, setLocation]);
@@ -26,11 +28,11 @@ export default function Organization() {
     return (
         <div className="container mx-auto py-8 space-y-8">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">{t('settings.organization.title')}</h1>
+                <h1 className="text-3xl font-bold tracking-tight">{org?.name || t('settings.organization.title')}</h1>
                 <p className="text-muted-foreground mt-2">{t('settings.organization.description')}</p>
             </div>
 
-            <RoleGuard scope="org" allowedRoles={['owner', 'admin']}>
+            <RoleGuard scope="org" permission="manage_org">
                 <Card className="border-none shadow-none">
                     <CardContent className="px-0">
                         <Tabs defaultValue="branding" className="w-full">
