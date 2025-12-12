@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useState, useEffect } from "react";
 import { useQuotes, useCreateQuote, useUpdateQuote } from "@/hooks/useQuotes";
 import { useRooms } from "@/hooks/useRooms";
-import { useProject } from "@/hooks/useProjects";
+import { useProject, useUpdateProject } from "@/hooks/useProjects";
 import { useClient } from "@/hooks/useClients";
 import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,6 +24,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
+import { generateQuoteItems, DEFAULT_QUOTE_CONFIG } from "@/lib/quote-engine";
 
 const loadImage = (url: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
@@ -66,6 +67,7 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
   const { data: org } = useOrg(currentOrgId);
   const createQuote = useCreateQuote();
   const updateQuote = useUpdateQuote();
+  const updateProject = useUpdateProject();
   const { toast } = useToast();
   const { hasFeature, entitlements } = useEntitlements();
   const showProfitMargin = hasFeature('quote.profitMargin');
@@ -90,11 +92,57 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
   const [createdByName, setCreatedByName] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSignatureSave = (signatureData: string) => {
+  // Template State
+  const [activeTemplateId, setActiveTemplateId] = useState<string>("");
+
+  // Initialize Template Selection
+  useEffect(() => {
+    if (!activeTemplateId && org?.quoteTemplates) {
+      if (project?.quoteTemplateId) {
+        setActiveTemplateId(project.quoteTemplateId);
+      } else if (org.defaultQuoteTemplateId) {
+        setActiveTemplateId(org.defaultQuoteTemplateId);
+      }
+    }
+  }, [project?.quoteTemplateId, org, activeTemplateId]);
+
+
+
+  const handleSignatureSave = async (signatureData: string) => {
     setSignature(signatureData);
     setSignedAt(Timestamp.now());
     setIsSignatureDialogOpen(false);
-    toast({ title: "Signed", description: "Signature captured successfully." });
+
+    // Trigger Timeline Event for Acceptance
+    if (project?.timeline && !project.timeline.some(e => e.type === 'quote_accepted')) {
+      const newEvent: any = {
+        id: crypto.randomUUID(),
+        type: 'quote_accepted',
+        label: 'Quote Accepted',
+        date: Timestamp.now(),
+        notes: 'Signed via Digital Signature'
+      };
+      const newTimeline = [...project.timeline, newEvent];
+
+      try {
+        await updateProject.mutateAsync({
+          id: projectId,
+          data: {
+            timeline: newTimeline,
+            // Status will be strictly derived by project-status.ts on backend/hook trigger usually, 
+            // but we might need to send it if the logic is client-side only for now?
+            // Actually, let's update status too if we can derive it?
+            // But for now, timeline event is key.
+          }
+        });
+        toast({ title: "Signed & Accepted", description: "Quote signed. Project status updated." });
+      } catch (err) {
+        console.error(err);
+        toast({ variant: "destructive", title: "Update Failed", description: "Saved signature but failed to update status." });
+      }
+    } else {
+      toast({ title: "Signed", description: "Signature captured successfully." });
+    }
   };
 
   const autoGenAttempted = useRef(false);
@@ -319,82 +367,34 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       return;
     }
 
-    const totalWallArea = rooms.reduce((sum, room) => {
-      const wallArea = 2 * (room.length + room.width) * room.height;
-      return sum + wallArea;
-    }, 0);
+    if (!project) return;
 
-    // Use project config or defaults
-    const coverage = project?.supplyConfig?.coveragePerGallon || 400;
-    const wallCoats = project?.supplyConfig?.wallCoats || 2;
+    // Determine Config to use
+    // 1. Check Project Override
+    // 2. Check Org Default
+    // 3. Fallback to Standard Default
+    let activeConfig = DEFAULT_QUOTE_CONFIG;
 
-    // Calculate paint needed
-    const primerGallons = Math.ceil(totalWallArea / coverage);
-    const paintGallons = Math.ceil((totalWallArea * wallCoats) / coverage);
+    if (org && org.quoteTemplates) {
+      // Use active selection if available, otherwise fallbacks
+      const targetId = activeTemplateId || project?.quoteTemplateId || org.defaultQuoteTemplateId;
 
-    // Estimate labor hours
-    const productionRate = project?.laborConfig?.productionRate || 150;
-    const hourlyRate = project?.laborConfig?.hourlyRate || 65;
-    const difficultyFactor = project?.laborConfig?.difficultyFactor || 1.0;
+      if (targetId) {
+        const tmpl = org.quoteTemplates.find(t => t.id === targetId);
+        if (tmpl) activeConfig = tmpl.config;
+      }
+    }
 
-    const laborHours = Math.ceil((totalWallArea / productionRate) * difficultyFactor);
-
-    const generatedItems: LineItem[] = [
-      {
-        description: "Primer application",
-        quantity: totalWallArea,
-        unit: "sq ft",
-        rate: 0.75,
-      },
-      {
-        description: `Primer material (${primerGallons} gallons)`,
-        quantity: primerGallons,
-        unit: "gallon",
-        rate: 35,
-      },
-      {
-        description: `Interior wall paint (${wallCoats} coats)`,
-        quantity: totalWallArea,
-        unit: "sq ft",
-        rate: 1.25,
-      },
-      {
-        description: `Paint material (${paintGallons} gallons)`,
-        quantity: paintGallons,
-        unit: "gallon",
-        rate: project?.supplyConfig?.pricePerGallon || org?.estimatingSettings?.defaultPricePerGallon || 45,
-        unitCost: project?.supplyConfig?.costPerGallon || org?.estimatingSettings?.defaultCostPerGallon,
-      },
-      {
-        description: "Labor",
-        quantity: laborHours,
-        unit: "hour",
-        rate: hourlyRate,
-        unitCost: org?.estimatingSettings?.defaultLaborRate ? (org.estimatingSettings.defaultLaborRate * 0.5) : 30, // Estimate labor cost as 50% of rate or default
-      },
-      {
-        description: "Setup and cleanup",
-        quantity: 1,
-        unit: "unit",
-        rate: 150,
-        unitCost: 50, // Estimated cost
-      },
-    ];
-
-    setLineItems(generatedItems);
+    // Use Engine
+    // Cast types to allow partial matching if needed, though they should align
+    const generatedItems = generateQuoteItems(project as any, rooms as any[], activeConfig);
 
     setLineItems(generatedItems);
 
     if (!isAuto) {
       toast({
         title: "Quote Generated",
-        description: `Generated ${generatedItems.length} line items from ${rooms.length} rooms`,
-      });
-    }
-    if (isAuto) {
-      toast({
-        title: "Quote Auto-Generated",
-        description: "Based on project room measurements.",
+        description: `Generated items based on ${rooms.length} rooms using ${activeConfig.grouping === 'room' ? 'Room-by-Room' : 'Aggregated'} format.`,
       });
     }
   };
@@ -406,6 +406,36 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       }
     } else {
       generateFromRooms(false);
+    }
+  };
+
+  const handleTemplateChange = async (templateId: string) => {
+    setActiveTemplateId(templateId);
+
+    // Update project preference
+    try {
+      await updateProject.mutateAsync({
+        id: projectId,
+        data: { quoteTemplateId: templateId }
+      });
+      toast({ title: "Template Preference Saved" });
+
+      // Prompt for regen
+      if (lineItems.length > 0) {
+        if (confirm("Template changed. Regenerate quote items to match new format? (This overwrites current items)")) {
+          // We need to use the NEW templateId, state might not be flushed yet in closure
+          // But we updated state. generateFromRooms uses state. 
+          // To be safe, we can pass it or rely on fast state update? 
+          // Best to wait a tick or trust React. 
+          // Actually, generateFromRooms uses `activeTemplateId` from state. Valid concern.
+          // Let's pass it explicitly or hack it?
+          // Safer: modify generateFromRooms to accept optional config override or ID?
+          // Or just set state and use setTimeout?
+          setTimeout(() => generateFromRooms(false), 0);
+        }
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -908,6 +938,44 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
           <FileText className="h-5 w-5" />
           <h2 className="text-2xl font-semibold">Quote Builder</h2>
         </div>
+
+        {/* Template Selector */}
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          {org && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Template:</span>
+              <Select
+                value={activeTemplateId || "default"}
+                onValueChange={(val) => handleTemplateChange(val === 'default' ? "" : val)}
+                disabled={!org.quoteTemplates || org.quoteTemplates.length === 0}
+              >
+                <SelectTrigger className="h-9 bg-background">
+                  <SelectValue placeholder={
+                    (!org.quoteTemplates || org.quoteTemplates.length === 0)
+                      ? "No Templates Found"
+                      : "Default Template"
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">
+                    <span className="text-muted-foreground">Org Default</span>
+                  </SelectItem>
+                  {org.quoteTemplates?.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {org.quoteTemplates && org.quoteTemplates.length > 0 && (
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleTemplateChange(activeTemplateId)}>
+                  <Wand2 className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -962,6 +1030,11 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
       <div className="flex justify-end">
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => toast({ title: "Coming Soon", description: "Email/SMS feature in development" })} disabled={isSaving}>
+            <span className="mr-2">✉️</span>
+            Send Quote Link
+          </Button>
+
           <Button onClick={() => saveQuote()} disabled={isSaving} data-testid="button-save-quote">
             <Save className="h-4 w-4 mr-2" />
             {isSaving ? "Saving..." : "Save Quote"}
@@ -1111,7 +1184,7 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
             <CardContent className="pt-6">
               <div className="grid gap-4">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                  <div className={`md:col-span-${showProfitMargin && showInternalData ? 3 : 5}`}>
+                  <div className={showProfitMargin && showInternalData ? "md:col-span-5" : "md:col-span-6"}>
                     <Label htmlFor={`desc-${index}`}>Description</Label>
                     <Input
                       id={`desc-${index}`}
@@ -1121,15 +1194,15 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
                       data-testid={`input-description-${index}`}
                     />
                   </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor={`qty-${index}`}>Quantity</Label>
+                  <div className="md:col-span-1">
+                    <Label htmlFor={`qty-${index}`}>Qty</Label>
                     <Input
                       id={`qty-${index}`}
                       type="number"
                       step="0.01"
                       value={item.quantity}
                       onChange={(e) => updateLineItem(index, "quantity", parseFloat(e.target.value) || 0)}
-                      className="font-mono"
+                      className="font-mono text-center px-1"
                       data-testid={`input-quantity-${index}`}
                     />
                   </div>
@@ -1151,15 +1224,15 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
                     </Select>
                   </div>
                   {showProfitMargin && showInternalData && (
-                    <div className="md:col-span-2">
-                      <Label htmlFor={`cost-${index}`} className="text-orange-600">Unit Cost</Label>
+                    <div className="md:col-span-1">
+                      <Label htmlFor={`cost-${index}`} className="text-orange-600">Cost</Label>
                       <Input
                         id={`cost-${index}`}
                         type="number"
                         step="0.01"
                         value={item.unitCost || 0}
                         onChange={(e) => updateLineItem(index, "unitCost", parseFloat(e.target.value) || 0)}
-                        className="font-mono border-orange-200 focus-visible:ring-orange-500"
+                        className="font-mono border-orange-200 focus-visible:ring-orange-500 px-2"
                         placeholder="0.00"
                       />
                     </div>

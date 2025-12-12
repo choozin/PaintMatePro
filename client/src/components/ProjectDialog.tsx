@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "wouter";
 
 interface ProjectDialogProps {
   project?: Project & { id: string };
@@ -34,14 +35,15 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
   const [location, setLocation] = useState("");
   const [startDate, setStartDate] = useState("");
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
-  const [status, setStatus] = useState<ProjectStatus>(project?.status || "lead");
+  const [status, setStatus] = useState<ProjectStatus>(project?.status || "new");
 
   // Pause Logic State
   const [pauseStart, setPauseStart] = useState("");
   const [pauseEnd, setPauseEnd] = useState("");
 
   const { t } = useTranslation();
-  const { currentOrgId, currentOrgRole } = useAuth();
+  const { currentOrgId, currentOrgRole, org } = useAuth();
+  const [, navigate] = useLocation();
 
   // Helper to determine available statuses
   const getAvailableStatuses = () => {
@@ -194,36 +196,31 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name || !clientId || !location || !startDate) {
+    // For existing projects, keep current status
+    // For new projects, ALWAYS start as 'new'
+    const statusToSave: Project["status"] = mode === 'create' ? 'new' : status;
+
+    // Validation: Start Date only required if we are editing an active project manually (though UI prevents status change now)
+    const requiresStartDate = ['booked', 'in-progress', 'completed', 'paused'].includes(statusToSave);
+
+    if (!name || !clientId || !location || (requiresStartDate && !startDate)) {
       toast({
         variant: "destructive",
         title: t('common.error'),
-        description: "Please fill in all required fields",
+        description: requiresStartDate && !startDate
+          ? "Start Date is required for active projects (Booked, In Progress, etc.)"
+          : "Please fill in all required fields",
       });
       return;
     }
 
-    // For existing projects, keep current status to avoid accidental resets
-    // Unless manually changed via the new dropdown
-    let statusToSave: Project["status"] = status;
-
-    // "Quoted" Logic Check: If Quoted + StartDate -> Warn or Auto-switch?
-    // User Requirement: "If accepted & StartDate -> Booked, If accepted & No StartDate -> Pending"
-    // We'll trust the explicit dropdown but apply these defaults if creating new.
-    if (mode === "create" && status === 'lead') {
-      const start = new Date(startDate);
-      const now = new Date();
-      statusToSave = start > now ? 'booked' : 'in-progress';
-    } else if (status === 'quoted' && startDate) {
-      // If user manually chose Quoted but provided a date, we leave it (maybe they are tentative).
-      // But if they chose "Pending" and added a date, it should probably be Booked.
-      // We'll trust the user selection primarily.
-    }
-
     try {
       // Create dates at Noon UTC to avoid timezone shifts when formatting in local time
-      const startDateObj = new Date(startDate);
-      startDateObj.setUTCHours(12, 0, 0, 0);
+      let startDateObj: Date | null = null;
+      if (startDate) {
+        startDateObj = new Date(startDate);
+        startDateObj.setUTCHours(12, 0, 0, 0);
+      }
 
       const projectData: any = {
         name,
@@ -231,12 +228,12 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
         status: statusToSave,
         location,
         assignedCrewId: crewId || undefined,
-        startDate: Timestamp.fromDate(startDateObj), // Save as Noon UTC
+        startDate: startDateObj ? Timestamp.fromDate(startDateObj) : null, // Save as Noon UTC or null
         timeline: mode === "create" ? [{
           id: 'init-1',
-          type: statusToSave === 'booked' ? 'scheduled' : 'started',
-          label: statusToSave === 'booked' ? 'Project Booked' : 'Project Started',
-          date: Timestamp.fromDate(startDateObj),
+          type: 'lead_created',
+          label: 'Project Created',
+          date: Timestamp.now(),
           notes: 'Project created manually'
         }] : project?.timeline || [],
       };
@@ -257,7 +254,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
         if (pauseDurationDays > 0) {
           const currentEnd = projectData.estimatedCompletion
             ? projectData.estimatedCompletion.toDate()
-            : new Date(startDateObj.getTime() + (3 * 24 * 60 * 60 * 1000));
+            : new Date((startDateObj?.getTime() || Date.now()) + (3 * 24 * 60 * 60 * 1000));
 
           // Shift completion
           const newEnd = new Date(currentEnd.getTime() + pauseDurationMs);
@@ -394,26 +391,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as ProjectStatus)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Status" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableStatuses.includes('lead') && <SelectItem value="lead">Lead</SelectItem>}
-                {availableStatuses.includes('quoted') && <SelectItem value="quoted">Quoted</SelectItem>}
-                {availableStatuses.includes('pending') && <SelectItem value="pending">Pending</SelectItem>}
-                {availableStatuses.includes('booked') && <SelectItem value="booked">Booked</SelectItem>}
-                {availableStatuses.includes('in-progress') && <SelectItem value="in-progress">In Progress</SelectItem>}
-                {availableStatuses.includes('paused') && <SelectItem value="paused">Paused</SelectItem>}
-                {availableStatuses.includes('completed') && <SelectItem value="completed">Completed</SelectItem>}
-                {availableStatuses.includes('invoiced') && <SelectItem value="invoiced">Invoiced</SelectItem>}
-                {availableStatuses.includes('paid') && <SelectItem value="paid">Paid</SelectItem>}
-                {availableStatuses.includes('on-hold') && <SelectItem value="on-hold">On Hold</SelectItem>}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Status Selection Removed - Workflow Driven */}
 
           {status === 'paused' && (
             <div className="grid grid-cols-2 gap-4 p-4 border border-amber-200 bg-amber-50 rounded-md">
@@ -434,19 +412,18 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="startDate">{t('projects.dialog.start_date')} *</Label>
+              <Label htmlFor="startDate">Start Date (Optional)</Label>
               <Input
                 id="startDate"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                required
                 data-testid="input-project-start-date"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="estimatedCompletion">{t('projects.dialog.est_completion')}</Label>
+              <Label htmlFor="estimatedCompletion">Estimated Completion (Optional)</Label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -485,6 +462,15 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
             </Select>
             {doubleBookingWarning && (
               <p className="text-xs font-medium text-destructive mt-1 animate-pulse">{doubleBookingWarning}</p>
+            )}
+            {crews.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Need to add a crew? You can manage your crews in your business settings. Click on <a href="/organization" className="text-primary hover:underline font-medium" onClick={(e) => {
+                  e.preventDefault();
+                  setOpen(false);
+                  navigate('/organization');
+                }}>{org?.name}</a> in the menu to add one.
+              </p>
             )}
           </div>
 

@@ -23,6 +23,8 @@ interface ProjectTimelineProps {
 const EVENT_TYPES: { type: ProjectEvent['type']; label: string; color: string }[] = [
     { type: 'lead_created', label: 'Lead Created', color: 'bg-blue-500' },
     { type: 'quote_provided', label: 'Quote Provided', color: 'bg-purple-500' },
+    { type: 'quote_created', label: 'Quote Created', color: 'bg-purple-500' },
+    { type: 'quote_sent', label: 'Quote Sent', color: 'bg-indigo-500' },
     { type: 'quote_accepted', label: 'Quote Accepted', color: 'bg-emerald-500' },
     { type: 'scheduled', label: 'Booked', color: 'bg-indigo-500' },
     { type: 'started', label: 'Project Started', color: 'bg-blue-600' },
@@ -31,11 +33,11 @@ const EVENT_TYPES: { type: ProjectEvent['type']; label: string; color: string }[
     { type: 'finished', label: 'Finished', color: 'bg-green-600' },
     { type: 'invoice_issued', label: 'Invoice Issued', color: 'bg-yellow-500' },
     { type: 'payment_received', label: 'Payment Received', color: 'bg-lime-500' },
+    { type: 'on_hold', label: 'On Hold', color: 'bg-rose-500' },
     { type: 'custom', label: 'Custom Note', color: 'bg-cyan-500' },
 ];
 
 export function ProjectTimeline({ project }: ProjectTimelineProps) {
-    // ... (state hooks remain same) ...
     const updateProject = useUpdateProject();
     const [isOpen, setIsOpen] = useState(false);
     const [eventType, setEventType] = useState<ProjectEvent['type']>('custom');
@@ -46,7 +48,6 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
     // Implicitly add core events if they don't exist in the timeline
     const timeline = [...(project.timeline || [])];
 
-    // ... (implicit event logic remains same) ...
     // 1. Lead Created...
     if (!timeline.some(e => e.type === 'lead_created')) {
         timeline.push({
@@ -68,9 +69,31 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
         });
     }
 
+    // Implicit Due/Start Date Logic
+    // If we have a start date but no end date, suggest adding end date.
+    // If we have NO start date, suggest adding start date.
     const hasDueDate = timeline.some(e => e.label === 'Project Due');
 
-    if (!hasDueDate && project.estimatedCompletion) {
+    if (!project.startDate) {
+        // Case 1: No Start Date - Prompt to add it
+        timeline.push({
+            id: 'implicit-start-missing',
+            type: 'scheduled',
+            label: 'Project Start',
+            date: null as any,
+            notes: 'Date not set'
+        });
+    } else if (!hasDueDate && !project.estimatedCompletion) {
+        // Case 2: Has Start, No End - Prompt to add End
+        timeline.push({
+            id: 'implicit-due-missing',
+            type: 'scheduled',
+            label: 'Project Completion',
+            date: null as any,
+            notes: 'Date not set'
+        });
+    } else if (!hasDueDate && project.estimatedCompletion) {
+        // Case 3: Has End Date (Normal)
         timeline.push({
             id: 'implicit-due',
             type: 'scheduled',
@@ -78,26 +101,22 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
             date: project.estimatedCompletion,
             notes: 'Estimated completion date'
         });
-    } else if (!hasDueDate && !project.estimatedCompletion) {
-        timeline.push({
-            id: 'implicit-due-unknown',
-            type: 'scheduled',
-            label: 'Project Due',
-            date: null as any,
-            notes: 'Date not set'
-        });
     }
 
     // Sort ASCENDING (Past -> Future)
     const sortedTimeline = timeline.sort((a, b) => {
         const dateA = a.date?.seconds || 0;
         const dateB = b.date?.seconds || 0;
+
+        // Ensure prompt items (null date) appear at the END (future)
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+
         return dateA - dateB;
     });
 
     const now = new Date();
 
-    // ... (handleAddEvent remains same) ...
     const handleAddEvent = async () => {
         const selectedType = EVENT_TYPES.find(t => t.type === eventType);
         const label = eventType === 'custom' ? (customLabel.trim() || 'Custom Note') : selectedType?.label || 'Event';
@@ -114,14 +133,10 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
             notes,
         };
 
-
-
-        // ... inside handleAddEvent ...
-
         const newTimeline = [...timeline, newEvent];
 
         // Auto-update status mapping using time-aware logic
-        const newStatus = getDerivedStatus(newTimeline, project.status, !!project.startDate);
+        const newStatus = getDerivedStatus(newTimeline, project.status, project.startDate, project.estimatedCompletion);
 
         await updateProject.mutateAsync({
             id: project.id,
@@ -141,7 +156,6 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
             <CardHeader className="flex flex-row items-center justify-between py-4">
                 <CardTitle className="text-lg">Timeline</CardTitle>
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
-                    {/* ... (Dialog trigger/content same) ... */}
                     <DialogTrigger asChild>
                         <Button size="sm" variant="outline">
                             <Plus className="h-4 w-4 mr-2" />
@@ -227,13 +241,25 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
                                 <div className="flex flex-col gap-1">
                                     <div className="flex items-center justify-between">
                                         <span className="font-semibold text-sm">{event.label}</span>
-                                        {event.id === 'implicit-due-unknown' ? (
+                                        {event.id === 'implicit-start-missing' ? (
                                             <ProjectDialog
                                                 project={project}
                                                 mode="edit"
                                                 trigger={
-                                                    <Button variant="link" size="sm" className="h-auto p-0 text-xs text-red-500 hover:text-red-700 font-medium">
-                                                        End date not specified. Add now
+                                                    <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-amber-600 hover:text-amber-700 hover:bg-transparent font-medium flex items-center">
+                                                        <Clock className="w-3 h-3 mr-1" />
+                                                        You haven't added a start date yet. Click here to add one.
+                                                    </Button>
+                                                }
+                                            />
+                                        ) : event.id === 'implicit-due-missing' ? (
+                                            <ProjectDialog
+                                                project={project}
+                                                mode="edit"
+                                                trigger={
+                                                    <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-amber-600 hover:text-amber-700 hover:bg-transparent font-medium flex items-center">
+                                                        <Clock className="w-3 h-3 mr-1" />
+                                                        You haven't added an end date yet. Click here to add one.
                                                     </Button>
                                                 }
                                             />

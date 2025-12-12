@@ -23,7 +23,14 @@ export default function ProjectDetail() {
   const { data: client } = useClient(project?.clientId || null);
 
   // Manage tab state for stepper
-  const [activeTab, setActiveTab] = React.useState("rooms");
+  const [activeTab, setActiveTabState] = React.useState("rooms");
+  const tabsRef = React.useRef<HTMLDivElement>(null);
+
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    // Scroll to the tabs section
+    tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   if (projectLoading) {
     return (
@@ -48,7 +55,7 @@ export default function ProjectDetail() {
 
 
   const steps = [
-    { id: "rooms", label: t('project_details.tabs.rooms'), icon: Ruler },
+    { id: "rooms", label: "Rooms & Surfaces", icon: Ruler },
     { id: "specs", label: "Project Specs", icon: Settings2 },
     { id: "supplies", label: t('supplies.title'), icon: PaintBucket },
     { id: "quotes", label: t('project_details.tabs.quotes'), icon: DollarSign },
@@ -66,7 +73,7 @@ export default function ProjectDetail() {
       />
 
       {/* Stepper Navigation */}
-      <div className="relative">
+      <div className="relative" ref={tabsRef}>
         <div className="absolute top-1/2 left-0 w-full h-0.5 bg-muted -z-10" />
         <div className="flex justify-between items-center">
           {steps.map((step, index) => {
@@ -92,9 +99,9 @@ export default function ProjectDetail() {
 
       {/* Tab Content */}
       <div className="mt-6">
-        {activeTab === "rooms" && <RoomMeasurement projectId={projectId!} />}
-        {activeTab === "specs" && <ProjectSpecs projectId={projectId!} />}
-        {activeTab === "supplies" && <SupplyList projectId={projectId!} />}
+        {activeTab === "rooms" && <RoomMeasurement projectId={projectId!} onNext={() => setActiveTab("specs")} />}
+        {activeTab === "specs" && <ProjectSpecs projectId={projectId!} onNext={() => setActiveTab("supplies")} />}
+        {activeTab === "supplies" && <SupplyList projectId={projectId!} onNext={() => setActiveTab("quotes")} />}
         {activeTab === "quotes" && <QuoteBuilder projectId={projectId!} />}
       </div>
     </div>

@@ -19,14 +19,66 @@ export { Timestamp };
 import { db } from './firebase';
 
 // Type definitions matching your Firestore schema
+// Comprehensive Paint Data Structure based on Supplier TDS
+export interface PaintDetails {
+  // Identity
+  productCode?: string; // e.g. N524
+  manufacturer?: string; // e.g. Benjamin Moore
+  line?: string; // e.g. Aura, Regal Select
+  colorFamily?: string; // e.g. Neutral, Warm, Cool
+
+  // Packaging
+  containerSize?: string; // e.g. Gallon, 5-Gallon
+  availabilityStatus?: string; // e.g. In Stock
+  maxTintLoad?: string; // e.g. 124 fl oz / 6 fl oz
+
+  // Technical Specs
+  baseType?: string; // e.g. Latex, Oil, Alkyd, White Base
+  resinType?: string; // e.g. 100% Acrylic
+  glossLevel?: string; // Numeric or descriptive e.g. "35-45 @ 60°"
+  voc?: string; // g/L e.g. "<50 g/L"
+  solidsVol?: string; // % Solids by Volume e.g. "35 ± 2%"
+  weightPerGallon?: string; // e.g. "10.2 lb/gal"
+  flashPoint?: string;
+  pH?: string;
+
+  // Performance
+  coverageRate?: string; // e.g. "350-400 sq ft/gal" - distinct from the numeric `coverage` used for calcs
+  dryToTouch?: string;
+  dryToRecoat?: string;
+  cureTime?: string;
+  performanceRatings?: string; // e.g. Scrub Resistance, Hiding Power
+  recommendedUses?: string[]; // e.g. Interior, Walls, Trim
+
+  // Application
+  applicationMethods?: string[]; // e.g. Brush, Roll, Spray
+  thinning?: string;
+  primerRequirements?: string; // Compatible primers
+  substrates?: string[]; // e.g. Drywall, Plaster, Wood
+  cleanup?: string; // e.g. Soap & Water
+
+  // Compliance & Safety
+  certifications?: string[]; // e.g. GREENGUARD, LEED
+  hazards?: string; // SDS summary
+  compositionNotes?: string; // Pigments/binders
+}
+
 export interface CatalogItem {
   id?: string;
   name: string;
-  category: 'material' | 'labor' | 'other';
+  category: 'material' | 'labor' | 'paint' | 'primer' | 'other';
   unit: string;
   unitPrice: number;
   unitCost?: number; // Contractor cost for margin calc
-  description?: string;
+  description?: string; // General description
+
+  // Core Specs (kept top-level for easy access/filtering)
+  coverage?: number; // numeric sq ft per gallon for calculations
+  sheen?: string;
+
+  // Full TDS Data
+  paintDetails?: PaintDetails;
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -36,6 +88,10 @@ export interface Org {
   defaultUnits: 'metric' | 'imperial';
   plan: 'free' | 'pro' | 'enterprise';
   region: string;
+
+  // Global Feature Flags
+  enableTeamFeatures?: boolean; // Default true. detailed crew assignment, payroll, etc.
+  defaultQuoteStyle?: 'detailed' | 'split' | 'bundled'; // Default 'detailed'
 
   // Quoting System Phase 1: Global Defaults
   estimatingSettings?: {
@@ -72,6 +128,50 @@ export interface Org {
     defaultTaxRate?: number; // Moved/Synced from estimatingSettings?
     templateLayout?: 'standard' | 'modern' | 'minimal';
   };
+
+  quoteTemplates?: QuoteTemplate[]; // New: List of saved configurations
+  defaultQuoteTemplateId?: string; // New: Default to use
+}
+
+export interface QuoteDisplayConfig {
+  // 1. Organization (The Container)
+  organization: 'room' | 'surface' | 'floor' | 'phase';
+
+  // 2. Composition (The Split)
+  itemComposition: 'bundled' | 'separated' | 'granular' | 'fixed_material';
+
+  // 3. Labor Pricing Model (The Unit)
+  laborPricingModel: 'fixed' | 'hourly' | 'unit_sqft' | 'day_rate' | 'item_count';
+
+  // 4. Material Strategy (The Material Bill)
+  materialStrategy: 'inclusive' | 'allowance' | 'itemized_volume' | 'specific_product';
+
+  // New: Material Grouping
+  materialGrouping?: 'itemized_per_task' | 'combined_section' | 'combined_setup' | 'hidden';
+
+  // 5. Details (Toggles)
+  showCoatCounts: boolean;
+  showColors: boolean;
+  showDimensions: boolean;
+  showQuantities: boolean; // New
+  showRates: boolean;      // New
+  showPrepTasks: boolean;
+  showDisclaimers: boolean;
+
+  // Financial
+  showTaxLine: boolean;
+  showSubtotals: boolean;
+
+  // Custom
+  customFooterText?: string;
+}
+
+export interface QuoteTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  config: QuoteDisplayConfig;
+  isDefault?: boolean;
 }
 
 import { OrgRole } from '@/lib/permissions';
@@ -165,14 +265,26 @@ export const ALL_BOOLEAN_FEATURES: (keyof EntitlementFeatures)[] = [
 
 export interface ProjectEvent {
   id: string;
-  type: 'lead_created' | 'quote_provided' | 'quote_accepted' | 'scheduled' | 'started' | 'paused' | 'resumed' | 'finished' | 'invoice_issued' | 'payment_received' | 'custom';
+  type: 'lead_created' | 'quote_created' | 'quote_provided' | 'quote_sent' | 'quote_accepted' | 'scheduled' | 'started' | 'paused' | 'resumed' | 'finished' | 'invoice_issued' | 'payment_received' | 'on_hold' | 'custom';
   label: string;
   date: Timestamp;
   notes?: string;
   createdBy?: string;
 }
 
-export type ProjectStatus = 'lead' | 'quoted' | 'booked' | 'in-progress' | 'paused' | 'completed' | 'invoiced' | 'paid' | 'on-hold' | 'pending'; // keeping pending/on-hold for migration safety
+export type ProjectStatus = 'new' | 'quote_created' | 'quote_sent' | 'pending' | 'booked' | 'in-progress' | 'paused' | 'completed' | 'invoiced' | 'paid' | 'on-hold' | 'lead' | 'quoted' | 'resumed'; // lead/quoted legacy
+
+// Snapshot of a paint product used in a project
+export interface PaintProduct {
+  id?: string; // Optional (if custom)
+  name: string;
+  pricePerGallon: number;
+  coverage: number; // sq ft per gallon
+  sheen?: string;
+  dryingTime?: string; // e.g., "1hr touch, 4hr recoat"
+  cleanup?: string; // e.g., "Soap & Water"
+  notes?: string;
+}
 
 export interface Project {
   orgId: string;
@@ -180,6 +292,7 @@ export interface Project {
   clientId: string;
   assignedCrewId?: string; // Link to Crew
   status: ProjectStatus;
+  quoteTemplateId?: string; // New: Override default template
   location: string;
   startDate: Timestamp; // This can now represent "Scheduled Start" or "Actual Start" depending on interpreted logic, or we can add specific fields if strict separation is needed. For now, let's keep it as primary "Start" but rely on timeline for specifics.
   estimatedCompletion?: Timestamp;
@@ -198,7 +311,7 @@ export interface Project {
 
   // Supply Hub v2 Configuration
   supplyConfig?: {
-    coveragePerGallon: number;
+    coveragePerGallon: number; // Keep as fallback/default
     wallCoats: number;
     ceilingCoats: number;
     trimCoats: number;
@@ -209,18 +322,36 @@ export interface Project {
     ceilingSamePaint?: boolean; // New: Use wall paint for ceiling
     deductionMethod?: 'percent' | 'exact'; // New: Deduction mode
     deductionExactSqFt?: number; // New: Exact deduction amount
-    pricePerGallon?: number; // New: Price per gallon for estimates
+    pricePerGallon?: number; // Keep as fallback/default
     costPerGallon?: number; // New: Cost per gallon for margin analysis
+
+    // Product Selections (Snapshots)
+    wallProduct?: PaintProduct;
+    ceilingProduct?: PaintProduct;
+    trimProduct?: PaintProduct;
+    primerProduct?: PaintProduct; // New: Primer selection
+
+    // Prep & Misc
+    includeWallpaperRemoval?: boolean; // New
+    wallpaperRemovalRate?: number; // New: Labor rate per sq ft for removal
   };
 
   // Quoting System Phase 1: Labor Config
   laborConfig?: {
-    hourlyRate: number;
+    hourlyRate: number; // Keep for internal cost calculation? Or deprecated?
     productionRate: number; // sq ft/hr
     difficultyFactor: number; // 1.0 - 2.0 multiplier
     ceilingProductionRate?: number; // New: Specific rate for ceilings
     totalHours?: number;
     totalCost?: number;
+    laborPricePerSqFt?: number; // New: Fixed price per sq ft for quoting
+  };
+
+  internalCostConfig?: {
+    method: 'standard' | 'custom';
+    estimatedHours?: number;
+    crewCount?: number;
+    averageWage?: number; // $/hr internal cost
   };
 
   customSupplies?: Array<{
@@ -291,6 +422,7 @@ export interface Room {
   orgId: string;
   projectId: string;
   name: string;
+  type?: 'interior' | 'exterior'; // New: Distinguish surfaces
 
   // Basic dimensions (backward compatible with existing data)
   length: number;

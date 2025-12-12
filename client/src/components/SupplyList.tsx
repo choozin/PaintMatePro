@@ -58,9 +58,10 @@ interface SupplyItem {
 
 interface SupplyListProps {
     projectId: string;
+    onNext?: () => void;
 }
 
-export function SupplyList({ projectId }: SupplyListProps) {
+export function SupplyList({ projectId, onNext }: SupplyListProps) {
     const { data: rooms, isLoading: isLoadingRooms } = useRooms(projectId);
     const { data: project, isLoading: isLoadingProject } = useProject(projectId);
     const { currentOrgId, currentOrgRole } = useAuth();
@@ -743,6 +744,14 @@ export function SupplyList({ projectId }: SupplyListProps) {
                         </CardContent>
                     </Card>
                 </div>
+            </div>
+
+            {/* Next Step Button */}
+            <div className="flex justify-end pt-4 pb-8">
+                <Button onClick={onNext} className="w-full md:w-auto" size="lg">
+                    Next Step: Quote Builder
+                    <DollarSign className="ml-2 h-4 w-4" />
+                </Button>
             </div>
 
             {/* Catalog Import Dialog */}

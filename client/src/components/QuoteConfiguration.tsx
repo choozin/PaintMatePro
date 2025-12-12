@@ -1,150 +1,241 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
-import { orgOperations } from "@/lib/firestore";
+import { orgOperations, QuoteTemplate } from "@/lib/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, FileText } from "lucide-react";
+import { FileText, Plus, Edit2, Copy, Trash2, CheckCircle, Star } from "lucide-react";
+import { QuoteConfigWizard } from "./QuoteConfiguration/QuoteConfigWizard";
+import { QuoteTemplateEditor } from "./QuoteConfiguration/QuoteTemplateEditor";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 
 export function QuoteConfiguration() {
     const { currentOrgId, currentOrgRole } = useAuth();
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const canEdit = currentOrgRole === 'owner' || currentOrgRole === 'admin';
+    const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
 
-    const [settings, setSettings] = useState({
-        defaultTerms: '',
-        defaultExpirationDays: 30,
-        templateLayout: 'standard' as 'standard' | 'modern' | 'minimal'
-    });
+    // UI State
+    const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<QuoteTemplate | undefined>(undefined);
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
 
-    useEffect(() => {
+    // Legacy support or new? We'll load the new `quoteTemplates` array
+
+    const loadSettings = async () => {
         if (!currentOrgId) return;
-
-        async function loadSettings() {
-            if (!currentOrgId) return;
-            setIsLoading(true);
-            try {
-                const org = await orgOperations.get(currentOrgId);
-                if (org && org.quoteSettings) {
-                    setSettings(prev => ({ ...prev, ...org.quoteSettings }));
-                }
-            } catch (error) {
-                console.error("Failed to load quote settings", error);
-                toast({ variant: "destructive", title: "Error", description: "Failed to load settings." });
-            } finally {
-                setIsLoading(false);
-            }
-        }
-        loadSettings();
-    }, [currentOrgId]);
-
-    const handleSave = async () => {
-        if (!currentOrgId) return;
-        setIsSaving(true);
+        setIsLoading(true);
         try {
-            await orgOperations.update(currentOrgId, {
-                quoteSettings: settings
-            });
-            toast({ title: "Settings Saved", description: "Quote configuration updated successfully." });
+            const org = await orgOperations.get(currentOrgId);
+            if (org && org.quoteTemplates) {
+                setTemplates(org.quoteTemplates);
+            }
         } catch (error) {
-            console.error("Failed to save settings", error);
-            toast({ variant: "destructive", title: "Error", description: "Failed to save settings." });
+            console.error("Failed to load quote settings", error);
         } finally {
-            setIsSaving(false);
+            setIsLoading(false);
         }
     };
 
-    if (isLoading) {
-        return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
+    useEffect(() => {
+        loadSettings();
+    }, [currentOrgId, isWizardOpen]); // Reload when wizard closes
+
+    // ACTIONS
+    const handleSaveTemplate = async (template: QuoteTemplate) => {
+        if (!currentOrgId) return;
+        try {
+            // Optimistic Update
+            const updated = templates.some(t => t.id === template.id)
+                ? templates.map(t => t.id === template.id ? template : t)
+                : [...templates, template];
+
+            setTemplates(updated);
+            await orgOperations.update(currentOrgId, { quoteTemplates: updated });
+
+            toast({ title: "Saved", description: "Template updated successfully." });
+            setIsEditorOpen(false);
+            setEditingTemplate(undefined);
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to save.' });
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!currentOrgId) return;
+        if (!confirm("Are you sure you want to delete this template?")) return;
+
+        try {
+            const updated = templates.filter(t => t.id !== id);
+            setTemplates(updated);
+            await orgOperations.update(currentOrgId, { quoteTemplates: updated });
+            toast({ title: "Deleted", description: "Template removed." });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete.' });
+        }
+    };
+
+    const handleSetDefault = async (template: QuoteTemplate) => {
+        if (!currentOrgId) return;
+        try {
+            // Optimistic Update
+            const updated = templates.map(t => ({
+                ...t,
+                isDefault: t.id === template.id
+            }));
+
+            setTemplates(updated);
+
+            // Update Org (defaultId) AND array
+            await orgOperations.update(currentOrgId, {
+                defaultQuoteTemplateId: template.id,
+                quoteTemplates: updated
+            });
+
+            toast({ title: "Updated Default", description: `${template.name} is now the default.` });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to update default.' });
+        }
+    };
+
+    const openWizard = (template?: QuoteTemplate) => {
+        setEditingTemplate(template);
+        setIsWizardOpen(true);
+        setIsEditorOpen(false); // Close manual editor if open
+    };
+
+    const openManualEditor = (template: QuoteTemplate) => {
+        setEditingTemplate(template);
+        setIsEditorOpen(true);
+    };
+
+    // Wizard Overlay
+    if (isWizardOpen) {
+        return (
+            <div className="fixed inset-0 z-50 bg-background">
+                <QuoteConfigWizard
+                    existingTemplates={templates}
+                    activeTemplate={editingTemplate}
+                    onClose={() => {
+                        setIsWizardOpen(false);
+                        setEditingTemplate(undefined);
+                        loadSettings(); // Refresh
+                    }}
+                />
+            </div>
+        );
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Quote Configuration
-                </CardTitle>
-                <CardDescription>Set defaults for your quote templates.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                        <Label>Default Expiration (Days)</Label>
-                        <Input
-                            type="number"
-                            value={settings.defaultExpirationDays}
-                            onChange={e => setSettings(prev => ({ ...prev, defaultExpirationDays: parseInt(e.target.value) || 30 }))}
-                            disabled={!canEdit}
+        <>
+            <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogTitle>Edit Template: {editingTemplate?.name}</DialogTitle>
+                    {editingTemplate && (
+                        <QuoteTemplateEditor
+                            template={editingTemplate}
+                            existingNames={templates.map(t => t.name.toLowerCase())}
+                            onSave={handleSaveTemplate}
+                            onLaunchWizard={(t) => openWizard(t)}
                         />
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            <Card className="h-full">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <div className="space-y-1">
+                        <CardTitle className="text-2xl font-bold">Quote Templates</CardTitle>
+                        <CardDescription>
+                            Configure how your quotes look and feel. Create templates for different job types.
+                        </CardDescription>
                     </div>
-                    <div className="space-y-2">
-                        <Label>Template Layout</Label>
-                        <div className="grid grid-cols-3 gap-3">
-                            {(['standard', 'modern', 'minimal'] as const).map(layout => (
-                                <button
-                                    key={layout}
-                                    type="button"
-                                    onClick={() => canEdit && setSettings(prev => ({ ...prev, templateLayout: layout }))}
-                                    disabled={!canEdit}
-                                    className={`relative border-2 rounded-lg p-3 text-left transition-all hover:border-primary/50 ${settings.templateLayout === layout
-                                        ? 'border-primary bg-primary/5'
-                                        : 'border-border'
-                                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                >
-                                    <div className="space-y-2">
-                                        <div className="font-medium capitalize flex items-center justify-between">
-                                            {layout}
-                                            {settings.templateLayout === layout && (
-                                                <Badge variant="default" className="text-xs">Selected</Badge>
-                                            )}
+                    <Button onClick={() => openWizard()}>
+                        <Plus className="mr-2 h-4 w-4" /> New Template
+                    </Button>
+                </CardHeader>
+                <CardContent>
+                    {isLoading ? (
+                        <div className="text-center py-8">Loading templates...</div>
+                    ) : templates.length === 0 ? (
+                        <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                            <h3 className="text-lg font-medium">No Templates Yet</h3>
+                            <p className="text-muted-foreground mb-4">Create your first quote template to get started.</p>
+                            <Button variant="outline" onClick={() => setIsWizardOpen(true)}>Create One</Button>
+                        </div>
+                    ) : (
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                            {templates.map((template) => (
+                                <Card key={template.id} className="relative overflow-hidden hover:border-primary transition-colors cursor-pointer group flex flex-col h-full">
+                                    <CardHeader className="pb-3 flex-none">
+                                        <div className="flex justify-between items-start">
+                                            <CardTitle className="text-base font-semibold">{template.name}</CardTitle>
+                                            {template.isDefault && <Badge variant="secondary">Default</Badge>}
                                         </div>
-                                        <div className="text-xs text-muted-foreground">
-                                            {layout === 'standard' && 'Classic layout with header and footer'}
-                                            {layout === 'modern' && 'Clean design with bold typography'}
-                                            {layout === 'minimal' && 'Simple, text-focused layout'}
-                                        </div>
-                                        {/* Mini Preview */}
-                                        <div className="mt-2 border rounded bg-white p-2 space-y-1">
-                                            <div className={`h-1 rounded ${layout === 'standard' ? 'bg-gray-300 w-full' :
-                                                layout === 'modern' ? 'bg-primary w-3/4' :
-                                                    'bg-gray-200 w-1/2'
-                                                }`} />
-                                            <div className="h-1 bg-gray-100 w-full rounded" />
-                                            <div className="h-1 bg-gray-100 w-5/6 rounded" />
-                                        </div>
-                                    </div>
-                                </button>
+                                        {/* Expanded Description */}
+                                        <CardDescription className="text-xs">
+                                            Group by <span className="font-medium text-foreground">{template.config.organization.toUpperCase()}</span> •
+                                            Split: <span className="font-medium text-foreground">{template.config.itemComposition}</span>
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="pb-3 text-sm text-muted-foreground flex-1">
+                                        {/* Expanded Attribute List */}
+                                        <ScrollArea className="h-[120px] w-full pr-2">
+                                            <ul className="space-y-1.5 text-xs text-gray-600">
+                                                <li className="flex justify-between border-b pb-1">
+                                                    <span>Labor Model:</span>
+                                                    <span className="font-medium">{template.config.laborPricingModel}</span>
+                                                </li>
+                                                <li className="flex justify-between border-b pb-1">
+                                                    <span>Material Strategy:</span>
+                                                    <span className="font-medium">{template.config.materialStrategy}</span>
+                                                </li>
+                                                <li className="flex justify-between pt-1">
+                                                    <span>Show Quantities:</span>
+                                                    <span className={template.config.showQuantities ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showQuantities ? 'ON' : 'OFF'}</span>
+                                                </li>
+                                                <li className="flex justify-between">
+                                                    <span>Show Rates:</span>
+                                                    <span className={template.config.showRates ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showRates ? 'ON' : 'OFF'}</span>
+                                                </li>
+                                                <li className="flex justify-between">
+                                                    <span>Show Coats:</span>
+                                                    <span className={template.config.showCoatCounts ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showCoatCounts ? 'ON' : 'OFF'}</span>
+                                                </li>
+                                                <li className="flex justify-between">
+                                                    <span>Show Taxes:</span>
+                                                    <span className={template.config.showTaxLine ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showTaxLine ? 'ON' : 'OFF'}</span>
+                                                </li>
+                                            </ul>
+                                        </ScrollArea>
+                                    </CardContent>
+                                    <CardFooter className="bg-muted/50 p-2 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity mt-auto">
+                                        {!template.isDefault && (
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-8 text-xs hover:bg-primary/10 hover:text-primary mr-auto"
+                                                onClick={(e) => { e.stopPropagation(); handleSetDefault(template); }}
+                                            >
+                                                Make Default
+                                            </Button>
+                                        )}
+                                        <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => openManualEditor(template)}>
+                                            <Edit2 className="h-3 w-3 mr-1.5" /> Edit
+                                        </Button>
+                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleDelete(template.id)}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </CardFooter>
+                                </Card>
                             ))}
                         </div>
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                        <Label>Default Terms & Conditions</Label>
-                        <Textarea
-                            value={settings.defaultTerms}
-                            onChange={e => setSettings(prev => ({ ...prev, defaultTerms: e.target.value }))}
-                            disabled={!canEdit}
-                            rows={6}
-                            placeholder="e.g. Payment due upon completion. We are not responsible for moving heavy furniture..."
-                        />
-                        <p className="text-xs text-muted-foreground">These terms will appear on all new quotes by default.</p>
-                    </div>
-                </div>
-            </CardContent>
-            {canEdit && (
-                <CardFooter className="border-t px-6 py-4">
-                    <Button onClick={handleSave} disabled={isSaving}>
-                        {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                        Save Configuration
-                    </Button>
-                </CardFooter>
-            )}
-        </Card>
+                    )}
+                </CardContent>
+            </Card>
+        </>
     );
 }

@@ -23,14 +23,15 @@ export function CrewScheduler() {
   const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null);
   const { data: projects = [], isLoading } = useProjects();
   const [, setLocation] = useLocation();
-  const { currentOrgId } = useAuth();
+  const { currentOrgId, org } = useAuth();
+  const enableTeam = org?.enableTeamFeatures !== false; // Default true
 
   const [selectedCrewId, setSelectedCrewId] = useState<string>("all");
 
   const { data: crews = [] } = useQuery({
     queryKey: ['crews', currentOrgId],
-    queryFn: () => crewOperations.getByOrg(currentOrgId),
-    enabled: !!currentOrgId
+    queryFn: () => currentOrgId ? crewOperations.getByOrg(currentOrgId) : Promise.resolve([]),
+    enabled: !!currentOrgId && enableTeam
   });
 
   const daysHeaders = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -117,7 +118,9 @@ export function CrewScheduler() {
 
     // Filter projects touching this week AND match crew filter
     const relevantProjects = projects.filter(p => {
-      if (selectedCrewId !== "all" && p.assignedCrewId !== selectedCrewId) return false;
+      // SOLO MODE: Rename 'selectedCrewId' logic to check if filtering active
+      if (enableTeam && selectedCrewId !== "all" && p.assignedCrewId !== selectedCrewId) return false;
+
       if (!p.startDate) return false;
 
       const pStart = toDate(p.startDate);
@@ -348,27 +351,29 @@ export function CrewScheduler() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="w-[200px]">
-            <Select value={selectedCrewId} onValueChange={setSelectedCrewId}>
-              <SelectTrigger className="h-9">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <SelectValue placeholder="All Crews" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Crews</SelectItem>
-                {crews.map(crew => (
-                  <SelectItem key={crew.id} value={crew.id}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: crew.color }} />
-                      {crew.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {enableTeam && (
+            <div className="w-[200px]">
+              <Select value={selectedCrewId} onValueChange={setSelectedCrewId}>
+                <SelectTrigger className="h-9">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <SelectValue placeholder="All Crews" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Crews</SelectItem>
+                  {crews.map(crew => (
+                    <SelectItem key={crew.id} value={crew.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: crew.color }} />
+                        {crew.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="flex bg-muted rounded-lg p-1">
             <button
@@ -569,7 +574,7 @@ export function CrewScheduler() {
                           {/* Standardized padding: pl-1.5 to match the event label's left-1.5 */}
                           <div className="absolute inset-0 flex items-end px-0 py-1 pointer-events-none">
                             <div className="flex items-center gap-1.5 pl-1.5 overflow-hidden">
-                              {item.project.assignedCrewId && (() => {
+                              {enableTeam && item.project.assignedCrewId && (() => {
                                 const crew = crews.find(c => c.id === item.project.assignedCrewId);
                                 if (crew) {
                                   return (

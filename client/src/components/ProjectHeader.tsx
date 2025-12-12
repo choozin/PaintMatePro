@@ -33,7 +33,7 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
     const [, setLocation] = useLocation();
     const { t } = useTranslation();
 
-    const displayStatus = getDerivedStatus(project.timeline, project.status, !!project.startDate);
+    const displayStatus = getDerivedStatus(project.timeline, project.status, project.startDate, project.estimatedCompletion);
 
     // Fetch Assigned Crew
     const { data: assignedCrew } = useQuery({
