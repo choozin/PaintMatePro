@@ -70,7 +70,7 @@ export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
             const { clientWidth } = containerRef.current;
             // Paper width is approx 816px (215.9mm * 3.78)
             const paperWidth = 816;
-            const padding = 2; // Almost zero padding to fit "barely inside"
+            const padding = 64; // Standard comfortable padding
             const targetScale = (clientWidth - padding) / paperWidth;
             if (targetScale > 0) {
                 setScale(targetScale);
@@ -108,33 +108,39 @@ export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
     }, [lineItems, config.showTaxLine]);
 
     return (
-        <div ref={containerRef} className="relative bg-gray-100/50 min-h-full">
-            {/* Zoom Controls - Sticky to stay in view */}
-            <div className="sticky top-2 z-50 flex justify-end px-2 pointer-events-none">
-                <div className="flex flex-col gap-2 bg-white/90 p-2 rounded-lg shadow-md border backdrop-blur-sm transition-opacity hover:opacity-100 opacity-80 pointer-events-auto">
-                    <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-10 w-10 hover:bg-gray-100" title="Zoom In">
-                        <ZoomIn className="h-5 w-5" />
+        <div className="flex flex-col h-full bg-gray-100/50">
+            {/* Toolbar */}
+            <div className="flex items-center justify-end gap-2 p-2 bg-white border-b shadow-sm z-10">
+                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                    <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-8 w-8 hover:bg-white shadow-sm" title="Zoom Out">
+                        <ZoomOut className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-10 w-10 hover:bg-gray-100" title="Zoom Out">
-                        <ZoomOut className="h-5 w-5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={handleReset} className="h-10 w-10 hover:bg-gray-100" title="Fit Width">
-                        <Maximize className="h-5 w-5" />
-                    </Button>
-                    <div className="text-xs text-center font-mono text-gray-400 mt-1 select-none">
+                    <div className="w-12 text-center text-xs font-mono text-gray-600 select-none">
                         {Math.round(scale * 100)}%
                     </div>
+                    <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8 hover:bg-white shadow-sm" title="Zoom In">
+                        <ZoomIn className="h-4 w-4" />
+                    </Button>
                 </div>
+                <div className="h-6 w-px bg-gray-200 mx-1" />
+                <Button variant="outline" size="sm" onClick={handleReset} className="h-8 text-xs gap-2" title="Fit Width">
+                    <Maximize className="h-3 w-3" />
+                    Fit Width
+                </Button>
             </div>
 
-            {/* Paper Container Wrapper for Centering */}
-            <div className="flex justify-center w-full py-8">
-                <div className="bg-white shadow-lg relative overflow-hidden transition-all duration-300 flex flex-col box-border font-sans"
+            {/* Scrollable Viewport */}
+            <div ref={containerRef} className="flex-1 overflow-auto p-8 flex justify-center items-start">
+                {/* Paper */}
+                <div className="bg-white shadow-lg transition-all duration-200 flex flex-col box-border font-sans origin-top bg-white"
                     style={{
                         width: '215.9mm',
                         minHeight: '279.4mm',
                         padding: '12.7mm',
-                        zoom: scale
+                        flexShrink: 0, // Prevent shrinking
+                        transform: `scale(${scale})`, // Use transform for better browser support/rendering
+                        marginBottom: `${(scale - 1) * 300}px`, // Simple compensation for vertical growth
+                        marginRight: `${(scale - 1) * 200}px`  // Simple compensation for horizontal growth
                     }}>
 
                     {/* Header */}

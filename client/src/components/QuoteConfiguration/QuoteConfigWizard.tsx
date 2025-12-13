@@ -386,10 +386,8 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                     <CardTitle className="text-lg text-slate-700">Live Preview</CardTitle>
                     <CardDescription>Real-time quote preview based on current settings.</CardDescription>
                 </CardHeader>
-                <CardContent className="flex-1 overflow-y-auto p-4 flex justify-center bg-slate-100/50">
-                    <div className="scale-[0.65] origin-top transform-gpu">
-                        <QuotePreview config={config} />
-                    </div>
+                <CardContent className="flex-1 p-0 overflow-hidden">
+                    <QuotePreview config={config} />
                 </CardContent>
             </Card>
         </div>
