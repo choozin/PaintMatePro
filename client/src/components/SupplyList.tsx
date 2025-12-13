@@ -30,6 +30,8 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface PaintConfig {
     coveragePerGallon: number;
@@ -54,7 +56,23 @@ interface SupplyItem {
     unitPrice?: number;
     unitCost?: number;
     unit?: string;
+    roomId?: string;
+    billingType?: 'billable' | 'expense' | 'checklist';
 }
+
+const DEFAULT_SUPPLY_ITEMS: Partial<SupplyItem>[] = [
+    { id: 'brush', name: "2-inch Angled Sash Brush", category: "Application", unitPrice: 12.99, unit: "each", billingType: 'expense' },
+    { id: 'roller-frame', name: "9-inch Roller Frame", category: "Application", unitPrice: 8.50, unit: "each", billingType: 'checklist' },
+    { id: 'roller-cover', name: "9-inch Roller Covers (3/8\" nap)", category: "Application", unitPrice: 5.99, unit: "each", billingType: 'expense' },
+    { id: 'tray', name: "Paint Tray and Liners", category: "Application", unitPrice: 7.50, unit: "each", billingType: 'expense' },
+    { id: 'pole', name: "Extension Pole", category: "Application", unitPrice: 24.00, unit: "each", billingType: 'checklist' },
+    { id: 'spackle', name: "Spackling Paste & Putty Knife", category: "Prep", unitPrice: 6.99, unit: "each", billingType: 'expense' },
+    { id: 'sandpaper', name: "Sandpaper (120 grit)", category: "Prep", unitPrice: 4.50, unit: "pack", billingType: 'expense' },
+    { id: 'drop-cloth', name: "Canvas Drop Cloth (9x12)", category: "Prep", unitPrice: 22.00, unit: "each", billingType: 'checklist' },
+    { id: 'plastic', name: "Plastic Sheeting (9x400)", category: "Prep", unitPrice: 14.00, unit: "roll", billingType: 'expense' },
+    { id: 'tape', name: "Painter's Tape (1.88\")", category: "Prep", unitPrice: 8.99, unit: "roll", billingType: 'expense' },
+    { id: 'primer-sealer', name: "PVA Primer Sealer", category: "Prep", unitPrice: 18.00, unit: "gal", billingType: 'billable' },
+];
 
 interface SupplyListProps {
     projectId: string;
@@ -78,24 +96,24 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
 
     // Configuration (Read-only from Project)
     const config: PaintConfig = React.useMemo(() => ({
-        coveragePerGallon: project?.supplyConfig?.coveragePerGallon || 350,
-        wallCoats: project?.supplyConfig?.wallCoats || 2,
-        ceilingCoats: project?.supplyConfig?.ceilingCoats || 2,
-        trimCoats: project?.supplyConfig?.trimCoats || 2,
-        includePrimer: project?.supplyConfig?.includePrimer || false,
-        includeCeiling: project?.supplyConfig?.includeCeiling || false,
-        includeTrim: project?.supplyConfig?.includeTrim || false,
-        deductionFactor: project?.supplyConfig?.deductionFactor || 0.10,
-        ceilingSamePaint: project?.supplyConfig?.ceilingSamePaint || false,
-        deductionMethod: project?.supplyConfig?.deductionMethod || 'percent',
-        deductionExactSqFt: project?.supplyConfig?.deductionExactSqFt || 0,
-        pricePerGallon: project?.supplyConfig?.pricePerGallon || 45,
+        coveragePerGallon: project?.paintConfig?.coveragePerGallon || 350,
+        wallCoats: project?.paintConfig?.wallCoats || 2,
+        ceilingCoats: project?.paintConfig?.ceilingCoats || 2,
+        trimCoats: project?.paintConfig?.trimCoats || 2,
+        includePrimer: project?.paintConfig?.includePrimer || false,
+        includeCeiling: project?.paintConfig?.includeCeiling || false,
+        includeTrim: project?.paintConfig?.includeTrim || false,
+        deductionFactor: project?.paintConfig?.deductionFactor || 0.10,
+        ceilingSamePaint: project?.paintConfig?.ceilingSamePaint || false,
+        deductionMethod: project?.paintConfig?.deductionMethod || 'percent',
+        deductionExactSqFt: project?.paintConfig?.deductionExactSqFt ? Number(project.paintConfig.deductionExactSqFt) : 0,
+        pricePerGallon: project?.paintConfig?.pricePerGallon || 45,
     }), [project]);
 
     const laborConfig = React.useMemo(() => ({
         hourlyRate: project?.laborConfig?.hourlyRate || 60,
         productionRate: project?.laborConfig?.productionRate || 150,
-        ceilingProductionRate: project?.laborConfig?.ceilingProductionRate || 100,
+        ceilingProductionRate: project?.laborConfig?.productionRate ? project.laborConfig.productionRate * 0.7 : 100,
         difficultyFactor: project?.laborConfig?.difficultyFactor || 1.0,
     }), [project]);
 
@@ -103,26 +121,50 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
     const [newSupplyName, setNewSupplyName] = useState("");
     const [newSupplyQty, setNewSupplyQty] = useState(1);
     const [newSupplyPrice, setNewSupplyPrice] = useState<number | undefined>(undefined);
+    const [newSupplyRoomId, setNewSupplyRoomId] = useState<string>("general");
+    const [newSupplyBillingType, setNewSupplyBillingType] = useState<'billable' | 'expense' | 'checklist'>('expense');
 
     // Editing State
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
-    const [editingValues, setEditingValues] = useState<{ name: string, price: number }>({ name: '', price: 0 });
+    const [editingValues, setEditingValues] = useState<{ name: string; price: number; roomId: string; billingType?: 'billable' | 'expense' | 'checklist' }>({ name: '', price: 0, roomId: 'general', billingType: 'expense' });
 
-    // Load supplies
+    // Load supplies with migration logic
     useEffect(() => {
+        let items: SupplyItem[] = [];
         if (project?.customSupplies) {
-            setSupplyItems(project.customSupplies);
+            items = project.customSupplies;
+        }
+
+        // Migration: If items lack billingType, try to match with defaults or default to expense
+        let hasChanges = false;
+        const migratedItems = items.map(item => {
+            if (!item.billingType) {
+                // Try to find matching default
+                const defaultItem = DEFAULT_SUPPLY_ITEMS.find(d => d.id === item.id || d.name === item.name);
+                hasChanges = true;
+                return {
+                    ...item,
+                    billingType: defaultItem?.billingType || 'expense'
+                };
+            }
+            return item;
+        });
+
+        // Only update if we actually have items and (changes needed OR explicit length mismatch which shouldn't happen here but safe enough)
+        if (hasChanges) {
+            setSupplyItems(migratedItems);
+        } else if (items.length > 0 && supplyItems.length === 0 && isInitialLoad.current) {
+            // Initial load populate
+            setSupplyItems(migratedItems);
+        }
+
+        if (project) {
             // Mark initial load as complete after a short delay
             setTimeout(() => {
                 isInitialLoad.current = false;
             }, 500);
-        } else if (project && !project.customSupplies) {
-            // If project loaded but no supplies, also mark as loaded
-            setTimeout(() => {
-                isInitialLoad.current = false;
-            }, 500);
         }
-    }, [project]);
+    }, [project?.customSupplies]); // Only depend on customSupplies
 
     // Debounced Supply Items
     const debouncedSupplyItems = useDebounce(supplyItems, 1000);
@@ -148,7 +190,10 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             }
         };
 
-        saveSupplies();
+        // Only save if we have items or empty array (but not initial undefined state)
+        if (debouncedSupplyItems) {
+            saveSupplies();
+        }
     }, [debouncedSupplyItems]);
 
     // Handle Supply Items
@@ -159,12 +204,16 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             name: newSupplyName,
             qty: newSupplyQty,
             category: "Custom",
-            unitPrice: newSupplyPrice
+            unitPrice: newSupplyPrice,
+            roomId: newSupplyRoomId === "general" ? undefined : newSupplyRoomId,
+            billingType: newSupplyBillingType
         };
         setSupplyItems(prev => [...prev, newItem]);
         setNewSupplyName("");
         setNewSupplyQty(1);
         setNewSupplyPrice(undefined);
+        setNewSupplyRoomId("general");
+        setNewSupplyBillingType('expense');
     };
 
     const removeSupplyItem = (id: string) => {
@@ -179,13 +228,15 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
         setEditingItemId(item.id);
         setEditingValues({
             name: item.name,
-            price: item.unitPrice || 0
+            price: item.unitPrice || 0,
+            roomId: item.roomId || 'general',
+            billingType: item.billingType || 'expense'
         });
     };
 
     const cancelEditing = () => {
         setEditingItemId(null);
-        setEditingValues({ name: '', price: 0 });
+        setEditingValues({ name: '', price: 0, roomId: 'general', billingType: 'expense' });
     };
 
     const saveEditing = () => {
@@ -196,7 +247,9 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                 return {
                     ...item,
                     name: editingValues.name,
-                    unitPrice: editingValues.price
+                    unitPrice: editingValues.price,
+                    roomId: editingValues.roomId === 'general' ? undefined : editingValues.roomId,
+                    billingType: editingValues.billingType
                 };
             }
             return item;
@@ -212,7 +265,8 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             category: item.category,
             unitPrice: item.unitPrice,
             unitCost: item.unitCost,
-            unit: item.unit
+            unit: item.unit,
+            billingType: 'expense' // Default to expense for catalog items
         };
         setSupplyItems(prev => [...prev, newItem]);
         setIsCatalogOpen(false);
@@ -311,7 +365,13 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
 
     const materialsStats = React.useMemo(() => {
         const paintCost = paintNeeds.total * (config.pricePerGallon || 45);
-        const suppliesCost = supplyItems.reduce((acc, item) => acc + (item.qty * (item.unitPrice || 0)), 0);
+        // Only count expenses towards internal project cost
+        const suppliesCost = supplyItems.reduce((acc, item) => {
+            if (item.billingType === 'expense') {
+                return acc + (item.qty * (item.unitPrice || 0));
+            }
+            return acc;
+        }, 0);
         return {
             paintCost,
             suppliesCost,
@@ -400,25 +460,59 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
 
         } else {
             // Fallback to Hardcoded Defaults
-            items = [
-                { id: 'brush', name: "2-inch Angled Sash Brush", category: "Application", qty: 2, unitPrice: 12.99, unit: "each" },
-                { id: 'roller-frame', name: "9-inch Roller Frame", category: "Application", qty: 1, unitPrice: 8.50, unit: "each" },
-                { id: 'roller-cover', name: "9-inch Roller Covers (3/8\" nap)", category: "Application", qty: Math.ceil(paintNeeds.total / 2) || 1, unitPrice: 5.99, unit: "each" },
-                { id: 'tray', name: "Paint Tray and Liners", category: "Application", qty: 1, unitPrice: 7.50, unit: "each" },
-                { id: 'pole', name: "Extension Pole", category: "Application", qty: 1, unitPrice: 24.00, unit: "each" },
-                { id: 'spackle', name: "Spackling Paste & Putty Knife", category: "Prep", qty: 1, unitPrice: 6.99, unit: "each" },
-                { id: 'sandpaper', name: "Sandpaper (120 grit)", category: "Prep", qty: 1, unitPrice: 4.50, unit: "pack" },
-            ];
+
+            // Basic Items
+            const basicIds = ['brush', 'roller-frame', 'tray', 'spackle', 'sandpaper'];
+            items = basicIds.map(id => {
+                const def = DEFAULT_SUPPLY_ITEMS.find(d => d.id === id);
+                if (!def) return null;
+                return {
+                    ...def,
+                    id: def.id!, // assertive
+                    name: def.name!,
+                    category: def.category!,
+                    qty: def.id === 'brush' ? 2 : 1, // specific overrides
+                    unitPrice: def.unitPrice,
+                    unit: def.unit,
+                    billingType: def.billingType
+                } as SupplyItem;
+            }).filter(Boolean) as SupplyItem[];
+
+            // Special logic items
+            const rollerCover = DEFAULT_SUPPLY_ITEMS.find(d => d.id === 'roller-cover');
+            if (rollerCover) {
+                items.push({ ...rollerCover, id: 'roller-cover', name: rollerCover.name!, category: rollerCover.category!, unitPrice: rollerCover.unitPrice, unit: rollerCover.unit, billingType: rollerCover.billingType, qty: Math.ceil(paintNeeds.total / 2) || 1 } as SupplyItem);
+            }
+
+            const pole = DEFAULT_SUPPLY_ITEMS.find(d => d.id === 'pole');
+            if (pole) {
+                items.push({ ...pole, id: 'pole', name: pole.name!, category: pole.category!, unitPrice: pole.unitPrice, unit: pole.unit, billingType: pole.billingType, qty: 1 } as SupplyItem);
+            }
+
 
             if (config.includePrimer) {
-                items.push({ id: 'primer-sealer', name: "PVA Primer Sealer", category: "Prep", qty: Math.ceil(paintNeeds.primer / 5) || 1, unitPrice: 18.00, unit: "gal" });
+                const primer = DEFAULT_SUPPLY_ITEMS.find(d => d.id === 'primer-sealer');
+                if (primer) {
+                    items.push({ ...primer, id: 'primer-sealer', name: primer.name!, category: primer.category!, unitPrice: primer.unitPrice, unit: primer.unit, billingType: primer.billingType, qty: Math.ceil(paintNeeds.primer / 5) || 1 } as SupplyItem);
+                }
             }
 
             if (stats.totalFloorArea > 0) {
-                const dropClothQty = Math.ceil(stats.totalFloorArea / 200); // 1 per 200 sq ft
-                items.push({ id: 'drop-cloth', name: "Canvas Drop Cloth (9x12)", category: "Prep", qty: dropClothQty || 1, unitPrice: 22.00, unit: "each" });
-                items.push({ id: 'plastic', name: "Plastic Sheeting (9x400)", category: "Prep", qty: 1, unitPrice: 14.00, unit: "roll" });
-                items.push({ id: 'tape', name: "Painter's Tape (1.88\")", category: "Prep", qty: Math.ceil(stats.totalPerimeter / 180) || 2, unitPrice: 8.99, unit: "roll" });
+                const dropClothQty = Math.ceil(stats.totalFloorArea / 200);
+                const dropCloth = DEFAULT_SUPPLY_ITEMS.find(d => d.id === 'drop-cloth');
+                if (dropCloth) {
+                    items.push({ ...dropCloth, id: 'drop-cloth', name: dropCloth.name!, category: dropCloth.category!, unitPrice: dropCloth.unitPrice, unit: dropCloth.unit, billingType: dropCloth.billingType, qty: dropClothQty || 1 } as SupplyItem);
+                }
+
+                const plastic = DEFAULT_SUPPLY_ITEMS.find(d => d.id === 'plastic');
+                if (plastic) {
+                    items.push({ ...plastic, id: 'plastic', name: plastic.name!, category: plastic.category!, unitPrice: plastic.unitPrice, unit: plastic.unit, billingType: plastic.billingType, qty: 1 } as SupplyItem);
+                }
+
+                const tape = DEFAULT_SUPPLY_ITEMS.find(d => d.id === 'tape');
+                if (tape) {
+                    items.push({ ...tape, id: 'tape', name: tape.name!, category: tape.category!, unitPrice: tape.unitPrice, unit: tape.unit, billingType: tape.billingType, qty: Math.ceil(stats.totalPerimeter / 180) || 2 } as SupplyItem);
+                }
             }
         }
 
@@ -519,6 +613,37 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                                                     <Label htmlFor="price" className="text-right">Price</Label>
                                                     <Input id="price" type="number" value={newSupplyPrice || ''} onChange={(e) => setNewSupplyPrice(parseFloat(e.target.value))} className="col-span-3" placeholder="0.00" />
                                                 </div>
+                                                <div className="grid grid-cols-4 items-center gap-4">
+                                                    <Label htmlFor="room" className="text-right">Room</Label>
+                                                    <div className="col-span-3">
+                                                        <Select value={newSupplyRoomId} onValueChange={setNewSupplyRoomId}>
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="General (All Rooms)" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="general">General (All Rooms)</SelectItem>
+                                                                {rooms?.map(room => (
+                                                                    <SelectItem key={room.name} value={room.id || room.name}>{room.name}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="grid grid-cols-4 items-center gap-4">
+                                                        <Label htmlFor="type" className="text-right">Type</Label>
+                                                        <div className="col-span-3">
+                                                            <Select value={newSupplyBillingType} onValueChange={(val: 'billable' | 'expense' | 'checklist') => setNewSupplyBillingType(val)}>
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Billing Type" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="checklist">In Inventory</SelectItem>
+                                                                    <SelectItem value="expense">Expense (Internal Cost)</SelectItem>
+                                                                    <SelectItem value="billable">Billable (On Quote)</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                             <Button onClick={addSupplyItem} disabled={!newSupplyName.trim()}>Add Item</Button>
                                         </DialogContent>
@@ -542,18 +667,15 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                                     {supplyItems.map((item, idx) => (
                                         <div key={item.id || idx} className="flex items-center justify-between p-3 rounded-md border bg-muted/30 group hover:bg-muted/50 transition-colors">
                                             {editingItemId === item.id ? (
-                                                <div className="flex items-center gap-3 flex-1 mr-4">
-                                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                                                        {item.qty}
-                                                    </div>
-                                                    <div className="flex-1 grid grid-cols-2 gap-2">
+                                                <div className="flex items-center gap-2 flex-1 mr-2">
+                                                    <div className="flex-1 grid grid-cols-12 gap-2">
                                                         <Input
                                                             value={editingValues.name}
                                                             onChange={(e) => setEditingValues(prev => ({ ...prev, name: e.target.value }))}
                                                             placeholder="Item Name"
-                                                            className="h-8"
+                                                            className="h-8 col-span-4"
                                                         />
-                                                        <div className="relative">
+                                                        <div className="relative col-span-2">
                                                             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                                                             <Input
                                                                 type="number"
@@ -563,50 +685,104 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                                                                 className="h-8 pl-6"
                                                             />
                                                         </div>
+                                                        <div className="col-span-3">
+                                                            <Select value={editingValues.roomId} onValueChange={(val) => setEditingValues(prev => ({ ...prev, roomId: val }))}>
+                                                                <SelectTrigger className="h-8">
+                                                                    <SelectValue placeholder="Room" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="general">General</SelectItem>
+                                                                    {rooms?.map(room => (
+                                                                        <SelectItem key={room.name} value={room.id || room.name}>{room.name}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="col-span-3">
+                                                            <Select value={editingValues.billingType || 'expense'} onValueChange={(val: 'billable' | 'expense' | 'checklist') => setEditingValues(prev => ({ ...prev, billingType: val }))}>
+                                                                <SelectTrigger className="h-8">
+                                                                    <SelectValue placeholder="Type" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="checklist">In Inventory</SelectItem>
+                                                                    <SelectItem value="expense">Expense</SelectItem>
+                                                                    <SelectItem value="billable">Billable</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-3">
-                                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                                                        {item.qty}
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-medium">{item.name}</div>
-                                                        <div className="text-xs text-muted-foreground">{item.category} • {item.unit || 'each'}</div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            <div className="flex items-center gap-4">
-                                                {editingItemId === item.id ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-100" onClick={saveEditing}>
+                                                    <div className="flex gap-1">
+                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:bg-green-100" onClick={saveEditing}>
                                                             <Check className="h-4 w-4" />
                                                         </Button>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={cancelEditing}>
+                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500 hover:bg-red-100" onClick={() => setEditingItemId(null)}>
                                                             <X className="h-4 w-4" />
                                                         </Button>
                                                     </div>
-                                                ) : (
-                                                    <>
-                                                        {item.unitPrice && (
-                                                            <div className="text-sm font-medium text-muted-foreground">
-                                                                ${(item.unitPrice * item.qty).toFixed(2)}
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-3 w-full">
+                                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                                                        {item.qty}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 grid grid-cols-12 gap-2 items-center">
+                                                        <div className="col-span-5 flex flex-col justify-center">
+                                                            <div className="font-medium truncate" title={item.name}>{item.name}</div>
+                                                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                                                {item.unitPrice ? `$${item.unitPrice.toFixed(2)}` : '-'}
+                                                                <span>&bull;</span>
+                                                                <span>{item.unit || 'ea'}</span>
                                                             </div>
-                                                        )}
-                                                        <div className="flex items-center gap-1">
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditing(item)}>
+                                                        </div>
+
+                                                        {/* Room Badge */}
+                                                        <div className="col-span-3 flex items-center">
+                                                            <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 cursor-pointer max-w-full truncate block" onClick={() => startEditing(item)}>
+                                                                {item.roomId ? (rooms?.find(r => r.id === item.roomId || r.name === item.roomId)?.name || "Specific Room") : "General"}
+                                                            </Badge>
+                                                        </div>
+
+                                                        {/* Type Badge */}
+                                                        <div className="col-span-2 flex items-center">
+                                                            <TooltipProvider>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Badge
+                                                                            variant={item.billingType === 'billable' ? 'default' : 'outline'}
+                                                                            className={`text-[10px] cursor-pointer ${item.billingType === 'checklist'
+                                                                                ? 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                                                                : item.billingType === 'expense'
+                                                                                    ? 'bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-200'
+                                                                                    : ''
+                                                                                }`}
+                                                                            onClick={() => startEditing(item)}
+                                                                        >
+                                                                            {item.billingType === 'billable' ? 'Billable' : item.billingType === 'checklist' ? 'In Inventory' : 'Expense'}
+                                                                        </Badge>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p className="max-w-[200px] text-xs">
+                                                                            {item.billingType === 'billable' && "Billed to customer on quote."}
+                                                                            {item.billingType === 'checklist' && "Already owned/in inventory. Not charged."}
+                                                                            {item.billingType === 'expense' && "Internal business cost. Reduces profit."}
+                                                                        </p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        </div>
+
+                                                        {/* Actions */}
+                                                        <div className="col-span-2 flex items-center justify-end gap-1">
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditing(item)}>
                                                                 <Pencil className="h-3 w-3" />
                                                             </Button>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateSupplyItemQty(item.id, Math.max(0, item.qty - 1))}>-</Button>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateSupplyItemQty(item.id, item.qty + 1)}>+</Button>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeSupplyItem(item.id)}>
-                                                                <Trash2 className="h-4 w-4" />
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeSupplyItem(item.id)}>
+                                                                <Trash2 className="h-3 w-3" />
                                                             </Button>
                                                         </div>
-                                                    </>
-                                                )}
-                                            </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>

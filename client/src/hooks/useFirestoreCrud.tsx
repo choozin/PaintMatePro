@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { getOrgDocs, getDocById, createDoc, updateDocument, deleteDocument } from '@/lib/firestore';
+import { getDocById, updateDocument, deleteDocument } from '@/lib/firestore';
 import { QueryConstraint } from 'firebase/firestore';
 
 interface FirestoreOperations<T> {
@@ -71,7 +71,7 @@ export function useCreateFirestoreDocument<T>(
   const { currentOrgId: orgId } = useAuth();
 
   return useMutation({
-    mutationFn: async (data: Omit<T, 'createdAt' | 'updatedAt' | 'orgId'>) => {
+    mutationFn: async (data: Omit<T, 'id' | 'createdAt' | 'updatedAt' | 'orgId'>) => {
       if (!orgId) throw new Error('No organization selected');
       if (!operations.create) throw new Error(`create not implemented for ${collectionName}`);
       // The data passed to operations.create should include orgId

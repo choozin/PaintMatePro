@@ -1,3 +1,4 @@
+
 import {
   collection,
   doc,
@@ -17,6 +18,7 @@ import {
 } from 'firebase/firestore';
 export { Timestamp };
 import { db } from './firebase';
+import { QuoteConfiguration } from '@/types/quote-config';
 
 // Type definitions matching your Firestore schema
 // Comprehensive Paint Data Structure based on Supplier TDS
@@ -83,6 +85,8 @@ export interface CatalogItem {
   updatedAt: Timestamp;
 }
 
+export type PaintProduct = CatalogItem;
+
 export interface Org {
   name: string;
   defaultUnits: 'metric' | 'imperial';
@@ -101,9 +105,11 @@ export interface Org {
     defaultWallCoats: number;
     defaultTrimCoats: number;
     defaultCeilingCoats: number;
+    defaultTrimRate?: number; // $/linear_ft
     defaultTaxRate?: number; // % (e.g., 8.25)
     defaultPricePerGallon?: number; // New: Default price
     defaultCostPerGallon?: number; // New: Default cost
+    defaultBillablePaint?: boolean; // New: Default billing behavior
   };
 
   // Quoting System Phase 2: Customizable Supply Rules
@@ -133,327 +139,210 @@ export interface Org {
   defaultQuoteTemplateId?: string; // New: Default to use
 }
 
-export interface QuoteDisplayConfig {
-  // 1. Organization (The Container)
-  organization: 'room' | 'surface' | 'floor' | 'phase';
 
-  // 2. Composition (The Split)
-  itemComposition: 'bundled' | 'separated' | 'granular' | 'fixed_material';
-
-  // 3. Labor Pricing Model (The Unit)
-  laborPricingModel: 'fixed' | 'hourly' | 'unit_sqft' | 'day_rate' | 'item_count';
-
-  // 4. Material Strategy (The Material Bill)
-  materialStrategy: 'inclusive' | 'allowance' | 'itemized_volume' | 'specific_product';
-
-  // New: Material Grouping
-  materialGrouping?: 'itemized_per_task' | 'combined_section' | 'combined_setup' | 'hidden';
-
-  // 5. Details (Toggles)
-  showCoatCounts: boolean;
-  showColors: boolean;
-  showDimensions: boolean;
-  showQuantities: boolean; // New
-  showRates: boolean;      // New
-  showPrepTasks: boolean;
-  showDisclaimers: boolean;
-
-  // Financial
-  showTaxLine: boolean;
-  showSubtotals: boolean;
-
-  // Custom
-  customFooterText?: string;
-}
 
 export interface QuoteTemplate {
   id: string;
   name: string;
   description?: string;
-  config: QuoteDisplayConfig;
+  config: QuoteConfiguration;
   isDefault?: boolean;
 }
 
-import { OrgRole } from '@/lib/permissions';
-
-export interface Employee {
-  id: string;
-  orgId: string;
-  name: string;
-  role: OrgRole | string; // Relaxed for legacy compatibility but prefers OrgRole
-  email?: string;
-  phone?: string;
-  hourlyRate?: number; // For Payroll
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-export interface Crew {
-  id: string;
-  orgId: string;
-  name: string;
-  color: string; // Hex code for visualization
-  memberIds: string[]; // List of Employee IDs
-  paletteId?: string; // Visual palette ID
-  specs?: Record<string, string>; // Custom attributes (e.g. "Size": "4-man", "Skill": "Exact Finish")
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
 export interface SupplyRule {
+  id?: string;
+  conditionField: 'surfaceType' | 'roomName' | 'sqft';
+  conditionOperator: 'equals' | 'contains' | 'greaterThan';
+  conditionValue: string | number;
+  action: 'addScaleItem' | 'addFixedItem';
+  actionItemId: string; // From Catalog
+  actionQuantity: number; // Multiplier if scale, fixed number if fixed
+}
+
+export interface ProjectSupplyConfig {
+  // Wall Paint
+  wallProduct?: CatalogItem | null; // Selected Paint Product Object
+  wallMethod?: 'brush_roll' | 'spray';
+  wallCoats?: number; // Override default
+
+  wallCoverage?: number; // Override product/default coverage
+  billablePaint?: boolean; // Override Org default
+
+  // Trim Paint
+  trimProduct?: CatalogItem | null;
+  trimMethod?: 'brush' | 'spray';
+  trimCoats?: number;
+  trimRate?: number; // $/linear_ft override
+  includeTrim?: boolean;
+
+  // Ceiling Paint
+  ceilingProduct?: CatalogItem | null;
+  ceilingMethod?: 'roll' | 'spray';
+  ceilingCoats?: number;
+  includeCeiling?: boolean; // Toggle for "Paint Ceiling too?"
+
+  // Primer
+  primerProduct?: CatalogItem | null; // If null, use standard
+  requirePrimer?: boolean; // Toggle
+
+  // Prep (Legacy - kept for migration if needed, but UI will likely move away)
+  includeWallpaperRemoval?: boolean;
+  wallpaperRemovalRate?: number; // $/sqft
+
+  // Supply Rules Overrides?
+  // Maybe just a list of "Extra Supplies" added manually
+  extraSupplies?: CustomSupplyItem[];
+  deductionExactSqFt?: number;
+}
+
+
+export interface PaintConfig {
+  coveragePerGallon: number;
+  wallCoats: number;
+  ceilingCoats: number;
+  trimCoats: number;
+  defaultTrimRate?: number; // $/linear_ft
+  includePrimer: boolean;
+  includeCeiling: boolean;
+  includeTrim: boolean;
+  deductionFactor: number;
+  ceilingSamePaint?: boolean;
+  deductionMethod?: 'percent' | 'exact';
+  deductionExactSqFt?: number | string;
+  pricePerGallon?: number;
+
+  wallProduct?: PaintProduct | null;
+  ceilingProduct?: PaintProduct | null;
+  trimProduct?: PaintProduct | null;
+  primerProduct?: PaintProduct | null;
+
+  // Primer Specifics
+  primerCoats?: number;
+  primerCoverage?: number;
+  primerAppRate?: number;
+
+  // Legacy / Migrated to PrepTasks
+  includeWallpaperRemoval?: boolean;
+  wallpaperRemovalRate?: number;
+  billablePaint?: boolean;
+}
+
+export interface CustomSupplyItem {
   id: string;
   name: string;
+  qty: number;
   category: string;
-  unit: string;
-  unitPrice: number;
-  unitCost?: number; // New: Cost for margin analysis
-  catalogItemId?: string; // Optional link to catalog
-  condition: 'always' | 'if_ceiling' | 'if_trim' | 'if_primer' | 'if_floor_area';
-  quantityType: 'fixed' | 'per_sqft_wall' | 'per_sqft_floor' | 'per_gallon_total' | 'per_linear_ft_perimeter' | 'per_gallon_primer';
-  quantityBase: number; // The "X" in "1 item per X units" (or the fixed quantity)
+  unitPrice?: number;
+  unit?: string;
+  roomId?: string; // Optional linkage
+  actionItemId?: string; // If linked to catalog
+  billingType?: 'billable' | 'expense' | 'checklist';
 }
 
-export interface OrgWithId extends Org {
+export interface ProjectLaborConfig {
+  hourlyRate: number; // e.g. 60
+  productionRate: number; // e.g. 150 sqft/hr
+  difficultyFactor: number; // 0.8 to 1.5
+  laborPricePerSqFt: number; // Derived or Manual? (e.g. 1.50)
+}
+
+// --- MEASUREMENTS & PREP ---
+// --- MEASUREMENTS & PREP ---
+export interface PrepTask {
   id: string;
+  name: string; // e.g. "Wallpaper Removal", "Sanding"
+  unit: 'sqft' | 'linear_ft' | 'units' | 'fixed' | 'hours'; // 'fixed' = user defined price
+  quantity: number; // Hours (if unit=units?), SqFt, or LinearFt
+  width?: number; // For linear_ft -> sqft conversion
+  rate: number; // Unit Price or Flat Fee
+  roomId: string; // 'global' or specific roomId
+  count?: number;
+  globalId?: string; // If this is an override of a global task
+  excluded?: boolean; // If true, this potentially global task is excluded from this room
 }
 
-export interface EntitlementFeatures {
-  'capture.ar': boolean;
-  'capture.reference': boolean;
-  'capture.weeklyLimit': number;
-  'visual.recolor': boolean;
-  'visual.sheenSimulator': boolean;
-  'portal.fullView': boolean;
-  'portal.advancedActionsLocked': boolean;
-  'analytics.lite': boolean;
-  'analytics.drilldowns': boolean;
-  'pdf.watermark': boolean;
-  eSign: boolean;
-  payments: boolean;
-  scheduler: boolean;
-
-  // Quoting System Phase 2
-  'quote.tiers': boolean;
-  'quote.profitMargin': boolean;
-  'quote.visualScope': boolean;
-  'client.importCSV': boolean;
-}
-
-export interface Entitlement {
-  plan: string;
-  features: EntitlementFeatures;
-}
-
-export const ALL_BOOLEAN_FEATURES: (keyof EntitlementFeatures)[] = [
-  'capture.ar',
-  'capture.reference',
-  'visual.recolor',
-  'visual.sheenSimulator',
-  'portal.fullView',
-  'portal.advancedActionsLocked',
-  'analytics.lite',
-  'analytics.drilldowns',
-  'pdf.watermark',
-  'eSign',
-  'payments',
-  'scheduler',
-  'quote.tiers',
-  'quote.profitMargin',
-  'quote.visualScope',
-  'client.importCSV',
-];
-
-export interface ProjectEvent {
+export interface MiscMeasurement {
   id: string;
-  type: 'lead_created' | 'quote_created' | 'quote_provided' | 'quote_sent' | 'quote_accepted' | 'scheduled' | 'started' | 'paused' | 'resumed' | 'finished' | 'invoice_issued' | 'payment_received' | 'on_hold' | 'custom';
-  label: string;
-  date: Timestamp;
+  name: string; // "Window Frames", "Baseboards"
+  unit: 'sqft' | 'linear_ft' | 'units' | 'fixed' | 'hours';
+  quantity: number;
+  width?: number; // For linear_ft -> sqft conversion (e.g. 0.5 ft width)
+  rate: number;
+  count?: number; // Multiplier (e.g. 12 window frames)
+  chargeOverride?: number; // Optional flat fee override (Deprecated? Use unit='fixed'?)
+  roomId: string; // 'global' or specific roomId
+}
+
+
+export interface Room {
+  id: string; // uuid
+  name: string; // e.g. "Living Room"
+  type?: 'interior' | 'exterior';
+  length: number;
+  width: number;
+  height: number;
+  color?: string;
   notes?: string;
-  createdBy?: string;
+
+  // Measurements
+  prepTasks?: PrepTask[];
+  miscItems?: MiscMeasurement[];
+
+  // Overrides
+  supplyConfig?: ProjectSupplyConfig;
 }
 
-export type ProjectStatus = 'new' | 'quote_created' | 'quote_sent' | 'pending' | 'booked' | 'in-progress' | 'paused' | 'completed' | 'invoiced' | 'paid' | 'on-hold' | 'lead' | 'quoted' | 'resumed'; // lead/quoted legacy
-
-// Snapshot of a paint product used in a project
-export interface PaintProduct {
-  id?: string; // Optional (if custom)
-  name: string;
-  pricePerGallon: number;
-  coverage: number; // sq ft per gallon
-  sheen?: string;
-  dryingTime?: string; // e.g., "1hr touch, 4hr recoat"
-  cleanup?: string; // e.g., "Soap & Water"
-  notes?: string;
-}
-
-export interface Project {
-  orgId: string;
-  name: string;
-  clientId: string;
-  assignedCrewId?: string; // Link to Crew
-  status: ProjectStatus;
-  quoteTemplateId?: string; // New: Override default template
-  location: string;
-  startDate: Timestamp; // This can now represent "Scheduled Start" or "Actual Start" depending on interpreted logic, or we can add specific fields if strict separation is needed. For now, let's keep it as primary "Start" but rely on timeline for specifics.
-  estimatedCompletion?: Timestamp;
-  // Advanced Scheduling
-  dailyAssignments?: Record<string, string>; // Map of YYYY-MM-DD to CrewID
-  pauses?: Array<{
-    startDate: Timestamp;
-    endDate?: Timestamp;
-    originalDuration?: number; // Duration of project before pause
-  }>;
-  autoShifted?: boolean;
-
-  timeline?: ProjectEvent[]; // New Timeline Array
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-
-  // Supply Hub v2 Configuration
-  supplyConfig?: {
-    coveragePerGallon: number; // Keep as fallback/default
-    wallCoats: number;
-    ceilingCoats: number;
-    trimCoats: number;
-    includePrimer: boolean;
-    includeCeiling: boolean;
-    includeTrim: boolean;
-    deductionFactor: number; // 0-1 range (e.g., 0.15 for 15%)
-    ceilingSamePaint?: boolean; // New: Use wall paint for ceiling
-    deductionMethod?: 'percent' | 'exact'; // New: Deduction mode
-    deductionExactSqFt?: number; // New: Exact deduction amount
-    pricePerGallon?: number; // Keep as fallback/default
-    costPerGallon?: number; // New: Cost per gallon for margin analysis
-
-    // Product Selections (Snapshots)
-    wallProduct?: PaintProduct;
-    ceilingProduct?: PaintProduct;
-    trimProduct?: PaintProduct;
-    primerProduct?: PaintProduct; // New: Primer selection
-
-    // Prep & Misc
-    includeWallpaperRemoval?: boolean; // New
-    wallpaperRemovalRate?: number; // New: Labor rate per sq ft for removal
-  };
-
-  // Quoting System Phase 1: Labor Config
-  laborConfig?: {
-    hourlyRate: number; // Keep for internal cost calculation? Or deprecated?
-    productionRate: number; // sq ft/hr
-    difficultyFactor: number; // 1.0 - 2.0 multiplier
-    ceilingProductionRate?: number; // New: Specific rate for ceilings
-    totalHours?: number;
-    totalCost?: number;
-    laborPricePerSqFt?: number; // New: Fixed price per sq ft for quoting
-  };
-
-  internalCostConfig?: {
-    method: 'standard' | 'custom';
-    estimatedHours?: number;
-    crewCount?: number;
-    averageWage?: number; // $/hr internal cost
-  };
-
-  customSupplies?: Array<{
-    id: string;
-    name: string;
-    qty: number;
-    category: string;
-    unitPrice?: number;
-    unitCost?: number;
-    unit?: string;
-  }>;
-}
 
 export interface Client {
+  id: string;
   orgId: string;
   name: string;
   email: string;
   phone: string;
-  mobilePhone?: string; // For texting
   address: string;
-  tags?: string[]; // Flexible labeling
-  leadStatus?: 'new' | 'interested' | 'cold' | 'archived'; // Manual status override
-
-  // Extended Details
-  clientType?: 'residential' | 'commercial' | 'property_manager';
-  source?: string;
-  notes?: string;
-  preferences?: string;
-  secondaryContact?: {
-    name: string;
-    phone?: string;
-    email?: string;
-    role?: string;
-  };
-
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  mobilePhone?: string; // Added field
+  createdAt: Timestamp;
 }
 
-// 3D point for AR measurements
-export interface Point3D {
-  x: number;
-  y: number;
-  z: number;
-}
-
-// Individual wall measurement for complex room shapes
-export interface Wall {
+export interface Project {
   id: string;
-  startPoint: Point3D;
-  endPoint: Point3D;
-  height: number;
-  length: number;
-  area: number;
-}
-
-// Measurement metadata
-export interface MeasurementMetadata {
-  confidence?: number; // 0-1 scale for accuracy confidence
-  roundingPreference?: 'precise' | '2inch' | '6inch' | '1foot';
-  roundingDirection?: 'up' | 'down';
-  capturedAt?: Timestamp;
-  deviceInfo?: string;
-}
-
-// Extended room interface supporting multiple measurement methods
-export interface Room {
   orgId: string;
-  projectId: string;
+  clientId: string;
   name: string;
-  type?: 'interior' | 'exterior'; // New: Distinguish surfaces
+  address: string;
+  status: 'lead' | 'active' | 'completed' | 'cancelled';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 
-  // Basic dimensions (backward compatible with existing data)
-  length: number;
-  width: number;
-  height: number;
+  // Data
+  rooms: Room[]; // Now sources of truth for room items
 
-  // Measurement method tracking
-  measurementMethod?: 'manual' | 'camera' | 'lidar';
-  measurementMetadata?: MeasurementMetadata;
+  // Global Configs
+  laborConfig?: ProjectLaborConfig;
+  supplyConfig?: ProjectSupplyConfig; // Global defaults
+  paintConfig?: PaintConfig;
 
-  // Complex room shape support (future)
-  walls?: Wall[];
-  shape?: 'rectangular' | 'complex';
+  // Global Lists
+  globalPrepTasks?: PrepTask[];
+  globalMiscItems?: MiscMeasurement[];
 
-  // Optional photo storage references (Firebase Storage URLs)
-  photoUrls?: string[];
+  notes?: string;
+  timeline?: {
+    id: string;
+    type: string;
+    label: string;
+    date: Timestamp;
+    notes?: string;
+  }[];
+  quoteTemplateId?: string;
 
-  // Pre-calculated areas (cached for performance)
-  calculatedAreas?: {
-    floor: number;
-    wall: number;
-    total: number;
-  };
-
-  createdAt?: Timestamp;
+  // Legacy / Deprecated fields kept for safety
+  customSupplies?: CustomSupplyItem[];
 }
 
 export interface QuoteOption {
   id: string;
-  name: string;
-  description?: string;
+  name: string; // "Option 1", "Deluxe Package"
   lineItems: Array<{
     description: string;
     quantity: number;
@@ -467,6 +356,7 @@ export interface QuoteOption {
 }
 
 export interface Quote {
+  id: string;
   orgId: string;
   projectId: string;
   lineItems: Array<{
@@ -569,71 +459,31 @@ export async function getDocs<T>(
   try {
     const q = query(getCollection<T>(collectionName), ...constraints);
     const querySnapshot = await getDocsFromFirestore(q);
-
     return querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     })) as (T & { id: string })[];
-  } catch (error: any) {
+  } catch (error) {
     console.error(`Error getting documents from ${collectionName}:`, error);
-    if (error?.message) {
-      console.error('Full error message:', error.message);
-    }
     throw error;
   }
 }
 
-/**
- * Get documents filtered by orgId
- * Returns array of documents with id included
- */
-export async function getOrgDocs<T>(
-  collectionName: string,
-  orgId: string,
-  additionalConstraints: QueryConstraint[] = []
-): Promise<(T & { id: string })[]> {
-  const constraints = [where('orgId', '==', orgId), ...additionalConstraints];
-  return getDocs<T>(collectionName, constraints);
-}
 
 /**
- * Create a new document
+ * Add a new document to a collection
+ * Returns the new document ID
  */
-export async function createDoc<T>(
-  collectionName: string,
-  data: Partial<T>
-): Promise<string> {
+export async function addDocument<T extends DocumentData>(collectionName: string, data: T): Promise<string> {
   try {
-    const docRef = await addDoc(getCollection(collectionName), {
+    const docRef = await addDoc(getCollection<T>(collectionName), {
       ...data,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
     return docRef.id;
   } catch (error) {
-    console.error(`Error creating document in ${collectionName}:`, error);
-    throw error;
-  }
-}
-
-/**
- * Create a new document with a specific ID
- */
-export async function createDocWithId<T>(
-  collectionName: string,
-  id: string,
-  data: Partial<T>
-): Promise<string> {
-  try {
-    const docRef = doc(db, collectionName, id);
-    await setDoc(docRef, {
-      ...data,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    });
-    return id;
-  } catch (error) {
-    console.error(`Error creating document in ${collectionName}:`, error);
+    console.error(`Error adding document to ${collectionName}:`, error);
     throw error;
   }
 }
@@ -641,21 +491,15 @@ export async function createDocWithId<T>(
 /**
  * Update an existing document
  */
-export async function updateDocument<T>(
-  collectionName: string,
-  id: string,
-  data: Partial<T> | { [key: string]: any }
-): Promise<void> {
+export async function updateDocument<T>(collectionName: string, id: string, data: Partial<T>): Promise<void> {
   try {
-    console.log(`Updating document in ${collectionName}/${id} with data:`, data); // Added for debugging
     const docRef = doc(db, collectionName, id);
     await updateDoc(docRef, {
       ...data,
       updatedAt: Timestamp.now(),
     });
-    console.log('Update successful!'); // Added for debugging
   } catch (error) {
-    console.error(`Error updating document in ${collectionName}:`, error);
+    console.error(`Error updating document ${id} in ${collectionName}:`, error);
     throw error;
   }
 }
@@ -668,130 +512,153 @@ export async function deleteDocument(collectionName: string, id: string): Promis
     const docRef = doc(db, collectionName, id);
     await deleteDoc(docRef);
   } catch (error) {
-    console.error(`Error deleting document from ${collectionName}:`, error);
+    console.error(`Error deleting document ${id} from ${collectionName}:`, error);
     throw error;
   }
 }
 
-// Specific collection operations
+// --- Specific Operations ---
 export const orgOperations = {
   get: (id: string) => getDocById<Org>('orgs', id),
-  getAll: () => getDocs<Org>('orgs'),
-  create: (data: Org) => createDoc('orgs', data),
-  update: (id: string, data: Partial<Org>) => updateDocument('orgs', id, data),
+  update: (id: string, data: Partial<Org>) => updateDocument<Org>('orgs', id, data),
 };
 
-export const crewOperations = {
-  getByOrg: (orgId: string) => getOrgDocs<Crew>('crews', orgId),
-  get: (id: string) => getDocById<Crew>('crews', id),
-  create: (data: Omit<Crew, 'id' | 'createdAt' | 'updatedAt'>) => createDoc('crews', data),
-  update: (id: string, data: Partial<Crew>) => updateDocument('crews', id, data),
-  delete: (id: string) => deleteDocument('crews', id),
-};
-
-export const employeeOperations = {
-  getByOrg: (orgId: string) => getOrgDocs<Employee>('employees', orgId),
-  getByEmail: (email: string) => getDocs<Employee>('employees', [where('email', '==', email)]),
-  get: (id: string) => getDocById<Employee>('employees', id),
-  create: (data: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => {
-    if (data.id) {
-      // If ID provided (e.g. for Owner linked to Auth ID), use setDoc
-      return createDocWithId('employees', data.id, { ...data, id: undefined });
-    }
-    return createDoc('employees', data);
-  },
-  update: (id: string, data: Partial<Employee>) => updateDocument('employees', id, data),
-  delete: (id: string) => deleteDocument('employees', id),
-};
-
-export const entitlementOperations = {
-  get: (orgId: string) => getDocById<Entitlement>('entitlements', orgId),
-  update: (orgId: string, featureKey: string, value: boolean) => {
-    const fieldPath = `features.${featureKey}`;
-    return updateDocument('entitlements', orgId, { [fieldPath]: value });
-  },
-  create: (orgId: string, data: Entitlement) => {
-    return setDoc(doc(db, 'entitlements', orgId), {
-      ...data,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    });
-  }
-};
+export type ProjectStatus = Project['status'];
 
 export const projectOperations = {
-  getByOrg: (orgId: string) => getOrgDocs<Project>('projects', orgId, [orderBy('createdAt', 'desc')]),
+  create: (data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<Project, 'id' | 'createdAt' | 'updatedAt'>>('projects', data),
   get: (id: string) => getDocById<Project>('projects', id),
-  create: (data: Omit<Project, 'createdAt' | 'updatedAt' | 'orgId'>) => createDoc('projects', data),
-  update: (id: string, data: Partial<Project>) => updateDocument('projects', id, data),
+  getByOrg: (orgId: string) => getDocs<Project>('projects', [where('orgId', '==', orgId)]), // Removed orderBy to fix potential index issue
+  update: (id: string, data: Partial<Project>) => updateDocument<Project>('projects', id, data),
   delete: (id: string) => deleteDocument('projects', id),
 };
 
 export const clientOperations = {
-  getByOrg: (orgId: string) => getOrgDocs<Client>('clients', orgId, [orderBy('createdAt', 'desc')]),
+  create: (data: Omit<Client, 'id' | 'createdAt'>) => addDocument<Omit<Client, 'id' | 'createdAt'>>('clients', data),
   get: (id: string) => getDocById<Client>('clients', id),
-  create: (data: Omit<Client, 'createdAt' | 'updatedAt' | 'orgId'>) => createDoc('clients', data),
-  update: (id: string, data: Partial<Client>) => updateDocument('clients', id, data),
+  getByOrg: (orgId: string) => getDocs<Client>('clients', [where('orgId', '==', orgId), orderBy('createdAt', 'desc')]),
+  update: (id: string, data: Partial<Client>) => updateDocument<Client>('clients', id, data),
   delete: (id: string) => deleteDocument('clients', id),
 };
 
+export const quoteOperations = {
+  create: (data: Omit<Quote, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<Quote, 'id' | 'createdAt' | 'updatedAt'>>('quotes', data),
+  get: (id: string) => getDocById<Quote>('quotes', id),
+  getByProject: (projectId: string) => getDocs<Quote>('quotes', [where('projectId', '==', projectId), orderBy('createdAt', 'desc')]),
+  update: (id: string, data: Partial<Quote>) => updateDocument<Quote>('quotes', id, data),
+  delete: (id: string) => deleteDocument('quotes', id),
+};
+
+export const catalogOperations = {
+  create: (data: Omit<CatalogItem, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<CatalogItem, 'id' | 'createdAt' | 'updatedAt'>>('catalog', data),
+  getAll: (orgId: string | undefined) => { // Currently not filtering by org, global catalog? Or should add orgId to catalog items?
+    // Assuming global for now or filter later
+    return getDocs<CatalogItem>('catalog', [orderBy('name')]);
+  },
+  update: (id: string, data: Partial<CatalogItem>) => updateDocument<CatalogItem>('catalog', id, data),
+  delete: (id: string) => deleteDocument('catalog', id),
+};
+
+export interface Employee {
+  id: string;
+  orgId: string;
+  name: string;
+  email?: string;
+  role?: 'admin' | 'manager' | 'painter';
+  createdAt: Timestamp;
+}
+
+export interface Crew {
+  id: string;
+  orgId: string;
+  name: string;
+  color?: string;
+  memberIds?: string[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export const crewOperations = {
+  create: (data: Omit<Crew, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<Crew, 'id' | 'createdAt' | 'updatedAt'>>('crews', data),
+  get: (id: string) => getDocById<Crew>('crews', id),
+  getByOrg: (orgId: string) => getDocs<Crew>('crews', [where('orgId', '==', orgId)]),
+  update: (id: string, data: Partial<Crew>) => updateDocument<Crew>('crews', id, data),
+  delete: (id: string) => deleteDocument('crews', id),
+};
+
+export const employeeOperations = {
+  create: (data: Omit<Employee, 'id' | 'createdAt'>) => addDocument<Omit<Employee, 'id' | 'createdAt'>>('employees', data),
+  get: (id: string) => getDocById<Employee>('employees', id),
+  getByOrg: (orgId: string) => getDocs<Employee>('employees', [where('orgId', '==', orgId)]),
+  update: (id: string, data: Partial<Employee>) => updateDocument<Employee>('employees', id, data),
+  delete: (id: string) => deleteDocument('employees', id),
+};
+
 export const roomOperations = {
-  getByProject: (projectId: string) =>
-    getDocs<Room>('rooms', [where('projectId', '==', projectId)]),
-  create: (data: Omit<Room, 'createdAt' | 'orgId' | 'updatedAt'>) => createDoc('rooms', data),
-  update: (id: string, data: Partial<Room>) => updateDocument('rooms', id, data),
+  create: (data: Omit<Room, 'id'>) => addDocument<Omit<Room, 'id'>>('rooms', data as any), // Type cast for now as Room structure is complex
+  get: (id: string) => getDocById<Room>('rooms', id),
+  getByProject: (projectId: string) => getDocs<Room>('rooms', [where('projectId', '==', projectId)]),
+  update: (id: string, data: Partial<Room>) => updateDocument<Room>('rooms', id, data),
   delete: (id: string) => deleteDocument('rooms', id),
 };
 
-export const quoteOperations = {
-  getByProject: (projectId: string, orgId?: string) => {
-    const constraints: any[] = [where('projectId', '==', projectId)];
-    if (orgId) {
-      constraints.push(where('orgId', '==', orgId));
-    }
-    // Note: re-add orderBy once composite index is created
-    return getDocs<Quote>('quotes', constraints);
-  },
-  get: (id: string) => getDocById<Quote>('quotes', id),
-  create: (data: Omit<Quote, 'createdAt' | 'updatedAt'>) => createDoc('quotes', data),
-  update: (id: string, data: Partial<Quote>) => updateDocument('quotes', id, data),
+export interface OrgEntitlement {
+  id?: string;
+  orgId: string;
+  featureKey: string;
+  isEnabled: boolean;
+  limit?: number;
+  usage?: number;
+}
+
+export const entitlementOperations = {
+  get: (orgId: string) => getDocs<OrgEntitlement>('entitlements', [where('orgId', '==', orgId)]),
+  update: (id: string, data: Partial<OrgEntitlement>) => updateDocument<OrgEntitlement>('entitlements', id, data),
 };
 
-export const portalTokenOperations = {
-  getByToken: async (token: string) => {
-    const tokens = await getDocs<PortalToken>('portalTokens', [where('token', '==', token)]);
-    return tokens[0] || null;
-  },
-  create: (data: Omit<PortalToken, 'createdAt'>) => createDoc('portalTokens', data),
-};
+export type Entitlement = OrgEntitlement;
 
-export interface User {
+export const ALL_BOOLEAN_FEATURES = [
+  'capture.ar',
+  'capture.reference',
+  'visual.recolor',
+  'visual.sheenSimulator',
+  'portal.fullView',
+  'portal.advancedActionsLocked',
+  'analytics.lite',
+  'analytics.drilldowns',
+  'pdf.watermark',
+  'eSign',
+  'payments',
+  'scheduler',
+  'quote.tiers',
+  'quote.profitMargin',
+  'quote.visualScope',
+  'client.importCSV',
+];
+
+export interface UserProfile {
+  id: string; // matches auth.uid
   email: string;
+  displayName?: string;
+  photoURL?: string;
+  username?: string;
+  orgId?: string; // Current active org
+  orgIds: string[]; // All orgs user belongs to
   createdAt: Timestamp;
-  updatedAt: Timestamp;
-  orgIds?: string[];
-  globalRole?: string; // e.g. 'platform_admin'
-  roles?: Record<string, string>; // orgId -> role mapping
-  // Other profile info
 }
 
 export const userOperations = {
-  getAll: () => getDocs<User>('users'),
-  get: (uid: string) => getDocById<User>('users', uid),
-  update: (uid: string, data: Partial<User>) => updateDocument('users', uid, data),
-  set: (uid: string, data: User) => createDocWithId('users', uid, data),
+  create: (data: Omit<UserProfile, 'createdAt'>) => setDoc(doc(db, 'users', data.id), { ...data, createdAt: Timestamp.now() }),
+  get: (id: string) => getDocById<UserProfile>('users', id),
+  update: (id: string, data: Partial<UserProfile>) => updateDocument<UserProfile>('users', id, data),
 };
 
 export const timeEntryOperations = {
-  getByOrg: (orgId: string) => getOrgDocs<TimeEntry>('time_entries', orgId, [orderBy('date', 'desc')]),
-  getByEmployee: (employeeId: string, startDate: Date, endDate: Date) =>
-    getDocs<TimeEntry>('time_entries', [
-      where('employeeId', '==', employeeId),
-      where('date', '>=', Timestamp.fromDate(startDate)),
-      where('date', '<=', Timestamp.fromDate(endDate))
-    ]),
-  getByProject: (projectId: string) => getDocs<TimeEntry>('time_entries', [where('projectId', '==', projectId)]),
-  create: (data: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => createDoc('time_entries', data),
-  update: (id: string, data: Partial<TimeEntry>) => updateDocument('time_entries', id, data),
+  create: (data: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>>('time_entries', data),
+  get: (id: string) => getDocById<TimeEntry>('time_entries', id),
+  getByProject: (projectId: string) => getDocs<TimeEntry>('time_entries', [where('projectId', '==', projectId), orderBy('date', 'desc')]),
+  getByEmployee: (employeeId: string) => getDocs<TimeEntry>('time_entries', [where('employeeId', '==', employeeId), orderBy('date', 'desc')]),
+  update: (id: string, data: Partial<TimeEntry>) => updateDocument<TimeEntry>('time_entries', id, data),
   delete: (id: string) => deleteDocument('time_entries', id),
 };

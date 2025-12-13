@@ -114,11 +114,28 @@ export function QuoteConfiguration() {
     // Wizard Overlay
     if (isWizardOpen) {
         return (
-            <div className="fixed inset-0 z-50 bg-background">
+            <div className="fixed inset-0 z-50 bg-background overflow-hidden">
                 <QuoteConfigWizard
-                    existingTemplates={templates}
-                    activeTemplate={editingTemplate}
-                    onClose={() => {
+                    initialConfig={editingTemplate?.config}
+                    onComplete={async (newConfig) => {
+                        if (editingTemplate) {
+                            // Update existing
+                            await handleSaveTemplate({ ...editingTemplate, config: newConfig });
+                        } else {
+                            // Create new
+                            const newTemplate: QuoteTemplate = {
+                                id: crypto.randomUUID(),
+                                name: "New Template " + (templates.length + 1),
+                                config: newConfig,
+                                isDefault: false,
+                                description: "Created via Wizard"
+                            };
+                            await handleSaveTemplate(newTemplate);
+                        }
+                        setIsWizardOpen(false);
+                        setEditingTemplate(undefined);
+                    }}
+                    onCancel={() => {
                         setIsWizardOpen(false);
                         setEditingTemplate(undefined);
                         loadSettings(); // Refresh
@@ -177,8 +194,7 @@ export function QuoteConfiguration() {
                                         </div>
                                         {/* Expanded Description */}
                                         <CardDescription className="text-xs">
-                                            Group by <span className="font-medium text-foreground">{template.config.organization.toUpperCase()}</span> •
-                                            Split: <span className="font-medium text-foreground">{template.config.itemComposition}</span>
+                                            Strategy: <span className="font-medium text-foreground">{template.config.listingStrategy === 'by_room' ? 'By Room' : 'By Activity'}</span>
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="pb-3 text-sm text-muted-foreground flex-1">
@@ -187,26 +203,18 @@ export function QuoteConfiguration() {
                                             <ul className="space-y-1.5 text-xs text-gray-600">
                                                 <li className="flex justify-between border-b pb-1">
                                                     <span>Labor Model:</span>
-                                                    <span className="font-medium">{template.config.laborPricingModel}</span>
-                                                </li>
-                                                <li className="flex justify-between border-b pb-1">
-                                                    <span>Material Strategy:</span>
-                                                    <span className="font-medium">{template.config.materialStrategy}</span>
+                                                    <span className="font-medium capitalize">{template.config.laborUnit}</span>
                                                 </li>
                                                 <li className="flex justify-between pt-1">
-                                                    <span>Show Quantities:</span>
-                                                    <span className={template.config.showQuantities ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showQuantities ? 'ON' : 'OFF'}</span>
+                                                    <span>Show Units:</span>
+                                                    <span className={template.config.showUnits ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showUnits ? 'ON' : 'OFF'}</span>
                                                 </li>
                                                 <li className="flex justify-between">
                                                     <span>Show Rates:</span>
                                                     <span className={template.config.showRates ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showRates ? 'ON' : 'OFF'}</span>
                                                 </li>
                                                 <li className="flex justify-between">
-                                                    <span>Show Coats:</span>
-                                                    <span className={template.config.showCoatCounts ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showCoatCounts ? 'ON' : 'OFF'}</span>
-                                                </li>
-                                                <li className="flex justify-between">
-                                                    <span>Show Taxes:</span>
+                                                    <span>Show Tax:</span>
                                                     <span className={template.config.showTaxLine ? "text-green-600 font-bold" : "text-gray-400"}>{template.config.showTaxLine ? 'ON' : 'OFF'}</span>
                                                 </li>
                                             </ul>

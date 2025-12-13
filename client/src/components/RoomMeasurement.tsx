@@ -9,8 +9,9 @@ import { Camera } from "@capacitor/camera";
 import { Capacitor } from "@capacitor/core";
 import { useState, useEffect, useRef } from "react";
 import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/useRooms";
+import { useProject, useUpdateProject } from "@/hooks/useProjects";
 import { useToast } from "@/hooks/use-toast";
-import type { Room } from "@/lib/firestore";
+import type { Room, MiscMeasurement } from "@/lib/firestore";
 import { isIOS } from "@/lib/deviceDetection";
 import { ARRoomScanner, type ARScanData, type ARMode } from "./ARRoomScanner";
 import { useEntitlements } from "@/hooks/useEntitlements";
@@ -58,14 +59,17 @@ function FallbackPrompt({ onTryNext, onManual, nextMode, error }: { onTryNext: (
 }
 
 export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
+  const { data: project } = useProject(projectId);
   const { data: rooms = [], isLoading } = useRooms(projectId);
   const createRoom = useCreateRoom();
   const updateRoom = useUpdateRoom();
   const deleteRoom = useDeleteRoom();
+  const updateProject = useUpdateProject();
   const { toast } = useToast();
   const { entitlements, hasFeature } = useEntitlements();
 
   const [localRooms, setLocalRooms] = useState<LocalRoom[]>([]);
+  const [localMiscItems, setLocalMiscItems] = useState<MiscMeasurement[]>([]);
   const [showARScanner, setShowARScanner] = useState(false);
   const [activeType, setActiveType] = useState<'interior' | 'exterior'>('interior'); // Track which section we are adding to
   const [roundingPreference, setRoundingPreference] = useState<'precise' | '2inch' | '6inch' | '1foot'>('2inch');
@@ -91,14 +95,20 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
     }
   }, [isLoading, rooms]);
 
+  useEffect(() => {
+    if (project?.globalMiscItems) {
+      setLocalMiscItems(project.globalMiscItems);
+    }
+  }, [project?.globalMiscItems]);
+
   const addRoom = (type: 'interior' | 'exterior' = 'interior') => {
     // Entitlement Check for Exterior
     if (type === 'exterior' && !hasFeature('capture.reference')) { // Using capture.reference as proxy for Pro measurement features or add strict one
       // For now, let's assume 'capture.reference' is the Pro tier proxy, or just check plan
       // Actually, let's just allow it for now or implement strict entitlement later if needed.
       // The user prompt said: "instructed they need to upgrade... to get certain features (like exterior measurements)"
-      // Let's add a mock check:
-      if (entitlements?.plan === 'free') {
+      // Let's just check the feature flag directly
+      if (!hasFeature('capture.reference')) {
         return toast({
           variant: "destructive",
           title: "Pro Feature",
@@ -144,8 +154,36 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
       width: parseFloat(room.width),
       height: parseFloat(room.height)
     };
-    if (room.isNew) await createRoom.mutateAsync(roomData);
+    if (room.isNew) await createRoom.mutateAsync(roomData as any);
     else if (room.id) await updateRoom.mutateAsync({ id: room.id, data: roomData });
+  };
+
+  const addMiscItem = () => {
+    setLocalMiscItems(prev => [...prev, {
+      id: crypto.randomUUID(),
+      name: "New Item",
+      unit: "units",
+      quantity: 1,
+      rate: 0,
+      roomId: "global"
+    }]);
+  };
+
+  const removeMiscItem = async (index: number) => {
+    const newItems = [...localMiscItems];
+    newItems.splice(index, 1);
+    setLocalMiscItems(newItems);
+    await updateProject.mutateAsync({ id: projectId, data: { globalMiscItems: newItems } });
+    toast({ title: "Deleted", description: "Misc item removed." });
+  };
+
+  const updateMiscItem = (index: number, field: keyof MiscMeasurement, value: any) => {
+    setLocalMiscItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
+  };
+
+  const saveMiscItems = async () => {
+    await updateProject.mutateAsync({ id: projectId, data: { globalMiscItems: localMiscItems } });
+    toast({ title: "Saved", description: "Misc items saved." });
   };
 
   const calculateArea = (room: LocalRoom) => {
@@ -226,6 +264,60 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
       {showFallbackPrompt && <FallbackPrompt onTryNext={handleTryNextMode} onManual={setFinalArFailure} nextMode={ALL_AR_MODES[arAttemptIndex + 1]} error={arError} />}
 
       <div className="space-y-6">
+        {/* Project Summary */}
+        <Card className="bg-muted/30">
+          <CardHeader className="pb-2">
+            <CardTitle>Project Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="bg-background p-3 rounded-lg border shadow-sm">
+                <p className="text-xs text-muted-foreground uppercase font-bold">Total Rooms</p>
+                <p className="text-2xl font-bold">{localRooms.filter(r => r.type !== 'exterior').length}</p>
+              </div>
+              <div className="bg-background p-3 rounded-lg border shadow-sm">
+                <p className="text-xs text-muted-foreground uppercase font-bold">Total Wall Area</p>
+                <p className="text-2xl font-bold">{localRooms.filter(r => r.type !== 'exterior').reduce((acc, r) => acc + calculateArea(r).wallArea, 0).toFixed(0)} <span className="text-sm font-normal text-muted-foreground">ft²</span></p>
+              </div>
+              <div className="bg-background p-3 rounded-lg border shadow-sm">
+                <p className="text-xs text-muted-foreground uppercase font-bold">Total Floor Area</p>
+                <p className="text-2xl font-bold">{localRooms.filter(r => r.type !== 'exterior').reduce((acc, r) => acc + calculateArea(r).floorArea, 0).toFixed(0)} <span className="text-sm font-normal text-muted-foreground">ft²</span></p>
+              </div>
+              <div className="bg-background p-3 rounded-lg border shadow-sm">
+                <p className="text-xs text-muted-foreground uppercase font-bold">Exterior Surfaces</p>
+                <p className="text-2xl font-bold">{localRooms.filter(r => r.type === 'exterior').length}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-muted-foreground">Detailed Measurements</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {localRooms.map((room, idx) => {
+                  const dims = room.type === 'exterior'
+                    ? `${room.length}ft x ${room.height}ft`
+                    : `${room.length}'L x ${room.width}'W x ${room.height}'H`;
+                  const areas = room.type === 'exterior'
+                    ? `Area: ${(parseFloat(room.length || '0') * parseFloat(room.height || '0')).toFixed(0)} sqft`
+                    : `Wall: ${calculateArea(room).wallArea.toFixed(0)} | Clg: ${calculateArea(room).floorArea.toFixed(0)}`;
+
+                  return (
+                    <div key={idx} className="text-xs bg-background border px-2 py-1 rounded flex flex-col justify-center">
+                      <div className="flex justify-between font-medium">
+                        <span className="truncate mr-2">{room.name}</span>
+                        <span className="text-muted-foreground whitespace-nowrap">{dims}</span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 text-right">
+                        {areas}
+                      </div>
+                    </div>
+                  );
+                })}
+                {localRooms.length === 0 && <p className="text-xs text-muted-foreground italic">No rooms added yet.</p>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {hasFeature('capture.ar') && (
           <Card>
             <CardHeader><CardTitle className="text-lg">Camera-Assisted Measurement</CardTitle></CardHeader>
@@ -283,7 +375,7 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
                         {(room.isNew || room.hasChanges) && (
                           <Button
                             size="sm"
-                            className="h-8 px-3 text-white bg-blue-600 hover:bg-blue-700 shadow-md animate-pulse font-semibold transition-all"
+                            className="h-8 px-3 text-white bg-blue-600 hover:bg-blue-700 shadow-md animate-in zoom-in-75 duration-300 font-semibold transition-all"
                             onClick={() => saveRoom(index)}
                           >
                             <Save className="h-4 w-4 mr-1" />
@@ -338,7 +430,7 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
                         {(room.isNew || room.hasChanges) && (
                           <Button
                             size="sm"
-                            className="h-8 px-3 text-white bg-blue-600 hover:bg-blue-700 shadow-md animate-pulse font-semibold transition-all"
+                            className="h-8 px-3 text-white bg-blue-600 hover:bg-blue-700 shadow-md animate-in zoom-in-75 duration-300 font-semibold transition-all"
                             onClick={() => saveRoom(index)}
                           >
                             <Save className="h-4 w-4 mr-1" />
@@ -364,6 +456,92 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
               })}
               {localRooms.filter(r => r.type === 'exterior').length === 0 && (
                 <div className="text-center py-8 border-2 border-dashed rounded-lg text-muted-foreground text-sm">No exterior surfaces added.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Misc Items Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-t pt-8">
+              <div className="flex items-center gap-2">
+                <div className="h-5 w-5 rounded bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-xs">M</div>
+                <h2 className="text-xl font-semibold">Misc & Other Items</h2>
+              </div>
+              <Button onClick={addMiscItem} variant="outline" size="sm">
+                <Plus className="h-4 w-4 mr-2" />Add Item
+              </Button>
+            </div>
+
+            <div className="grid gap-4">
+              {localMiscItems.map((item, index) => (
+                <Card key={item.id || index}>
+                  <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-end md:items-center">
+                    <div className="flex-1 w-full space-y-1">
+                      <Label className="text-xs">Item Name</Label>
+                      <Input
+                        value={item.name}
+                        onChange={(e) => updateMiscItem(index, 'name', e.target.value)}
+                        placeholder="e.g. Baseboards"
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="w-full md:w-32 space-y-1">
+                      <Label className="text-xs">Unit</Label>
+                      <Select value={item.unit} onValueChange={(val: any) => updateMiscItem(index, 'unit', val)}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="units">Count (ea)</SelectItem>
+                          <SelectItem value="sqft">Area (sqft)</SelectItem>
+                          <SelectItem value="linear_ft">Linear (ft)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="w-full md:w-24 space-y-1">
+                      <Label className="text-xs">Qty/Len</Label>
+                      <Input
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => updateMiscItem(index, 'quantity', parseFloat(e.target.value))}
+                        className="h-9"
+                      />
+                    </div>
+                    {item.unit === 'linear_ft' && (
+                      <div className="w-full md:w-48 space-y-1">
+                        <Label className="text-xs flex items-center justify-between">
+                          Width (ft)
+                          <span className="text-[10px] text-muted-foreground font-normal ml-2" title="Required to calculate paintable surface area (e.g. height of baseboard)">
+                            (for Paint Area)
+                          </span>
+                        </Label>
+                        <Input
+                          type="number"
+                          placeholder="e.g. 0.5 (6 inches)"
+                          value={item.width || ''}
+                          onChange={(e) => updateMiscItem(index, 'width', parseFloat(e.target.value))}
+                          className="h-9"
+                        />
+                        <p className="text-[10px] text-muted-foreground">e.g. Baseboard height</p>
+                      </div>
+                    )}
+                    <Button variant="ghost" size="icon" className="text-destructive h-9 w-9 shrink-0" onClick={() => removeMiscItem(index)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+              {localMiscItems.length === 0 && (
+                <div className="text-center py-6 border-2 border-dashed rounded-lg text-muted-foreground text-sm">
+                  No miscellaneous items added.
+                </div>
+              )}
+              {localMiscItems.length > 0 && (
+                <div className="flex justify-end">
+                  <Button onClick={saveMiscItems} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
+                    <Save className="h-4 w-4 mr-2" /> Save Misc Items
+                  </Button>
+                </div>
               )}
             </div>
           </div>

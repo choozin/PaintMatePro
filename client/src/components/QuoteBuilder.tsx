@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, FileText, Wand2, Save, Download, Copy, PlusCircle, X, Eye, EyeOff, PenTool, Check } from "lucide-react";
+import { Plus, Trash2, FileText, Wand2, Save, Download, Copy, PlusCircle, X, Eye, EyeOff, PenTool, Check, Settings2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { SignaturePad } from "@/components/SignaturePad";
@@ -24,7 +24,9 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
-import { generateQuoteItems, DEFAULT_QUOTE_CONFIG } from "@/lib/quote-engine";
+import { DEFAULT_QUOTE_CONFIG } from "@/types/quote-config";
+import { generateQuoteLinesV2, flattenQuoteLines } from "@/lib/quote-generator-v2";
+import { QuoteConfigWizard } from "./QuoteConfiguration/QuoteConfigWizard";
 
 const loadImage = (url: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
@@ -94,6 +96,7 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
   // Template State
   const [activeTemplateId, setActiveTemplateId] = useState<string>("");
+  const [showWizard, setShowWizard] = useState(false);
 
   // Initialize Template Selection
   useEffect(() => {
@@ -105,8 +108,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       }
     }
   }, [project?.quoteTemplateId, org, activeTemplateId]);
-
-
 
   const handleSignatureSave = async (signatureData: string) => {
     setSignature(signatureData);
@@ -129,10 +130,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
           id: projectId,
           data: {
             timeline: newTimeline,
-            // Status will be strictly derived by project-status.ts on backend/hook trigger usually, 
-            // but we might need to send it if the logic is client-side only for now?
-            // Actually, let's update status too if we can derive it?
-            // But for now, timeline event is key.
           }
         });
         toast({ title: "Signed & Accepted", description: "Quote signed. Project status updated." });
@@ -172,9 +169,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         const today = new Date();
         const diffTime = Math.abs(validDate.getTime() - today.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        // Approximate, or just use the difference from creation equivalent? 
-        // Actually, better to just use a default or try to reverse it. 
-        // If validUntil is far in future, diffDays is correct.
         setValidDays(diffDays.toString());
       }
 
@@ -193,29 +187,11 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       // Auto-generate if no quotes exist yet
       console.log("Auto-generating quote from rooms...");
       autoGenAttempted.current = true;
-
-      // Use a small timeout to avoid state updates during render phase if strictly strict mode
       setTimeout(() => generateFromRooms(true), 100);
     }
 
   }, [quotes, selectedQuoteId, isLoading, rooms]);
 
-
-
-  // ... (existing logic)
-
-
-
-  // ...
-
-
-  // ... (PDF generation updates will be separate or included if small)
-  // For now let's focus on the UI and Logic saving.
-
-
-
-
-  // Sync current line items to active option whenever they change (debounce or on blur would be better, but this is simple)
   useEffect(() => {
     if (activeOptionId && options.length > 0) {
       setOptions(prev => prev.map(opt => {
@@ -231,14 +207,7 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         return opt;
       }));
     }
-  }, [lineItems, activeOptionId]); // Be careful with dependency loop here. 
-  // Actually, updating options triggers re-render. If we only update when lineItems change, it's fine.
-  // But switching tabs also changes lineItems.
-  // We need to separate "saving state" from "switching tabs".
-
-  // Better approach: Don't use useEffect for syncing. Sync explicitly on tab switch or save.
-  // But we want the "options" state to be up-to-date for the UI (e.g. if we showed totals in tabs).
-  // For now, let's sync on Save and Tab Switch.
+  }, [lineItems, activeOptionId]);
 
   const handleTabChange = (newId: string) => {
     if (!activeOptionId) return;
@@ -278,7 +247,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       total
     };
 
-    // If this is the first option, we also need to create an option for the CURRENT state
     if (options.length === 0) {
       const currentOption: QuoteOption = {
         id: crypto.randomUUID(),
@@ -288,12 +256,9 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         tax,
         total
       };
-      // Rename new option to Option 2
       newOption.name = "Option 2";
 
       setOptions([currentOption, newOption]);
-      setActiveOptionId(currentOption.id); // Stay on current for a moment? Or switch?
-      // Let's switch to the new one to show it was created
       setLineItems(newOption.lineItems);
       setActiveOptionId(newId);
     } else {
@@ -312,7 +277,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
   const removeOption = (e: React.MouseEvent, idToRemove: string) => {
     e.stopPropagation();
     if (options.length <= 1) {
-      // If removing last option, revert to single quote mode?
       setOptions([]);
       setActiveOptionId(null);
       return;
@@ -322,7 +286,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
     setOptions(newOptions);
 
     if (activeOptionId === idToRemove) {
-      // Switch to first available
       const first = newOptions[0];
       setLineItems(first.lineItems);
       setActiveOptionId(first.id);
@@ -369,32 +332,25 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
     if (!project) return;
 
-    // Determine Config to use
-    // 1. Check Project Override
-    // 2. Check Org Default
-    // 3. Fallback to Standard Default
     let activeConfig = DEFAULT_QUOTE_CONFIG;
 
     if (org && org.quoteTemplates) {
-      // Use active selection if available, otherwise fallbacks
       const targetId = activeTemplateId || project?.quoteTemplateId || org.defaultQuoteTemplateId;
-
       if (targetId) {
         const tmpl = org.quoteTemplates.find(t => t.id === targetId);
         if (tmpl) activeConfig = tmpl.config;
       }
     }
 
-    // Use Engine
-    // Cast types to allow partial matching if needed, though they should align
-    const generatedItems = generateQuoteItems(project as any, rooms as any[], activeConfig);
+    const generatedItems = generateQuoteLinesV2(project as any, rooms as any[], activeConfig);
+    const flatItems = flattenQuoteLines(generatedItems);
 
-    setLineItems(generatedItems);
+    setLineItems(flatItems);
 
     if (!isAuto) {
       toast({
         title: "Quote Generated",
-        description: `Generated items based on ${rooms.length} rooms using ${activeConfig.grouping === 'room' ? 'Room-by-Room' : 'Aggregated'} format.`,
+        description: `Generated items based on ${rooms.length} rooms using ${'listingStrategy' in activeConfig ? activeConfig.listingStrategy : 'Standard'} format.`,
       });
     }
   };
@@ -411,8 +367,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
   const handleTemplateChange = async (templateId: string) => {
     setActiveTemplateId(templateId);
-
-    // Update project preference
     try {
       await updateProject.mutateAsync({
         id: projectId,
@@ -420,17 +374,8 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       });
       toast({ title: "Template Preference Saved" });
 
-      // Prompt for regen
       if (lineItems.length > 0) {
         if (confirm("Template changed. Regenerate quote items to match new format? (This overwrites current items)")) {
-          // We need to use the NEW templateId, state might not be flushed yet in closure
-          // But we updated state. generateFromRooms uses state. 
-          // To be safe, we can pass it or rely on fast state update? 
-          // Best to wait a tick or trust React. 
-          // Actually, generateFromRooms uses `activeTemplateId` from state. Valid concern.
-          // Let's pass it explicitly or hack it?
-          // Safer: modify generateFromRooms to accept optional config override or ID?
-          // Or just set state and use setTimeout?
           setTimeout(() => generateFromRooms(false), 0);
         }
       }
@@ -466,7 +411,7 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
   const tax = taxableSubtotal * (parseFloat(taxRate) / 100);
   const total = taxableSubtotal + tax;
-  const grossProfit = taxableSubtotal - totalCost; // Adjusted gross profit
+  const grossProfit = taxableSubtotal - totalCost;
   const margin = taxableSubtotal > 0 ? (grossProfit / taxableSubtotal) * 100 : 0;
 
   const saveQuote = async () => {
@@ -496,13 +441,10 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       discountType,
       updatedBy: user?.uid,
       updatedByName: user?.displayName || user?.email || 'Unknown User',
-      createdBy: selectedQuoteId ? undefined : user?.uid, // Only set on create
+      createdBy: selectedQuoteId ? undefined : user?.uid,
       createdByName: selectedQuoteId ? undefined : (user?.displayName || user?.email || 'Unknown User'),
-      // Only set createdBy if new? actually we can merge it in create/update logic below
-
 
       options: options.length > 0 ? options.map(opt => {
-        // Ensure the currently active option is updated with latest state
         if (opt.id === activeOptionId) {
           return {
             ...opt,
@@ -533,12 +475,8 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         });
       } else {
         const newQuoteId = await createQuote.mutateAsync(quoteData);
-
-        // Invalidate specific project quotes
         await queryClient.invalidateQueries({ queryKey: ['quotes', projectId] });
-        // Invalidate global quotes list (fuzzy match to catch ['all-quotes', orgId])
         await queryClient.invalidateQueries({ queryKey: ['all-quotes'] });
-
         setSelectedQuoteId(newQuoteId);
         toast({
           title: "Quote Created",
@@ -560,7 +498,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
     if (!project || !currentOrgId) return;
 
     try {
-      // Fetch org branding
       const org = await orgOperations.get(currentOrgId);
       const branding = org?.branding || {};
       const quoteSettings = org?.quoteSettings || {};
@@ -570,7 +507,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
 
-      // Colors
       const primaryColor = branding.primaryColor || '#000000';
       const secondaryColor = branding.secondaryColor || '#666666';
 
@@ -586,7 +522,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       const primaryRgb = hexToRgb(primaryColor);
       const secondaryRgb = hexToRgb(secondaryColor);
 
-      // Helper to add logo
       const addLogo = async (x: number, y: number, maxWidth: number, align: 'left' | 'right' | 'center' = 'left') => {
         const logoSource = branding.logoBase64 || branding.logoUrl;
         if (!logoSource) return 0;
@@ -610,57 +545,39 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
       let finalY = 0;
 
-      // --- TEMPLATE LOGIC ---
-
       if (layout === 'modern') {
-        // MODERN LAYOUT
-        // Logo Top Left, Info Top Right
         const logoHeight = await addLogo(20, 20, 50, 'left');
-
         doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
-
-        // Company Info (Right Aligned)
         let yPos = 25;
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(14);
         doc.setTextColor(0, 0, 0);
         doc.text(branding.companyName || '', pageWidth - 20, yPos, { align: 'right' });
         yPos += 7;
-
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
         doc.setTextColor(100, 100, 100);
-
         if (branding.companyEmail) { doc.text(branding.companyEmail, pageWidth - 20, yPos, { align: 'right' }); yPos += 5; }
         if (branding.companyPhone) { doc.text(branding.companyPhone, pageWidth - 20, yPos, { align: 'right' }); yPos += 5; }
         if (branding.website) { doc.text(branding.website, pageWidth - 20, yPos, { align: 'right' }); yPos += 5; }
-
-        // Divider
         yPos = Math.max(yPos, logoHeight + 30) + 10;
         doc.setDrawColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
         doc.setLineWidth(1);
         doc.line(20, yPos, pageWidth - 20, yPos);
         yPos += 15;
-
-        // Quote Details
         doc.setFontSize(24);
         doc.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
         doc.text('QUOTE', 20, yPos);
-
         doc.setFontSize(10);
         doc.setTextColor(0, 0, 0);
         const validUntil = new Date();
         validUntil.setDate(validUntil.getDate() + parseInt(validDays));
-
         doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - 20, yPos, { align: 'right' });
         doc.text(`Valid Until: ${validUntil.toLocaleDateString()}`, pageWidth - 20, yPos + 5, { align: 'right' });
-
         yPos += 15;
         doc.text(`Project: ${project.name}`, 20, yPos);
         if (client) doc.text(`Client: ${client.name}`, 20, yPos + 5);
-
-        // Table
         autoTable(doc, {
           startY: yPos + 15,
           head: [['Description', 'Quantity', 'Unit', 'Rate', 'Amount']],
@@ -690,33 +607,24 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         });
 
       } else if (layout === 'minimal') {
-        // MINIMAL LAYOUT
-        // Centered Logo & Header
         let yPos = 20;
         const logoHeight = await addLogo(pageWidth / 2, yPos, 40, 'center');
         yPos += logoHeight + 10;
-
         doc.setFont('courier', 'bold');
         doc.setFontSize(18);
         doc.setTextColor(0, 0, 0);
         doc.text(branding.companyName || 'QUOTE', pageWidth / 2, yPos, { align: 'center' });
         yPos += 10;
-
         doc.setFontSize(10);
         doc.setFont('courier', 'normal');
         if (branding.companyEmail) { doc.text(branding.companyEmail, pageWidth / 2, yPos, { align: 'center' }); yPos += 5; }
-
         yPos += 10;
         doc.line(40, yPos, pageWidth - 40, yPos);
         yPos += 10;
-
-        // Info Grid
         doc.text(`PROJECT: ${project.name.toUpperCase()}`, 20, yPos);
         doc.text(`DATE: ${new Date().toLocaleDateString()}`, pageWidth - 20, yPos, { align: 'right' });
         yPos += 5;
         if (client) doc.text(`CLIENT: ${client.name.toUpperCase()}`, 20, yPos);
-
-        // Table
         autoTable(doc, {
           startY: yPos + 15,
           head: [['ITEM', 'QTY', 'UNIT', 'RATE', 'AMT']],
@@ -740,38 +648,25 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         });
 
       } else {
-        // STANDARD LAYOUT (Default)
-        // Header Block
         doc.setFillColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
         doc.rect(0, 0, pageWidth, 30, 'F');
-
-        // Company Name
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(24);
         doc.setFont('helvetica', 'bold');
         doc.text(branding.companyName || 'Quote', 20, 20);
-
-        // Logo (Top Right inside header)
         await addLogo(pageWidth - 20, 5, 20, 'right');
-
-        // Quote Title
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
         doc.text('QUOTE', 20, 45);
-
-        // Info
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         const validUntil = new Date();
         validUntil.setDate(validUntil.getDate() + parseInt(validDays));
-
         doc.text(`Project: ${project.name}`, 20, 55);
         if (client) doc.text(`Client: ${client.name}`, 20, 62);
         doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 69);
         doc.text(`Valid Until: ${validUntil.toLocaleDateString()}`, 20, 76);
-
-        // Company Info (Right)
         if (branding.companyEmail || branding.companyPhone || branding.companyAddress) {
           doc.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
           let yPos = 45;
@@ -785,8 +680,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
             });
           }
         }
-
-        // Table
         autoTable(doc, {
           startY: 90,
           head: [['Description', 'Quantity', 'Unit', 'Rate', 'Amount']],
@@ -814,13 +707,7 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         });
       }
 
-      // --- TOTALS & FOOTER (Common) ---
       finalY = (doc as any).lastAutoTable.finalY + 10;
-
-      // Calculate required space for Totals + Signature
-      // Totals block: ~25 units
-      // Signature block: ~40 units
-      // Gap: ~5 units
       const requiredSpace = 70;
 
       if (finalY + requiredSpace > pageHeight - 20) {
@@ -850,16 +737,14 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       doc.text('Total:', pageWidth - 70, finalY + 17);
       doc.text(`$${total.toFixed(2)}`, pageWidth - 20, finalY + 17, { align: 'right' });
 
-      // Signature
       if (signature) {
-        let signatureY = finalY + 25; // Gap between totals and signature
+        let signatureY = finalY + 25;
         doc.setFontSize(10);
         doc.text('Customer Signature:', 20, signatureY);
-        doc.addImage(signature, 'PNG', 20, signatureY + 5, 60, 20); // Adjust size as needed
+        doc.addImage(signature, 'PNG', 20, signatureY + 5, 60, 20);
         doc.text(`Signed At: ${signedAt ? new Date(signedAt.seconds * 1000).toLocaleString() : 'N/A'}`, 20, signatureY + 30);
       }
 
-      // Notes
       if (notes) {
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(9);
@@ -870,7 +755,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         doc.text(splitNotes, 20, notesY + 5);
       }
 
-      // Terms
       if (quoteSettings.defaultTerms) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
@@ -881,7 +765,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         doc.text(splitTerms, 20, termsY + 5);
       }
 
-      // Footer
       if (layout !== 'minimal') {
         doc.setFillColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
         doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
@@ -891,7 +774,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         doc.line(20, pageHeight - 15, pageWidth - 20, pageHeight - 15);
       }
 
-      // Page Numbers
       const pageCount = doc.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
@@ -904,7 +786,6 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         }
       }
 
-      // Save PDF
       const fileName = `Quote_${project.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
 
@@ -932,6 +813,34 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
   return (
     <div className="space-y-6">
+
+      {showWizard && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background w-full max-w-6xl h-[90vh] rounded-lg shadow-lg overflow-hidden border">
+            <QuoteConfigWizard
+              initialConfig={(() => {
+                // Calculate current active config to start wizard with
+                if (org && org.quoteTemplates) {
+                  const targetId = activeTemplateId || project?.quoteTemplateId || org.defaultQuoteTemplateId;
+                  if (targetId) {
+                    const tmpl = org.quoteTemplates.find(t => t.id === targetId);
+                    if (tmpl) return tmpl.config;
+                  }
+                }
+                return DEFAULT_QUOTE_CONFIG;
+              })()}
+              onComplete={(newConfig) => {
+                const generated = generateQuoteLinesV2(project as any, rooms as any[], newConfig);
+                const flat = flattenQuoteLines(generated);
+                setLineItems(flat);
+                setShowWizard(false);
+                toast({ title: "Applied Configuration", description: "Quote lines regenerated." });
+              }}
+              onCancel={() => setShowWizard(false)}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2">
@@ -967,11 +876,9 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
                   ))}
                 </SelectContent>
               </Select>
-              {org.quoteTemplates && org.quoteTemplates.length > 0 && (
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleTemplateChange(activeTemplateId)}>
-                  <Wand2 className="h-3 w-3 text-muted-foreground" />
-                </Button>
-              )}
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setShowWizard(true)} title="Configure New Template">
+                <Settings2 className="h-4 w-4" />
+              </Button>
             </div>
           )}
         </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Switch } from "@/components/ui/switch";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ export function EstimatingDefaultsCard() {
         defaultCeilingCoats: 2,
         defaultTrimCoats: 2,
         defaultTaxRate: 0,
+        defaultBillablePaint: true,
     });
 
     const [supplyRules, setSupplyRules] = useState<SupplyRule[]>([]);
@@ -93,6 +95,10 @@ export function EstimatingDefaultsCard() {
         setDefaults(prev => ({ ...prev, [key]: value }));
     };
 
+    const handleToggle = (key: string, value: boolean) => {
+        setDefaults(prev => ({ ...prev, [key]: value }));
+    };
+
     if (isLoading) {
         return (
             <Card>
@@ -152,6 +158,19 @@ export function EstimatingDefaultsCard() {
                             type="number"
                             value={defaults.defaultTaxRate}
                             onChange={(e) => handleChange('defaultTaxRate', parseFloat(e.target.value) || 0)}
+                            disabled={!canEdit}
+                        />
+                    </div>
+                    <div className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm md:col-span-2">
+                        <div className="space-y-0.5">
+                            <Label>Bill Paint to Customer</Label>
+                            <p className="text-sm text-muted-foreground">
+                                If enabled, paint costs will be included in the quote total. If disabled, paint is treated as non-billable (internal cost only).
+                            </p>
+                        </div>
+                        <Switch
+                            checked={defaults.defaultBillablePaint ?? true}
+                            onCheckedChange={(c) => handleToggle('defaultBillablePaint', c)}
                             disabled={!canEdit}
                         />
                     </div>
