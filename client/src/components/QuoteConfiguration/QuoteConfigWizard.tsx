@@ -20,9 +20,7 @@ const STEPS = [
     { id: 1, title: "Listing Strategy", icon: LayoutTemplate, Description: "How should line items be grouped?" },
     { id: 2, title: "Paint Costs", icon: PaintBucket, Description: "How should paint application costs be displayed?" },
     { id: 3, title: "Material Costs", icon: Package, Description: "How should incidental material costs be displayed?" },
-    { id: 4, title: "Prep Work", icon: Wrench, Description: "How should prep work be displayed?" },
-    { id: 5, title: "Labor Pricing", icon: DollarSign, Description: "How should labor be quantified?" },
-    { id: 6, title: "Fine Tuning", icon: ListChecks, Description: "Final adjustment toggles." },
+    { id: 4, title: "Fine Tuning", icon: ListChecks, Description: "Final adjustment toggles." },
 ];
 
 export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: QuoteConfigWizardProps) {
@@ -165,37 +163,10 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                             </Select>
                         </div>
 
-                        <div className="space-y-3 pt-2">
-                            <Label className="text-base">Details to Show</Label>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="flex items-center space-x-2">
-                                    <Switch id="mat_name" checked={config.materialDetails.showName} onCheckedChange={(c) => updateNestedConfig('materialDetails', 'showName', c)} />
-                                    <Label htmlFor="mat_name">Show Material Name</Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <Switch id="mat_qty" checked={config.materialDetails.showQuantity} onCheckedChange={(c) => updateNestedConfig('materialDetails', 'showQuantity', c)} />
-                                    <Label htmlFor="mat_qty">Show Quantity</Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <Switch id="mat_price" checked={config.materialDetails.showPrice} onCheckedChange={(c) => updateNestedConfig('materialDetails', 'showPrice', c)} />
-                                    <Label htmlFor="mat_price">Show Price</Label>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div className="grid gap-4 pt-2">
-                            <Label className="text-base">Itemization Strategy</Label>
-                            <RadioGroup value={config.materialStrategy} onValueChange={(val) => updateConfig('materialStrategy', val)} className="grid grid-cols-2 gap-4">
-                                <div className={`flex items-center space-x-2 p-3 rounded border cursor-pointer ${config.materialStrategy === 'itemized' ? 'border-primary bg-primary/5' : 'border-input'}`}>
-                                    <RadioGroupItem value="itemized" id="itemized" />
-                                    <Label htmlFor="itemized" className="cursor-pointer">Itemized List</Label>
-                                </div>
-                                <div className={`flex items-center space-x-2 p-3 rounded border cursor-pointer ${config.materialStrategy === 'group_total' ? 'border-primary bg-primary/5' : 'border-input'}`}>
-                                    <RadioGroupItem value="group_total" id="group_total" />
-                                    <Label htmlFor="group_total" className="cursor-pointer">Group Total Package</Label>
-                                </div>
-                            </RadioGroup>
-                        </div>
+                        {/* Material Details Toggles Removed as per User Request (Always On) */}
+
+
 
                         {/* Conditional 3.5 */}
                         {config.paintPlacement === 'separate_area' && config.materialPlacement === 'separate_area' && (
@@ -217,78 +188,32 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                     </div>
                 );
 
-            case 4: // Prep Work
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                        <div className="grid gap-4">
-                            <Label className="text-base">Placement Strategy</Label>
-                            <Select value={config.prepPlacement} onValueChange={(val: any) => updateConfig('prepPlacement', val)}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="inline">In-line (Included in Surface Line)</SelectItem>
-                                    <SelectItem value="subline">Sub-line (Listed below Item)</SelectItem>
-                                    <SelectItem value="separate_area">Separate Area (Setup Section)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="grid gap-4 pt-2">
-                            <Label className="text-base">Grouping Strategy</Label>
-                            <RadioGroup value={config.prepStrategy} onValueChange={(val) => updateConfig('prepStrategy', val)} className="grid grid-cols-2 gap-4">
-                                <div className={`flex items-center space-x-2 p-3 rounded border cursor-pointer ${config.prepStrategy === 'itemized' ? 'border-primary bg-primary/5' : 'border-input'}`}>
-                                    <RadioGroupItem value="itemized" id="prep_itemized" />
-                                    <Label htmlFor="prep_itemized" className="cursor-pointer">Itemized Tasks</Label>
-                                </div>
-                                <div className={`flex items-center space-x-2 p-3 rounded border cursor-pointer ${config.prepStrategy === 'group_total' ? 'border-primary bg-primary/5' : 'border-input'}`}>
-                                    <RadioGroupItem value="group_total" id="prep_group" />
-                                    <Label htmlFor="prep_group" className="cursor-pointer">Group Total Only</Label>
-                                </div>
-                            </RadioGroup>
-                        </div>
-                    </div>
-                );
-
-            case 5: // Labor Pricing
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                        <RadioGroup value={config.laborUnit} onValueChange={(val) => updateConfig('laborUnit', val)} className="grid gap-4">
-                            <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${config.laborUnit === 'geometric' ? 'border-primary bg-primary/5' : 'border-transparent bg-muted/50 hover:bg-muted'}`}>
-                                <RadioGroupItem value="geometric" id="geo" className="mt-1" />
-                                <div className="grid gap-1.5 cursor-pointer" onClick={() => updateConfig('laborUnit', 'geometric')}>
-                                    <Label htmlFor="geo" className="font-semibold text-lg cursor-pointer">Geometric Units</Label>
-                                    <p className="text-sm text-muted-foreground">Price per square foot or linear foot (e.g., 500 sqft @ $1.00/sqft).</p>
-                                </div>
-                            </div>
-                            <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${config.laborUnit === 'hourly' ? 'border-primary bg-primary/5' : 'border-transparent bg-muted/50 hover:bg-muted'}`}>
-                                <RadioGroupItem value="hourly" id="hourly" className="mt-1" />
-                                <div className="grid gap-1.5 cursor-pointer" onClick={() => updateConfig('laborUnit', 'hourly')}>
-                                    <Label htmlFor="hourly" className="font-semibold text-lg cursor-pointer">Hourly Rates</Label>
-                                    <p className="text-sm text-muted-foreground">Price based on estimated hours (e.g., 10 hrs @ $60/hr).</p>
-                                </div>
-                            </div>
-                            <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${config.laborUnit === 'lump_sum' ? 'border-primary bg-primary/5' : 'border-transparent bg-muted/50 hover:bg-muted'}`}>
-                                <RadioGroupItem value="lump_sum" id="lump" className="mt-1" />
-                                <div className="grid gap-1.5 cursor-pointer" onClick={() => updateConfig('laborUnit', 'lump_sum')}>
-                                    <Label htmlFor="lump" className="font-semibold text-lg cursor-pointer">Lump Sum</Label>
-                                    <p className="text-sm text-muted-foreground">Just the total price, no unit breakdown shown.</p>
-                                </div>
-                            </div>
-                        </RadioGroup>
-                    </div>
-                );
-
-            case 6: // Fine Tuning
+            case 4: // Fine Tuning
                 return (
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                         <div className="grid gap-6">
+
+                            {/* Moved from Prep Step: Grouping Toggle */}
                             <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
                                 <div className="space-y-0.5">
-                                    <Label className="text-base">Show Units & Quantities</Label>
-                                    <p className="text-sm text-muted-foreground">Display "500 sqft" or just the final price?</p>
+                                    <Label className="text-base">Group Prep Tasks</Label>
+                                    <p className="text-sm text-muted-foreground">Combine all prep tasks into a single line?</p>
                                 </div>
-                                <Switch checked={config.showUnits} onCheckedChange={(c) => updateConfig('showUnits', c)} />
+                                <Switch
+                                    checked={config.prepStrategy === 'group_total'}
+                                    onCheckedChange={(c) => updateConfig('prepStrategy', c ? 'group_total' : 'itemized')}
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">Show Quantities & Rates</Label>
+                                    <p className="text-sm text-muted-foreground">Display quantities (500 sqft) and unit prices ($1.00/sqft)?</p>
+                                </div>
+                                <Switch checked={config.showUnits} onCheckedChange={(c) => {
+                                    updateConfig('showUnits', c);
+                                    updateConfig('showRates', c);
+                                }} />
                             </div>
 
                             <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
@@ -299,21 +224,9 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                                 <Switch checked={config.showTaxLine} onCheckedChange={(c) => updateConfig('showTaxLine', c)} />
                             </div>
 
-                            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base">Show Rates</Label>
-                                    <p className="text-sm text-muted-foreground">Display unit pricing (e.g. $1.50/sqft)?</p>
-                                </div>
-                                <Switch checked={config.showRates} onCheckedChange={(c) => updateConfig('showRates', c)} />
-                            </div>
 
-                            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base">Show Coat Counts</Label>
-                                    <p className="text-sm text-muted-foreground">Display number of coats in descriptions?</p>
-                                </div>
-                                <Switch checked={config.showCoatCounts} onCheckedChange={(c) => updateConfig('showCoatCounts', c)} />
-                            </div>
+
+
 
                             <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
                                 <div className="space-y-0.5">

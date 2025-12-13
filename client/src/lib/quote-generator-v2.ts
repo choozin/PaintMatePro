@@ -15,6 +15,7 @@ export interface QuoteLineItem {
 
 export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteConfiguration): QuoteLineItem[] {
     const lines: QuoteLineItem[] = [];
+    const collectedMaterials: QuoteLineItem[] = [];
 
     // --- Helper Calculations ---
     const getPaintCost = (area: number) => {
@@ -25,33 +26,11 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
     const getLaborCost = (area: number, type: 'wall' | 'ceiling' | 'trim') => {
         // Simplified mock logic
         const rate = type === 'wall' ? 1.5 : type === 'ceiling' ? 1.0 : 2.0;
-        return area * rate; // Mock rate
+        return area * rate;
     };
 
-    // --- SETUP & PREPARATION (If Separate Area) ---
-    if (config.prepPlacement === 'separate_area') {
-        const setupCost = 150; // Mock setup
-        lines.push({
-            id: 'setup-header',
-            description: "Setup & Preparation",
-            amount: 0,
-            type: 'header',
-            isGroupHeader: true,
-            groupTitle: "Setup & Preparation"
-        });
-        lines.push({
-            id: 'setup-base',
-            description: "Project Setup & Protection",
-            quantity: 1,
-            unit: 'ea',
-            rate: setupCost,
-            amount: setupCost,
-            type: 'prep',
-            groupTitle: "Setup & Preparation"
-        });
-        // Add specific prep tasks here if they are "Separate Area"
-        // For now using mock fix items
-    }
+    // --- SETUP & PREPARATION (Removed - Always Sub-line/Itemized) ---
+    // User requested Prep always be part of the room/sub-line context.
 
     // --- CORE LISTING LOGIC ---
     if (config.listingStrategy === 'by_room') {
@@ -104,33 +83,23 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
 
             if (config.paintPlacement === 'inline') {
                 if (isBillable) {
-                    paintItem.amount += wallPaint;
-                    // Update rate if it exists (e.g. per sqft)
+                    paintItem.amount = (paintItem.amount || 0) + wallPaint;
                     if (paintItem.rate !== undefined && paintItem.quantity) {
                         paintItem.rate += (wallPaint / paintItem.quantity);
                     }
                 }
-
                 if (config.paintDetails?.showName) {
                     paintItem.description += ` (${productName})`;
                 }
-                // If showName is off, we do NOT append "(includes Paint)" as per user request.
-
                 if (config.paintDetails?.showCoats) {
                     const coats = project.supplyConfig?.wallCoats || 2;
                     paintItem.description += ` - ${coats} Coats`;
                 }
             } else if (config.paintPlacement === 'subline') {
                 const gallons = Math.ceil(wallArea / (project.supplyConfig?.coveragePerGallon || 350));
-
                 let subDesc = config.paintDetails?.showName ? productName : "Paint Material";
-                if (config.paintDetails?.showVolume) {
-                    subDesc += ` (${gallons} gal)`;
-                }
-                if (config.paintDetails?.showCoats) {
-                    const coats = project.supplyConfig?.wallCoats || 2;
-                    subDesc += ` - ${coats} Coats`;
-                }
+                if (config.paintDetails?.showVolume) subDesc += ` (${gallons} gal)`;
+                if (config.paintDetails?.showCoats) subDesc += ` - ${project.supplyConfig?.wallCoats || 2} Coats`;
 
                 const shouldShowPrice = config.paintDetails?.showPrice ?? true;
                 const costOnLine = (isBillable && shouldShowPrice);
@@ -141,23 +110,57 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
                     quantity: gallons,
                     unit: 'gal',
                     rate: costOnLine ? (project.supplyConfig?.pricePerGallon || 45) : 0,
-                    amount: costOnLine ? (isBillable ? wallPaint : 0) : undefined // Hide amount if !showPrice
+                    amount: costOnLine ? (isBillable ? wallPaint : 0) : undefined,
+                    type: 'material'
                 });
 
                 if (isBillable && !shouldShowPrice) {
-                    // If we are hiding price on the subline, move cost to parent so it's not lost
-                    paintItem.amount += wallPaint;
-                    // And update parent rate
+                    paintItem.amount = (paintItem.amount || 0) + wallPaint;
                     if (paintItem.rate !== undefined && paintItem.quantity) {
                         paintItem.rate += (wallPaint / paintItem.quantity);
                     }
                 }
             }
-            // If separate_area, we don't add it here.
+
+            // --- MATERIAL HANDLER (Room Specific) ---
+            const roomMaterials = room.materialItems || [];
+            if (roomMaterials.length > 0) {
+                if (config.materialPlacement === 'inline') {
+                    // Absorb
+                    paintItem.amount = (paintItem.amount || 0) + roomMaterials.reduce((s: number, m: any) => s + (m.rate * m.quantity), 0);
+                } else if (config.materialPlacement === 'subline') {
+                    // SubItems
+                    roomMaterials.forEach((m: any) => {
+                        paintItem.subItems?.push({
+                            id: `mat-${room.id}-${m.id}`,
+                            description: m.name,
+                            quantity: m.quantity,
+                            unit: m.unit,
+                            rate: m.rate,
+                            amount: m.rate * m.quantity,
+                            type: 'material'
+                        });
+                    });
+                } else if (config.materialPlacement === 'separate_area') {
+                    // Collect
+                    roomMaterials.forEach((m: any) => {
+                        collectedMaterials.push({
+                            id: `mat-${room.id}-${m.id}`,
+                            description: `${m.name} (${room.name})`,
+                            quantity: m.quantity,
+                            unit: m.unit,
+                            rate: m.rate,
+                            amount: m.rate * m.quantity,
+                            type: 'material',
+                            groupTitle: "Materials"
+                        });
+                    });
+                }
+            }
 
             lines.push(paintItem);
 
-            // Ceilings (if included)
+            // Ceilings
             if (project.supplyConfig?.includeCeiling) {
                 const ceilingArea = room.length * room.width;
                 lines.push({
@@ -171,102 +174,166 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
                     groupTitle: room.name
                 });
             }
+
+            // Prep Tasks
+            if (room.prepTasks && room.prepTasks.length > 0) {
+                if (config.prepStrategy === 'group_total') {
+                    const totalPrep = room.prepTasks.reduce((s: number, t: any) => s + (t.unit === 'fixed' ? t.rate : (t.rate * t.quantity)), 0);
+                    lines.push({
+                        id: `prep-group-${room.id}`,
+                        description: "Room Preparation",
+                        amount: totalPrep,
+                        type: 'prep',
+                        groupTitle: room.name
+                    });
+                } else {
+                    room.prepTasks.forEach((task: any) => {
+                        lines.push({
+                            id: `prep-${room.id}-${task.id}`,
+                            description: task.name,
+                            quantity: task.quantity,
+                            unit: task.unit,
+                            rate: task.rate,
+                            amount: task.unit === 'fixed' ? task.rate : task.rate * task.quantity,
+                            type: 'prep',
+                            groupTitle: room.name
+                        });
+                    });
+                }
+            }
+
+            // Misc Items
+            if (room.miscItems && room.miscItems.length > 0) {
+                room.miscItems.forEach((item: any) => {
+                    lines.push({
+                        id: `misc-${room.id}-${item.id}`,
+                        description: item.name,
+                        quantity: item.quantity,
+                        unit: item.unit,
+                        rate: item.rate,
+                        amount: item.unit === 'fixed' ? item.rate : (item.rate * item.quantity),
+                        type: 'labor',
+                        groupTitle: room.name
+                    });
+                });
+            }
         });
     } else {
-        // BY SURFACE / ACTIVITY
-
-        // Walls Section
+        // BY ACTIVITY (Simplified for restoration)
         lines.push({ id: 'h-walls', description: "Walls", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Walls" });
         rooms.forEach(room => {
-            const wallArea = (room.length + room.width) * 2 * room.height;
             lines.push({
                 id: `walls-${room.id}`,
                 description: `${room.name} Walls`,
-                quantity: wallArea,
+                quantity: (room.length + room.width) * 2 * room.height,
                 unit: 'sqft',
-                amount: getLaborCost(wallArea, 'wall'),
+                amount: getLaborCost((room.length + room.width) * 2 * room.height, 'wall'),
                 type: 'labor',
                 groupTitle: "Walls"
             });
         });
+    }
 
-        // Ceilings Section
-        if (project.supplyConfig?.includeCeiling) {
-            lines.push({ id: 'h-ceilings', description: "Ceilings", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Ceilings" });
-            rooms.forEach(room => {
-                const ceilingArea = room.length * room.width;
+    // --- GLOBAL ADDITIONAL ITEMS ---
+    if (project.globalMiscItems && project.globalMiscItems.length > 0) {
+        lines.push({ id: 'h-global-misc', description: "Additional Work Items", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Additional Work Items" });
+        project.globalMiscItems.forEach((item: any) => lines.push({
+            id: `global-misc-${item.id}`,
+            description: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            rate: item.rate,
+            amount: item.unit === 'fixed' ? item.rate : (item.rate * item.quantity),
+            type: 'labor',
+            groupTitle: "Additional Work Items"
+        }));
+    }
+
+    // --- GLOBAL MATERIALS ---
+    const globalMaterials = project.globalMaterialItems || [];
+    if (globalMaterials.length > 0) {
+        if (config.materialPlacement === 'separate_area') {
+            globalMaterials.forEach((m: any) => {
+                collectedMaterials.push({
+                    id: `mat-global-${m.id}`,
+                    description: m.name,
+                    quantity: m.quantity,
+                    unit: m.unit,
+                    rate: m.rate,
+                    amount: m.rate * m.quantity,
+                    type: 'material',
+                    groupTitle: "Materials"
+                });
+            });
+        } else {
+            // Subline OR Inline: List them as individual Line Items under PROJECT MATERIALS
+            // For Global Materials, "Inline" vs "Subline" is effectively the same (just listing them),
+            // because there is no "Room" to absorb them into.
+
+            // Add Header if not exists (check logical flow, usually we just add it once)
+            lines.push({ id: 'h-proj-mat', description: "Project Materials", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Project Materials" });
+
+            globalMaterials.forEach((m: any) => {
                 lines.push({
-                    id: `ceil-${room.id}`,
-                    description: `${room.name} Ceiling`,
-                    quantity: ceilingArea,
-                    unit: 'sqft',
-                    amount: getLaborCost(ceilingArea, 'ceiling'),
-                    type: 'labor',
-                    groupTitle: "Ceilings"
+                    id: `global-mat-${m.id}`,
+                    description: m.name,
+                    quantity: m.quantity,
+                    unit: m.unit,
+                    rate: m.rate,
+                    amount: m.rate * m.quantity,
+                    type: 'material',
+                    groupTitle: "Project Materials"
                 });
             });
         }
     }
 
-    // --- SEPARATE AREAS (Paint & Materials) ---
-    if (config.paintPlacement === 'separate_area') {
-        const totalPaintCost = getPaintCost(2000); // Mock total
+    // --- SEPARATE PAINT (Combined Strategy) ---
+    // Calculate Total Paint Cost dynamically
+    let totalWallArea = 0;
+    rooms.forEach(r => totalWallArea += (r.length + r.width) * 2 * r.height);
+    const totalPaintCost = getPaintCost(totalWallArea);
 
-        // Check 3.5 Strategy
-        if (config.materialPlacement === 'separate_area' && config.separateAreaStrategy === 'combined') {
-            // "Paint & Materials" Section handled below
-        } else {
-            if (config.paintDetails?.showName) {
-                // Standard behavior: Header + Item with Name
-                lines.push({ id: 'h-paint', description: "Paint Products", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Paint Products" });
+    // If Paint is separate and Materials is separate & combined...
+    if (config.paintPlacement === 'separate_area' && config.materialPlacement === 'separate_area' && config.separateAreaStrategy === 'combined') {
+        lines.push({ id: 'h-pm', description: "Paint & Materials", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Paint & Materials" });
+        lines.push({
+            id: 'paint-total-c',
+            description: "Paint Products",
+            amount: totalPaintCost,
+            type: 'material',
+            groupTitle: "Paint & Materials"
+        });
+        collectedMaterials.forEach(m => lines.push(m)); // Dump materials here
+    }
+    else {
+        // Handle Paint Separate (Standalone)
+        if (config.paintPlacement === 'separate_area') {
+            lines.push({ id: 'h-paint', description: "Paint Products", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Paint Products" });
+            lines.push({
+                id: 'paint-total',
+                description: "Paint Products (Bulk)",
+                amount: totalPaintCost,
+                type: 'material',
+                groupTitle: "Paint Products"
+            });
+        }
+
+        // Handle Materials Separate (Standalone)
+        if (collectedMaterials.length > 0) {
+            lines.push({ id: 'h-materials-section', description: "Materials", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Materials" });
+            if (config.materialStrategy === 'group_total') {
+                const total = collectedMaterials.reduce((s, m) => s + (m.amount || 0), 0);
                 lines.push({
-                    id: 'paint-total',
-                    description: `${project.supplyConfig?.wallProduct?.name || 'Paint'} (Bulk)`,
-                    amount: totalPaintCost,
+                    id: 'mat-group-total',
+                    description: "Materials Package",
+                    amount: total,
                     type: 'material',
-                    groupTitle: "Paint Products"
+                    groupTitle: "Materials"
                 });
             } else {
-                // collapsed behavior: Single grouped line
-                lines.push({
-                    id: 'paint-total-grouped',
-                    description: "Paint Products",
-                    amount: totalPaintCost, // The user wants "sum total" on this line
-                    type: 'material', // Treat as material so it shows cost
-                    isGroupHeader: false, // It's a line item now
-                    groupTitle: "Paint Products"
-                });
+                collectedMaterials.forEach(m => lines.push(m));
             }
-        }
-    }
-
-    if (config.materialPlacement === 'separate_area') {
-        // If combined
-        if (config.paintPlacement === 'separate_area' && config.separateAreaStrategy === 'combined') {
-            lines.push({ id: 'h-pm', description: "Paint & Materials", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Paint & Materials" });
-            lines.push({
-                id: 'paint-total-c',
-                description: "Paint Products",
-                amount: 500, // Mock
-                type: 'material',
-                groupTitle: "Paint & Materials"
-            });
-            lines.push({
-                id: 'mat-total-c',
-                description: "Consumable Materials",
-                amount: 100, // Mock
-                type: 'material',
-                groupTitle: "Paint & Materials"
-            });
-        } else {
-            lines.push({ id: 'h-mat', description: "Materials", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Materials" });
-            lines.push({
-                id: 'mat-total',
-                description: "Consumable Materials",
-                amount: 100, // Mock
-                type: 'material',
-                groupTitle: "Materials"
-            });
         }
     }
 
@@ -275,28 +342,20 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
 
 export function flattenQuoteLines(lines: QuoteLineItem[]): any[] {
     const flat: any[] = [];
-
     lines.forEach(item => {
-        // Handle Header
         if (item.type === 'header') {
             flat.push({
                 description: item.description.toUpperCase(),
-                quantity: 0,
-                unit: '',
-                rate: 0,
-                isHeader: true // Custom flag (QuoteBuilder might ignore or just show 0)
+                quantity: 0, rate: 0, unit: '', isHeader: true
             });
         } else {
-            // Main Item
             flat.push({
                 description: item.description,
                 quantity: item.quantity || 1,
                 unit: item.unit || 'ea',
-                rate: item.rate || item.amount, // Fallback to amount if rate missing (lump sum)
+                rate: item.rate || item.amount,
                 unitCost: 0
             });
-
-            // Sub Items
             if (item.subItems) {
                 item.subItems.forEach(sub => {
                     flat.push({
@@ -310,6 +369,5 @@ export function flattenQuoteLines(lines: QuoteLineItem[]): any[] {
             }
         }
     });
-
     return flat;
 }

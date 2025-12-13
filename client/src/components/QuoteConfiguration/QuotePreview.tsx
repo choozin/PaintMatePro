@@ -19,6 +19,9 @@ const MOCK_PROJECT: any = {
         wallpaperRemovalRate: 0.75,
         billablePaint: true
     },
+    globalMaterialItems: [
+        { id: 'mat_pva', name: 'PVA Primer Seal', quantity: 2, unit: 'gal', rate: 45, type: 'material' }
+    ],
     laborConfig: {
         laborPricePerSqFt: 1.50,
         difficultyFactor: 1.0,
@@ -26,28 +29,37 @@ const MOCK_PROJECT: any = {
         hourlyRate: 60
     },
     internalCostConfig: { method: 'standard', averageWage: 25 },
+    globalMiscItems: [
+        { id: 'stair', name: 'Refinish Staircase', unit: 'sqft', quantity: 120, rate: 12.50, roomId: 'global' },
+    ],
     globalPrepTasks: [
-        { id: 'gp1', name: 'Mask Floors', unit: 'sqft', quantity: 0, rate: 0.15, globalId: 'gp1' },
+        { id: 'gp1', name: 'Mask Floors', unit: 'sqft', quantity: 0, rate: 0.15, globalId: 'gp1', roomId: 'global' },
     ]
 };
 
 const MOCK_ROOMS: any[] = [
     {
         id: '1', name: 'Living Room', length: 20, width: 15, height: 9, // 350 sqft floor, ~630 wall
-        prepTasks: []
+        prepTasks: [
+            { id: 'p_move', name: 'Move Heavy Furniture', unit: 'fixed', quantity: 1, rate: 120 },
+            { id: 'p_wall', name: 'Remove Wallpaper', unit: 'sqft', quantity: 100, rate: 2.50 }
+        ]
     },
     {
         id: '2', name: 'Master Bedroom', length: 16, width: 14, height: 9, // 224 sqft floor, ~540 wall
         prepTasks: [
-            { id: 'p2', name: 'Patch Drywall Holes', unit: 'fixed', quantity: 1, rate: 75 },
-            { id: 'gp1', name: 'Mask Floors', unit: 'sqft', quantity: 224, rate: 0.15, globalId: 'gp1' } // Inherited mock
+            { id: 'p_sand_k', name: 'Sand Trim', unit: 'ft', quantity: 51, rate: 0.50 }
         ],
-        supplyConfig: { wallProduct: { name: "Sherwin Williams Duration", pricePerGallon: 55 }, wallCoats: 1 } // Override example
+        materialItems: [
+            { id: 'mat_stencil', name: 'Custom Stencil Template', quantity: 3, rate: 75, unit: 'ea', type: 'material' }
+        ],
+        miscItems: [
+            { id: 'w_trim', name: 'Paint Baseboards', unit: 'ft', quantity: 51, rate: 1.50 },
+            { id: 'w_win1', name: 'Window Frame Painting', unit: 'ft', quantity: 12, rate: 3.00 },
+            { id: 'w_win2', name: 'Window Frame Painting', unit: 'ft', quantity: 12, rate: 3.00 }
+        ]
     },
-    {
-        id: '3', name: 'Kitchen', length: 12, width: 14, height: 9, // 168 sqft floor, ~468 wall
-        prepTasks: []
-    }
+
 ];
 
 interface QuotePreviewProps {
@@ -173,7 +185,7 @@ export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
                             <div className="flex-1">Description</div>
                             {config.showUnits && <div className="w-12 text-right">Qty</div>}
                             {config.showUnits && <div className="w-12 text-left pl-2">Unit</div>}
-                            <div className="w-20 text-right">Rate</div>
+                            {config.showRates && <div className="w-20 text-right">Rate</div>}
                             <div className="w-20 text-right">Amount</div>
                         </div>
 
@@ -194,7 +206,7 @@ export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
                                         </div>
                                         {config.showUnits && <div className="w-12 text-right text-gray-500">{item.quantity ? item.quantity.toFixed(0) : '-'}</div>}
                                         {config.showUnits && <div className="w-12 text-left pl-2 text-gray-400 text-[9px] uppercase tracking-wide pt-0.5">{item.quantity ? item.unit : ''}</div>}
-                                        <div className="w-20 text-right text-gray-500">{item.rate !== undefined ? `$${item.rate.toFixed(2)}` : '-'}</div>
+                                        {config.showRates && <div className="w-20 text-right text-gray-500">{item.rate !== undefined ? `$${item.rate.toFixed(2)}` : '-'}</div>}
                                         <div className="w-20 text-right font-medium text-gray-800">{item.amount !== undefined ? `$${item.amount.toFixed(2)}` : ''}</div>
                                     </div>
                                     {/* Sub Items */}
@@ -203,7 +215,7 @@ export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
                                             <div className="flex-1 pr-4 border-l-2 border-gray-100 pl-2">
                                                 <div>{sub.description}</div>
                                             </div>
-                                            <div className="w-20 text-right text-gray-400">{sub.rate !== undefined ? `$${sub.rate.toFixed(2)}` : ''}</div>
+                                            {config.showRates && <div className="w-20 text-right text-gray-400">{sub.rate !== undefined ? `$${sub.rate.toFixed(2)}` : ''}</div>}
                                             <div className="w-20 text-right text-gray-500">{sub.amount !== undefined ? `$${sub.amount.toFixed(2)}` : ''}</div>
                                         </div>
                                     ))}

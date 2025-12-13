@@ -45,7 +45,7 @@ export interface QuoteConfiguration {
     // Step 6: Fine Tuning
     showUnits: boolean;
     showRates: boolean;
-    showCoatCounts: boolean;
+
     showTaxLine: boolean;
     showDisclaimers: boolean;
     multiplesDisplay: 'x_notation' | 'separate_lines';
@@ -65,7 +65,7 @@ export const DEFAULT_QUOTE_CONFIG: QuoteConfiguration = {
     laborUnit: 'geometric',
     showUnits: true,
     showRates: true,
-    showCoatCounts: true,
+
     showTaxLine: true,
     showDisclaimers: true,
     multiplesDisplay: 'x_notation'
