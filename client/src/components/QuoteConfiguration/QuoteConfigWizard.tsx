@@ -6,7 +6,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronRight, ChevronLeft, Check, LayoutTemplate, PaintBucket, Package, Wrench, DollarSign, ListChecks, Info } from "lucide-react";
+import { ChevronRight, ChevronLeft, Check, LayoutTemplate, PaintBucket, Package, Wrench, DollarSign, ListChecks, Info, Eye, Pencil } from "lucide-react";
 import { QuoteConfiguration, DEFAULT_QUOTE_CONFIG } from "@/types/quote-config";
 import { QuotePreview } from "./QuotePreview";
 
@@ -26,6 +26,7 @@ const STEPS = [
 export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: QuoteConfigWizardProps) {
     const [step, setStep] = useState(1);
     const [config, setConfig] = useState<QuoteConfiguration>({ ...DEFAULT_QUOTE_CONFIG, ...initialConfig });
+    const [showMobilePreview, setShowMobilePreview] = useState(false);
 
     const updateConfig = (key: keyof QuoteConfiguration, value: any) => {
         setConfig(prev => ({ ...prev, [key]: value }));
@@ -132,18 +133,15 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                             </div>
                         </div>
 
-                        <div className="grid gap-4 pt-2">
-                            <Label className="text-base">Primer Strategy</Label>
-                            <RadioGroup value={config.primerStrategy} onValueChange={(val) => updateConfig('primerStrategy', val)} className="grid grid-cols-2 gap-4">
-                                <div className={`flex items-center space-x-2 p-3 rounded border cursor-pointer ${config.primerStrategy === 'separate_line' ? 'border-primary bg-primary/5' : 'border-input'}`}>
-                                    <RadioGroupItem value="separate_line" id="sep_line" />
-                                    <Label htmlFor="sep_line" className="cursor-pointer">Separate Line</Label>
-                                </div>
-                                <div className={`flex items-center space-x-2 p-3 rounded border cursor-pointer ${config.primerStrategy === 'combined' ? 'border-primary bg-primary/5' : 'border-input'}`}>
-                                    <RadioGroupItem value="combined" id="comb_line" />
-                                    <Label htmlFor="comb_line" className="cursor-pointer">Combined (Merged Cost)</Label>
-                                </div>
-                            </RadioGroup>
+                        <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Itemize Primer Line</Label>
+                                <p className="text-sm text-muted-foreground">List "Prime Walls" as a separate line item? (Otherwise combined with Paint Walls)</p>
+                            </div>
+                            <Switch
+                                checked={config.primerStrategy === 'separate_line'}
+                                onCheckedChange={(c) => updateConfig('primerStrategy', c ? 'separate_line' : 'combined')}
+                            />
                         </div>
                     </div >
                 );
@@ -196,16 +194,19 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                         <div className="grid gap-6">
 
                             {/* Moved from Prep Step: Grouping Toggle */}
-                            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base">Group Prep Tasks</Label>
-                                    <p className="text-sm text-muted-foreground">Combine all prep tasks into a single line?</p>
+                            {/* Moved from Prep Step: Grouping Toggle - Only show for Room view (Surface view aggregates automatically) */}
+                            {config.listingStrategy !== 'by_surface' && (
+                                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-base">Group Prep Tasks</Label>
+                                        <p className="text-sm text-muted-foreground">Combine all prep tasks into a single line?</p>
+                                    </div>
+                                    <Switch
+                                        checked={config.prepStrategy === 'group_total'}
+                                        onCheckedChange={(c) => updateConfig('prepStrategy', c ? 'group_total' : 'itemized')}
+                                    />
                                 </div>
-                                <Switch
-                                    checked={config.prepStrategy === 'group_total'}
-                                    onCheckedChange={(c) => updateConfig('prepStrategy', c ? 'group_total' : 'itemized')}
-                                />
-                            </div>
+                            )}
 
                             <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border">
                                 <div className="space-y-0.5">
@@ -249,15 +250,27 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
 
     return (
         <div className="flex gap-6 h-full w-full max-w-7xl mx-auto p-4">
-            {/* Wizard Column */}
-            <Card className="flex-1 flex flex-col shadow-lg border-2 h-full">
-                <CardHeader className="border-b bg-muted/10 shrink-0">
+            {/* Wizard Column - Hidden on mobile if preview is shown */}
+            <Card className={`flex-1 min-w-0 flex flex-col shadow-lg border-2 h-full ${showMobilePreview ? 'hidden xl:flex' : 'flex'}`}>
+                <CardHeader className="border-b bg-muted/10 shrink-0 space-y-0 pb-4">
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 text-primary font-bold">
                             {React.createElement(STEPS[step - 1].icon, { className: "w-5 h-5" })}
                             <span className="uppercase tracking-wider text-sm">Step {step} of {STEPS.length}</span>
                         </div>
-                        <span className="text-xs text-muted-foreground font-mono">CONF-WIZ-v2</span>
+                        <div className="flex items-center gap-2">
+                            {/* Mobile Preview Toggle */}
+                            <Button
+                                variant="default"
+                                size="sm"
+                                className="xl:hidden bg-blue-600 hover:bg-blue-700 text-white gap-2 shadow-sm"
+                                onClick={() => setShowMobilePreview(true)}
+                            >
+                                <Eye className="w-4 h-4" />
+                                <span className="text-xs font-bold uppercase tracking-wide">Preview</span>
+                            </Button>
+                            <span className="text-xs text-muted-foreground font-mono hidden sm:inline">CONF-WIZ-v2</span>
+                        </div>
                     </div>
                     <CardTitle className="text-2xl">{STEPS[step - 1].title}</CardTitle>
                     <CardDescription className="text-base">{STEPS[step - 1].Description}</CardDescription>
@@ -283,14 +296,25 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                 </div>
             </Card>
 
-            {/* Preview Column */}
-            <Card className="flex-1 hidden xl:flex flex-col shadow-lg border-muted h-full bg-slate-50">
-                <CardHeader className="border-b bg-white shrink-0 pb-2">
-                    <CardTitle className="text-lg text-slate-700">Live Preview</CardTitle>
-                    <CardDescription>Real-time quote preview based on current settings.</CardDescription>
+            {/* Preview Column - Hidden on mobile unless toggled */}
+            <Card className={`flex-1 min-w-0 flex-col shadow-lg border-muted h-full bg-slate-50 ${showMobilePreview ? 'flex' : 'hidden xl:flex'}`}>
+                <CardHeader className="border-b bg-white shrink-0 pb-2 flex flex-row items-center justify-between space-y-0">
+                    <div>
+                        <CardTitle className="text-lg text-slate-700">Live Preview</CardTitle>
+                        <CardDescription>Real-time quote preview.</CardDescription>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="xl:hidden shrink-0 gap-2"
+                        onClick={() => setShowMobilePreview(false)}
+                    >
+                        <Pencil className="w-4 h-4" />
+                        <span className="text-xs">Back to Wizard</span>
+                    </Button>
                 </CardHeader>
                 <CardContent className="flex-1 p-0 overflow-hidden">
-                    <QuotePreview config={config} />
+                    <QuotePreview config={config} showMobilePreview={showMobilePreview} />
                 </CardContent>
             </Card>
         </div>

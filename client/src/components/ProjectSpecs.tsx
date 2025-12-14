@@ -237,7 +237,9 @@ function AddMiscItemDialog({
     globalItems = [],
     onMove,
     initialItem,
-    paintProducts = []
+    paintProducts = [],
+    defaultProduct,
+    onAddNewPaint
 }: {
     isOpen: boolean,
     onOpenChange: (o: boolean) => void,
@@ -248,7 +250,9 @@ function AddMiscItemDialog({
     globalItems?: MiscMeasurement[],
     onMove?: (itemId: string, targetRoomId: string) => void,
     initialItem?: MiscMeasurement | null,
-    paintProducts?: any[]
+    paintProducts?: any[],
+    defaultProduct?: any,
+    onAddNewPaint?: () => void
 }) {
     const [name, setName] = useState("");
     const [unit, setUnit] = useState<'sqft' | 'linear_ft' | 'units' | 'fixed' | 'hours'>('units');
@@ -262,6 +266,11 @@ function AddMiscItemDialog({
     const [coverage, setCoverage] = useState(350);
     const [coats, setCoats] = useState(2);
     const [paintProductId, setPaintProductId] = useState<string>("default");
+
+    const [excludeFromSharedPaint, setExcludeFromSharedPaint] = useState(false);
+    const [customPaintArea, setCustomPaintArea] = useState(0);
+
+    const [paintSelectorOpen, setPaintSelectorOpen] = useState(false);
 
     // Load initial item on open
     useEffect(() => {
@@ -279,11 +288,17 @@ function AddMiscItemDialog({
                 setCoverage(initialItem.coverage || 350);
                 setCoats(initialItem.coats || 2);
                 setPaintProductId(initialItem.paintProductId || "default");
+
+                setExcludeFromSharedPaint(initialItem.excludeFromSharedPaint || false);
+                setCustomPaintArea(initialItem.customPaintArea || 0);
             } else {
                 setRequiresPaint(false);
                 setCoverage(350);
                 setCoats(2);
                 setPaintProductId("default");
+
+                setExcludeFromSharedPaint(false);
+                setCustomPaintArea(0);
             }
         } else if (isOpen && !initialItem) {
             setName("");
@@ -294,7 +309,10 @@ function AddMiscItemDialog({
             setRequiresPaint(false);
             setCoverage(350);
             setCoats(2);
+            setCoverage(350);
+
             setPaintProductId("default");
+            setCustomPaintArea(0);
         }
     }, [isOpen, initialItem]);
 
@@ -324,6 +342,9 @@ function AddMiscItemDialog({
                 setCoverage(item.coverage || 350);
                 setCoats(item.coats || 2);
                 setPaintProductId(item.paintProductId || "default");
+
+                setExcludeFromSharedPaint(item.excludeFromSharedPaint || false);
+                setCustomPaintArea(item.customPaintArea || 0);
             }
 
             setOpenSection(null); // Close after selection to focus on form
@@ -343,160 +364,171 @@ function AddMiscItemDialog({
         };
 
         // Add paint props if applicable
-        if (requiresPaint && (unit === 'sqft' || (unit === 'linear_ft' && width > 0))) {
+        if (requiresPaint) {
             newItem.coverage = coverage;
             newItem.coats = coats;
             if (paintProductId !== "default") {
                 newItem.paintProductId = paintProductId;
             }
+            newItem.excludeFromSharedPaint = excludeFromSharedPaint;
+
+            if (unit !== 'sqft' && unit !== 'linear_ft') {
+                newItem.customPaintArea = customPaintArea;
+            }
         }
 
         onAdd(newItem);
         onOpenChange(false);
-        setName(""); setQuantity(1); setRate(0); setCount(1);
+        setName(""); setQuantity(1); setRate(0); setCount(1); setExcludeFromSharedPaint(false); setCustomPaintArea(0);
     };
 
     const totalQty = quantity * count;
 
     // Paint Calculation
-    const showPaintConfig = unit === 'sqft' || (unit === 'linear_ft' && width > 0);
-    const estimatedPaintVolume = showPaintConfig && requiresPaint && coverage > 0
-        ? ((unit === 'sqft' ? totalQty : totalQty * width) / coverage)
+    // Logic: If sqft -> qty is area. If linear -> qty*width is area. If other -> customPaintArea * count is area?
+    // Actually, customPaintArea should probably be "Area per Item".
+    const effectiveArea = unit === 'sqft' ? totalQty
+        : unit === 'linear_ft' ? totalQty * width
+            : (customPaintArea * totalQty); // Assuming customPaintArea is per unit. Wait, totalQty includes count? Yes.
+
+    const estimatedPaintVolume = requiresPaint && coverage > 0
+        ? (effectiveArea / coverage)
         : 0;
 
     return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md">
-                <DialogHeader>
-                    <DialogTitle>{initialItem ? 'Edit Work Item' : `Add Work Item (${roomName})`}</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                    {/* Collapsible Actions - Hide when editing */}
-                    {!initialItem && (
-                        <div className="flex flex-col gap-2">
-                            {roomId !== 'global' && globalItems.length > 0 && onMove && (
-                                <div className="border rounded-md overflow-hidden">
-                                    <Button
-                                        variant="ghost"
-                                        className="w-full justify-between font-normal rounded-none bg-slate-50 hover:bg-slate-100"
-                                        onClick={() => setOpenSection(openSection === 'move' ? null : 'move')}
-                                    >
-                                        <span className="flex items-center gap-2"><ArrowDownToLine className="h-4 w-4 text-indigo-600" /> Add An Existing Work Item To This Room</span>
-                                        {openSection === 'move' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                    </Button>
-                                    {openSection === 'move' && (
-                                        <div className="p-3 bg-white border-t space-y-3 animate-in slide-in-from-top-2 duration-200">
-                                            <p className="text-xs text-muted-foreground">Select an item from the Global list to move it exclusively to this room.</p>
-                                            <div className="flex gap-2">
-                                                <Select value={selectedGlobalId} onValueChange={setSelectedGlobalId}>
-                                                    <SelectTrigger className="h-8 text-xs flex-1"><SelectValue placeholder="Select global item..." /></SelectTrigger>
+        <>
+            <Dialog open={isOpen} onOpenChange={onOpenChange}>
+                <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>{initialItem ? 'Edit Work Item' : `Add Work Item (${roomName})`}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        {/* Collapsible Actions - Hide when editing */}
+                        {!initialItem && (
+                            <div className="flex flex-col gap-2">
+                                {roomId !== 'global' && globalItems.length > 0 && onMove && (
+                                    <div className="border rounded-md overflow-hidden">
+                                        <Button
+                                            variant="ghost"
+                                            className="w-full justify-between font-normal rounded-none bg-slate-50 hover:bg-slate-100"
+                                            onClick={() => setOpenSection(openSection === 'move' ? null : 'move')}
+                                        >
+                                            <span className="flex items-center gap-2"><ArrowDownToLine className="h-4 w-4 text-indigo-600" /> Add An Existing Work Item To This Room</span>
+                                            {openSection === 'move' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                        </Button>
+                                        {openSection === 'move' && (
+                                            <div className="p-3 bg-white border-t space-y-3 animate-in slide-in-from-top-2 duration-200">
+                                                <p className="text-xs text-muted-foreground">Select an item from the Global list to move it exclusively to this room.</p>
+                                                <div className="flex gap-2">
+                                                    <Select value={selectedGlobalId} onValueChange={setSelectedGlobalId}>
+                                                        <SelectTrigger className="h-8 text-xs flex-1"><SelectValue placeholder="Select global item..." /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {globalItems.map(i => (
+                                                                <SelectItem key={i.id} value={i.id}>{i.name} ({i.quantity} {i.unit})</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Button size="sm" className="h-8 bg-indigo-600 hover:bg-indigo-700" disabled={!selectedGlobalId} onClick={handleMoveGlobal}>Move</Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {allItems.length > 0 && (
+                                    <div className="border rounded-md overflow-hidden">
+                                        <Button
+                                            variant="ghost"
+                                            className="w-full justify-between font-normal rounded-none bg-slate-50 hover:bg-slate-100"
+                                            onClick={() => setOpenSection(openSection === 'copy' ? null : 'copy')}
+                                        >
+                                            <span className="flex items-center gap-2"><Copy className="h-4 w-4 text-blue-600" /> Copy Attributes from Template</span>
+                                            {openSection === 'copy' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                        </Button>
+                                        {openSection === 'copy' && (
+                                            <div className="p-3 bg-white border-t space-y-3 animate-in slide-in-from-top-2 duration-200">
+                                                <p className="text-xs text-muted-foreground">Pre-fill details from an existing item, then customize for this new entry.</p>
+                                                <Select onValueChange={handleCopyAttributes}>
+                                                    <SelectTrigger className="h-8 text-xs w-full"><SelectValue placeholder="Select template item..." /></SelectTrigger>
                                                     <SelectContent>
-                                                        {globalItems.map(i => (
-                                                            <SelectItem key={i.id} value={i.id}>{i.name} ({i.quantity} {i.unit})</SelectItem>
+                                                        {allItems.map(i => (
+                                                            <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
-                                                <Button size="sm" className="h-8 bg-indigo-600 hover:bg-indigo-700" disabled={!selectedGlobalId} onClick={handleMoveGlobal}>Move</Button>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {allItems.length > 0 && (
-                                <div className="border rounded-md overflow-hidden">
-                                    <Button
-                                        variant="ghost"
-                                        className="w-full justify-between font-normal rounded-none bg-slate-50 hover:bg-slate-100"
-                                        onClick={() => setOpenSection(openSection === 'copy' ? null : 'copy')}
-                                    >
-                                        <span className="flex items-center gap-2"><Copy className="h-4 w-4 text-blue-600" /> Copy Attributes from Template</span>
-                                        {openSection === 'copy' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                    </Button>
-                                    {openSection === 'copy' && (
-                                        <div className="p-3 bg-white border-t space-y-3 animate-in slide-in-from-top-2 duration-200">
-                                            <p className="text-xs text-muted-foreground">Pre-fill details from an existing item, then customize for this new entry.</p>
-                                            <Select onValueChange={handleCopyAttributes}>
-                                                <SelectTrigger className="h-8 text-xs w-full"><SelectValue placeholder="Select template item..." /></SelectTrigger>
-                                                <SelectContent>
-                                                    {allItems.map(i => (
-                                                        <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {!initialItem && <Separator className="my-2" />}
-
-                    <div className="space-y-2">
-                        <Label>Item Name</Label>
-                        <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Window Frames" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Unit Type</Label>
-                            <Select value={unit} onValueChange={(v: any) => setUnit(v)}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="units">Each (Per Item)</SelectItem>
-                                    <SelectItem value="sqft">SqFt (Area)</SelectItem>
-                                    <SelectItem value="linear_ft">Linear Ft</SelectItem>
-                                    <SelectItem value="hours">Hours (Labor)</SelectItem>
-                                    <SelectItem value="fixed">Flat Fee (No Units)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>{unit === 'fixed' ? 'Price' : `Rate ($ per ${unit === 'units' ? 'item' : unit === 'hours' ? 'hr' : unit})`}</Label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2 text-sm text-muted-foreground">$</span>
-                                <Input
-                                    type="number"
-                                    value={rate}
-                                    onChange={e => setRate(Number(e.target.value))}
-                                    className="pl-6"
-                                    placeholder="0.00"
-                                    step={0.01}
-                                />
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    </div>
+                        )}
 
-                    {unit !== 'fixed' && (
+                        {!initialItem && <Separator className="my-2" />}
+
+                        <div className="space-y-2">
+                            <Label>Item Name</Label>
+                            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Window Frames" />
+                        </div>
+
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>{unit === 'hours' ? 'Hours' : 'Quantity / Dimensions'}</Label>
-                                <Input
-                                    type="number"
-                                    value={quantity}
-                                    onChange={e => setQuantity(Number(e.target.value))}
-                                />
-                                {unit === 'units' && <span className="text-[10px] text-muted-foreground">Count handles multiplier</span>}
+                                <Label>Unit Type</Label>
+                                <Select value={unit} onValueChange={(v: any) => setUnit(v)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="units">Each (Per Item)</SelectItem>
+                                        <SelectItem value="sqft">SqFt (Area)</SelectItem>
+                                        <SelectItem value="linear_ft">Linear Ft</SelectItem>
+                                        <SelectItem value="hours">Hours (Labor)</SelectItem>
+                                        <SelectItem value="fixed">Flat Fee (No Units)</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            {unit === 'linear_ft' && (
-                                <div className="space-y-2">
-                                    <Label>Est. Width (ft)</Label>
-                                    <Input type="number" step="0.1" value={width} onChange={e => setWidth(Number(e.target.value))} placeholder="0.5" />
+                            <div className="space-y-2">
+                                <Label>{unit === 'fixed' ? 'Price' : `Rate ($ per ${unit === 'units' ? 'item' : unit === 'hours' ? 'hr' : unit})`}</Label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-2 text-sm text-muted-foreground">$</span>
+                                    <Input
+                                        type="number"
+                                        value={rate}
+                                        onChange={e => setRate(Number(e.target.value))}
+                                        className="pl-6"
+                                        placeholder="0.00"
+                                        step={0.01}
+                                    />
                                 </div>
-                            )}
+                            </div>
                         </div>
-                    )}
 
-                    <div className="grid grid-cols-2 gap-4">
-                        {/* Count always visible? Yes, even for flat fee (e.g. 2 x Flat Fee Setup) */}
-                        <div className="space-y-2">
-                            <Label>Item Count (Multiplier)</Label>
-                            <Input type="number" value={count} onChange={e => setCount(Math.max(1, parseInt(e.target.value)))} min={1} />
+                        {unit !== 'fixed' && (
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>{unit === 'hours' ? 'Hours' : 'Quantity / Dimensions'}</Label>
+                                    <Input
+                                        type="number"
+                                        value={quantity}
+                                        onChange={e => setQuantity(Number(e.target.value))}
+                                    />
+                                    {unit === 'units' && <span className="text-[10px] text-muted-foreground">Count handles multiplier</span>}
+                                </div>
+                                {unit === 'linear_ft' && (
+                                    <div className="space-y-2">
+                                        <Label>Est. Width (ft)</Label>
+                                        <Input type="number" step="0.1" value={width} onChange={e => setWidth(Number(e.target.value))} placeholder="0.5" />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-4">
+                            {/* Count always visible? Yes, even for flat fee (e.g. 2 x Flat Fee Setup) */}
+                            <div className="space-y-2">
+                                <Label>Item Count (Multiplier)</Label>
+                                <Input type="number" value={count} onChange={e => setCount(Math.max(1, parseInt(e.target.value)))} min={1} />
+                            </div>
                         </div>
-                    </div>
 
-                    {showPaintConfig && (
+                        {/* Always show paint toggle now */}
                         <div className="p-3 bg-slate-50 border rounded-md space-y-3">
                             <div className="flex items-center justify-between">
                                 <Label className="text-xs font-semibold flex items-center gap-2">
@@ -507,7 +539,32 @@ function AddMiscItemDialog({
 
                             {requiresPaint && (
                                 <div className="space-y-3 pt-2 text-xs">
-                                    <div className="grid grid-cols-3 gap-3">
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] text-muted-foreground">Paint Product</Label>
+                                        <div className="flex gap-2">
+                                            <div className="flex-1 p-2 border rounded-md bg-muted/20 text-xs flex justify-between items-center overflow-hidden">
+                                                <span className="truncate mr-2">
+                                                    {paintProductId === 'default'
+                                                        ? (defaultProduct?.name || "Standard Wall Paint")
+                                                        : (paintProducts?.find(p => p.id === paintProductId)?.name || "Unknown Product")}
+                                                </span>
+                                                <span className="text-muted-foreground whitespace-nowrap">
+                                                    {paintProductId === 'default'
+                                                        ? `$${defaultProduct?.unitPrice || 45}/gal`
+                                                        : `$${paintProducts?.find(p => p.id === paintProductId)?.unitPrice || 0}/gal`}
+                                                </span>
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-auto py-1 px-2 text-xs"
+                                                onClick={() => setPaintSelectorOpen(true)}
+                                            >
+                                                Change
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
                                             <Label className="text-[10px] text-muted-foreground">Coverage (sqft/gal)</Label>
                                             <Input
@@ -526,28 +583,43 @@ function AddMiscItemDialog({
                                                 onChange={e => setCoats(Number(e.target.value))}
                                             />
                                         </div>
-                                        <div className="space-y-1">
-                                            <Label className="text-[10px] text-muted-foreground">Paint Product</Label>
-                                            <Select value={paintProductId} onValueChange={setPaintProductId}>
-                                                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select Product" /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="default">Use Global Default</SelectItem>
-                                                    {paintProducts.map(p => (
-                                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
                                     </div>
+                                    <div className="flex items-center justify-between pt-2">
+                                        <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                            Exclude from Shared Paint Logic?
+                                        </Label>
+                                        <Switch checked={excludeFromSharedPaint} onCheckedChange={setExcludeFromSharedPaint} className="scale-75 origin-right" />
+                                    </div>
+                                    <p className="text-[9px] text-muted-foreground">If enabled, this item's paint usage will not share "leftover" gallons from other items.</p>
                                 </div>
                             )}
-                            <div className="flex justify-between items-center pt-1 border-t border-slate-200">
-                                <span className="text-muted-foreground">Est. Paint Volume:</span>
-                                <span className="font-medium">{estimatedPaintVolume.toFixed(2)} gal</span>
-                            </div>
                         </div>
-                    )
-                    }
+
+
+                        {/* Custom Area Input for Non-Area Types */}
+                        {requiresPaint && unit !== 'sqft' && unit !== 'linear_ft' && (
+                            <div className="pt-2 border-t border-slate-200">
+                                <div className="space-y-1">
+                                    <Label className="text-xs font-semibold text-blue-700">Paintable Area per Item (sqft)</Label>
+                                    <div className="flex gap-2 items-center">
+                                        <Input
+                                            type="number"
+                                            className="h-8 w-24"
+                                            value={customPaintArea}
+                                            onChange={e => setCustomPaintArea(Number(e.target.value))}
+                                        />
+                                        <span className="text-xs text-muted-foreground">Approx. area to paint per unit</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex justify-between items-center pt-1 border-t border-slate-200">
+                            <span className="text-muted-foreground">Est. Paint Volume:</span>
+                            <span className="font-medium">{estimatedPaintVolume.toFixed(2)} gal</span>
+                        </div>
+                    </div>
+
 
 
                     <div className="p-3 bg-blue-50 text-blue-800 rounded text-sm flex justify-between font-medium">
@@ -558,14 +630,22 @@ function AddMiscItemDialog({
                                 : `${totalQty} ${formatUnit(unit)}`}
                         </span>
                     </div>
-                </div >
 
 
-                <DialogFooter>
-                    <Button onClick={handleSubmit}>Add Item</Button>
-                </DialogFooter>
-            </DialogContent >
-        </Dialog >
+
+                    <DialogFooter>
+                        <Button onClick={handleSubmit}>Add Item</Button>
+                    </DialogFooter>
+                </DialogContent >
+            </Dialog >
+            <PaintSelectorDialog
+                isOpen={paintSelectorOpen}
+                onOpenChange={setPaintSelectorOpen}
+                products={paintProducts || []}
+                onSelect={(p) => { setPaintProductId(p.id); setPaintSelectorOpen(false); }}
+                onAddNew={() => { setPaintSelectorOpen(false); if (onAddNewPaint) onAddNewPaint(); }}
+            />
+        </>
     );
 }
 
@@ -1146,7 +1226,10 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                         General Specs & Paint
                     </TabsTrigger>
                     <TabsTrigger value="rooms" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent px-4 py-3">
-                        Room-Specific Overrides
+                        Rooms
+                    </TabsTrigger>
+                    <TabsTrigger value="misc" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent px-4 py-3">
+                        Additional Work Items
                     </TabsTrigger>
                 </TabsList>
 
@@ -1354,49 +1437,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                         </CardContent>
                     </Card>
 
-                    {/* 4. Global Misc Items */}
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle className="text-lg">Additional Work Items</CardTitle>
-                            <Button variant="outline" size="sm" onClick={() => { setActiveRoomIdForMisc('global'); setMiscDialogOpen(true); }}>
-                                <PlusCircle className="h-4 w-4 mr-2" /> Add Work Item
-                            </Button>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                {globalMiscItems.length === 0 && (
-                                    <div className="text-center p-4 text-muted-foreground bg-slate-50 rounded-lg border border-dashed">
-                                        No project-wide work items added yet.
-                                    </div>
-                                )}
-                                {globalMiscItems.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between items-center p-3 border rounded-md bg-white">
-                                        <div>
-                                            <div className="font-medium flex items-center gap-2">
-                                                {item.name}
-                                                {item.count && item.count > 1 && <Badge variant="secondary" className="text-[10px]">x{item.count}</Badge>}
-                                            </div>
-                                            <div className="text-sm text-muted-foreground">{item.quantity} {formatUnit(item.unit)} @ ${item.rate}/{formatUnit(item.unit)}</div>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem disabled className="text-xs font-semibold opacity-50">Move to Room:</DropdownMenuItem>
-                                                    {rooms?.map(r => (
-                                                        <DropdownMenuItem key={r.id} onClick={() => moveMiscItem(item.id, r.id)}>{r.name}</DropdownMenuItem>
-                                                    ))}
-                                                    {(!rooms || rooms.length === 0) && <DropdownMenuItem disabled>No Rooms</DropdownMenuItem>}
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                            <Button variant="ghost" size="sm" onClick={() => openEditMisc(item, 'global')}><Pencil className="h-4 w-4 text-blue-500" /></Button>
-                                            <Button variant="ghost" size="sm" onClick={() => removeMiscItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
+
                 </TabsContent>
 
                 <TabsContent value="rooms">
@@ -1527,6 +1568,18 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                             </p>
                                                         </div>
                                                     </div>
+                                                    <div className="flex items-center justify-between space-x-2 border p-2 rounded bg-white col-span-2">
+                                                        <div className="space-y-0.5">
+                                                            <Label className="text-xs">Exclude from Shared Paint?</Label>
+                                                            <p className="text-[9px] text-muted-foreground">Do not share leftover paint with other rooms.</p>
+                                                        </div>
+                                                        <Switch
+                                                            checked={room.supplyConfig?.wallExcludeFromSharedPaint || false}
+                                                            onCheckedChange={c => handleRoomSupplyUpdate(room.id, 'wallExcludeFromSharedPaint', c)}
+                                                        />
+                                                    </div>
+
+
 
                                                     {/* Ceiling Paint Overrides */}
                                                     {(room.supplyConfig?.includeCeiling ?? config.includeCeiling) && (
@@ -1607,7 +1660,17 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                                     <p className="text-[10px] text-muted-foreground">Global: {config.ceilingCoverage ?? 400}</p>
                                                                 </div>
                                                             </div>
+                                                            <div className="flex items-center justify-between space-x-2 border p-2 rounded bg-white col-span-2">
+                                                                <div className="space-y-0.5">
+                                                                    <Label className="text-xs">Exclude from Shared Paint?</Label>
+                                                                    <p className="text-[9px] text-muted-foreground">Do not share leftover paint.</p>
+                                                                </div>
+                                                                <Switch
+                                                                    checked={room.supplyConfig?.ceilingExcludeFromSharedPaint || false}
+                                                                />
+                                                            </div>
                                                         </div>
+
                                                     )}
 
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -1702,9 +1765,18 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                                     {room.supplyConfig?.includeTrim !== undefined ? "Room Override" : `Using Global (${config.includeTrim ? 'Yes' : 'No'})`}
                                                                 </p>
                                                             )}
+                                                            <div className="flex items-center justify-between space-x-2 mt-2 pt-2 border-t">
+                                                                <Label className="text-[10px] text-muted-foreground">Exclude from shared?</Label>
+                                                                <Switch
+                                                                    checked={room.supplyConfig?.trimExcludeFromSharedPaint || false}
+                                                                    onCheckedChange={c => handleRoomSupplyUpdate(room.id, 'trimExcludeFromSharedPaint', c)}
+                                                                    className="scale-75 origin-right"
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
+
 
                                                 <Separator className="my-6" />
 
@@ -1887,7 +1959,82 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                 </CardContent>
                             )}
                         </Card>
-                    </div>
+                    </div >
+                </TabsContent>
+
+                <TabsContent value="misc">
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle className="text-lg">Additional Work Items</CardTitle>
+                                <CardDescription>Manage project-wide work items that are not specific to any single room.</CardDescription>
+                            </div>
+                            <Button onClick={() => { setActiveRoomIdForMisc('global'); setMiscDialogOpen(true); }}>
+                                <PlusCircle className="h-4 w-4 mr-2" /> Add Work Item
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                {globalMiscItems.length === 0 && (
+                                    <div className="text-center p-12 text-muted-foreground bg-slate-50 rounded-lg border border-dashed flex flex-col items-center justify-center">
+                                        <Package className="h-12 w-12 text-slate-300 mb-4" />
+                                        <h3 className="text-lg font-medium text-slate-900">No Additional Items</h3>
+                                        <p className="text-sm text-slate-500 max-w-sm mt-2 mb-6">
+                                            Add work items here that apply to the whole project or don't fit into a specific room (e.g., Exterior Pressure Wash, Dumpster Fee).
+                                        </p>
+                                        <Button variant="outline" onClick={() => { setActiveRoomIdForMisc('global'); setMiscDialogOpen(true); }}>
+                                            Add Your First Item
+                                        </Button>
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {globalMiscItems.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-start p-4 border rounded-lg bg-white hover:border-blue-300 transition-colors shadow-sm">
+                                            <div className="space-y-1">
+                                                <div className="font-medium flex items-center gap-2 text-base">
+                                                    {item.name}
+                                                    {item.count && item.count > 1 && <Badge variant="secondary" className="text-xs">x{item.count}</Badge>}
+                                                </div>
+                                                <div className="text-sm text-muted-foreground flex gap-4">
+                                                    <span className="flex items-center gap-1"><Ruler className="h-3 w-3" /> {item.quantity} {formatUnit(item.unit)}</span>
+                                                    <span className="flex items-center gap-1"><DollarSign className="h-3 w-3" /> ${item.rate}/{formatUnit(item.unit)}</span>
+                                                </div>
+                                                {(item.paintProductId || (item.customPaintArea && item.customPaintArea > 0)) && (
+                                                    <div className="flex gap-2 mt-2">
+                                                        {item.paintProductId && (
+                                                            <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200 bg-blue-50">
+                                                                <PaintBucket className="h-3 w-3 mr-1" />
+                                                                {paintProducts.find(p => p.id === item.paintProductId)?.name || 'Default Paint'}
+                                                            </Badge>
+                                                        )}
+                                                        {item.customPaintArea && item.customPaintArea > 0 && (
+                                                            <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-200 bg-slate-50">
+                                                                Area: {item.customPaintArea} sqft/unit
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1 pl-4 border-l ml-4 h-full">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem disabled className="text-xs font-semibold opacity-50">Move to Room:</DropdownMenuItem>
+                                                        {rooms?.map(r => (
+                                                            <DropdownMenuItem key={r.id} onClick={() => moveMiscItem(item.id, r.id)}>{r.name}</DropdownMenuItem>
+                                                        ))}
+                                                        {(!rooms || rooms.length === 0) && <DropdownMenuItem disabled>No Rooms</DropdownMenuItem>}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                                <Button variant="ghost" size="sm" onClick={() => openEditMisc(item, 'global')}><Pencil className="h-4 w-4 text-blue-500" /></Button>
+                                                <Button variant="ghost" size="sm" onClick={() => removeMiscItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 <div className="flex justify-end mt-8 border-t pt-4">
@@ -1910,6 +2057,8 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                 onMove={moveMiscItem}
                 initialItem={editingMiscItem}
                 paintProducts={paintProducts}
+                defaultProduct={config.wallProduct}
+                onAddNewPaint={() => setIsAddPaintOpen(true)}
             />
             <AddPrepTaskDialog
                 isOpen={prepDialogOpen}

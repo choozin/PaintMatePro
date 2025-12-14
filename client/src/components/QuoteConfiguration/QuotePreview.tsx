@@ -1,10 +1,11 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { ZoomIn, ZoomOut, Maximize, RotateCcw } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { QuoteConfiguration } from '@/types/quote-config';
 import { generateQuoteLinesV2 } from '@/lib/quote-generator-v2';
 
-// Mock Data for Preview
+// Copying Mock Data locally for preview purposes or importing if shared. 
+// Assuming shared mock data structure for consistency.
 const MOCK_PROJECT: any = {
     name: "Sample Project",
     supplyConfig: {
@@ -16,11 +17,12 @@ const MOCK_PROJECT: any = {
         ceilingProduct: { name: "Waterborne Ceiling Paint", pricePerGallon: 42 },
         ceilingCoats: 2,
         ceilingCoverage: 400,
-        includeTrim: false, // User requested "only happening in master bedroom", so disable global
-        trimProduct: { name: "Advance Satin", pricePerGallon: 65, unitPrice: 65 }, // Ensure unitPrice is set for catalog match if needed
+        includeTrim: false,
+        trimProduct: { name: "Advance Satin", pricePerGallon: 65, unitPrice: 65 },
         includeWallpaperRemoval: true,
         wallpaperRemovalRate: 0.75,
-        billablePaint: true
+        billablePaint: true,
+        includePrimer: true
     },
     globalMaterialItems: [
         { id: 'mat_pva', name: 'PVA Primer Seal', quantity: 2, unit: 'gal', rate: 45, type: 'material' }
@@ -57,14 +59,14 @@ const MOCK_CATALOG: any[] = [
 
 const MOCK_ROOMS: any[] = [
     {
-        id: '1', name: 'Living Room', length: 20, width: 15, height: 9, // 350 sqft floor, ~630 wall
+        id: '1', name: 'Living Room', length: 20, width: 15, height: 9,
         prepTasks: [
             { id: 'p_move', name: 'Move Heavy Furniture', unit: 'fixed', quantity: 1, rate: 120 },
             { id: 'p_wall', name: 'Remove Wallpaper', unit: 'sqft', quantity: 100, rate: 2.50 }
         ]
     },
     {
-        id: '2', name: 'Master Bedroom', length: 16, width: 14, height: 9, // 224 sqft floor, ~540 wall
+        id: '2', name: 'Master Bedroom', length: 16, width: 14, height: 9,
         prepTasks: [
             { id: 'p_sand_k', name: 'Sand Trim', unit: 'ft', quantity: 51, rate: 0.50, linkedWorkItemId: 'w_trim' }
         ],
@@ -76,207 +78,227 @@ const MOCK_ROOMS: any[] = [
             { id: 'w_win1', name: 'Window Frame Painting', unit: 'linear_ft', quantity: 12, width: 4, rate: 3.00, paintProductId: 'prod_trim', coverage: 350 },
             { id: 'w_win2', name: 'Window Frame Painting', unit: 'linear_ft', quantity: 12, width: 4, rate: 3.00, paintProductId: 'prod_trim', coverage: 350 }
         ]
-    },
-
+    }
 ];
 
 interface QuotePreviewProps {
     config: QuoteConfiguration;
     orgBranding?: any;
+    showMobilePreview?: boolean;
 }
 
-export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
+export function QuotePreview({ config, orgBranding, showMobilePreview }: QuotePreviewProps) {
 
+    // Generate Line Items
     const lineItems = useMemo(() => {
         return generateQuoteLinesV2(MOCK_PROJECT, MOCK_ROOMS, config, MOCK_CATALOG);
     }, [config]);
 
+    // Refs & State
     const containerRef = useRef<HTMLDivElement>(null);
+    const paperRef = useRef<HTMLDivElement>(null);
     const [scale, setScale] = useState(1);
+    const [paperHeight, setPaperHeight] = useState(1056); // Default min height
 
-    // Initial Fit to Width
-    useEffect(() => {
-        if (containerRef.current) {
-            const { clientWidth } = containerRef.current;
-            // Paper width is approx 816px (215.9mm * 3.78)
-            const paperWidth = 816;
-            const padding = 64; // Standard comfortable padding
-            const targetScale = (clientWidth - padding) / paperWidth;
-            if (targetScale > 0) {
-                setScale(targetScale);
-            }
-        }
-    }, []);
+    // Auto-Fit Logic
+    const fitToWidth = () => {
+        if (!containerRef.current) return;
+        const { clientWidth } = containerRef.current;
+        if (clientWidth <= 0) return;
 
-    const handleZoomIn = () => setScale(s => Math.min(s + 0.1, 2.0));
-    const handleZoomOut = () => setScale(s => Math.max(s - 0.1, 0.4));
-    const handleReset = () => {
-        if (containerRef.current) {
-            const { clientWidth } = containerRef.current;
-            const targetScale = (clientWidth - 2) / 816;
-            setScale(targetScale);
-        } else {
-            setScale(1);
-        }
+        const paperWidthPixels = 816; // 8.5in * 96dpi
+        const paddingPixels = 64; // Horizontal padding
+
+        const targetScale = (clientWidth - paddingPixels) / paperWidthPixels;
+        // Clamp scale reasonably so it's not microscopic or excessively huge
+        const clampedScale = Math.min(Math.max(targetScale, 0.25), 1.5);
+
+        setScale(clampedScale);
     };
 
-    // Calculate totals
+    // Resize Observer
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        const ro = new ResizeObserver(() => {
+            // Debounce if needed, but direct call is usually responsive enough
+            requestAnimationFrame(fitToWidth);
+        });
+
+        ro.observe(containerRef.current);
+        // Initial fit
+        fitToWidth();
+
+        ro.observe(containerRef.current);
+        // Initial fit
+        fitToWidth();
+
+        return () => ro.disconnect();
+    }, [showMobilePreview]);
+
+    // Observe Paper Height for Wrapper
+    useEffect(() => {
+        if (!paperRef.current) return;
+        const ro = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                setPaperHeight(entry.contentRect.height);
+            }
+        });
+        ro.observe(paperRef.current);
+        return () => ro.disconnect();
+    }, []);
+
+    // Handlers
+    const handleZoomIn = () => setScale(s => Math.min(s + 0.1, 2.5));
+    const handleZoomOut = () => setScale(s => Math.max(s - 0.1, 0.25));
+    const handleReset = () => fitToWidth();
+
+    // Calculate Totals
     const { subtotal, tax, total } = useMemo(() => {
         let s = 0;
-        const calculateTotal = (items: any[]) => {
-            items.forEach(item => {
-                if (item.type !== 'header') {
-                    s += (item.amount || 0);
-                }
-                if (item.subItems) {
-                    calculateTotal(item.subItems);
-                }
+        const traverse = (items: any[]) => {
+            items.forEach(i => {
+                if (i.type !== 'header') s += (i.amount || 0);
+                if (i.subItems) traverse(i.subItems);
             });
         };
-        calculateTotal(lineItems);
-
+        traverse(lineItems);
         const t = config.showTaxLine ? s * 0.08 : 0;
         return { subtotal: s, tax: t, total: s + t };
     }, [lineItems, config.showTaxLine]);
 
     return (
-        <div className="flex flex-col h-full bg-gray-100/50">
-            {/* Toolbar */}
-            <div className="flex items-center justify-end gap-2 p-2 bg-white border-b shadow-sm z-10">
-                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                    <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-8 w-8 hover:bg-white shadow-sm" title="Zoom Out">
-                        <ZoomOut className="h-4 w-4" />
+        <div className="h-full w-full relative flex flex-col bg-gray-100/50">
+
+            {/* Controls - Fixed Top Right */}
+            <div className="absolute top-4 right-4 z-50 flex gap-2">
+                <div className="flex items-center gap-1 bg-white border shadow-md rounded-md p-1">
+                    <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-8 w-8 hover:bg-gray-100" title="Zoom Out">
+                        <ZoomOut className="h-4 w-4 text-gray-600" />
                     </Button>
-                    <div className="w-12 text-center text-xs font-mono text-gray-600 select-none">
+                    <div className="w-10 text-center text-xs font-mono text-gray-600 select-none">
                         {Math.round(scale * 100)}%
                     </div>
-                    <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8 hover:bg-white shadow-sm" title="Zoom In">
-                        <ZoomIn className="h-4 w-4" />
+                    <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8 hover:bg-gray-100" title="Zoom In">
+                        <ZoomIn className="h-4 w-4 text-gray-600" />
                     </Button>
                 </div>
-                <div className="h-6 w-px bg-gray-200 mx-1" />
-                <Button variant="outline" size="sm" onClick={handleReset} className="h-8 text-xs gap-2" title="Fit Width">
-                    <Maximize className="h-3 w-3" />
-                    Fit Width
+                <Button variant="default" size="sm" onClick={handleReset} className="h-10 px-3 shadow-md bg-white hover:bg-gray-50 text-gray-700 border" title="Fit Width">
+                    <Maximize className="h-4 w-4 mr-2" />
+                    Fit
                 </Button>
             </div>
 
             {/* Scrollable Viewport */}
-            <div ref={containerRef} className="flex-1 overflow-auto p-8 flex justify-center items-start">
-                {/* Paper */}
-                <div className="bg-white shadow-lg transition-all duration-200 flex flex-col box-border font-sans origin-top bg-white"
+            {/* We attach the ref here because this is the container defining available width */}
+            <div ref={containerRef} className="flex-1 overflow-auto flex justify-center p-8 custom-scrollbar">
+
+                {/* Paper - Scaled via Transform */}
+                <div ref={paperRef}
+                    className="bg-white shadow-2xl origin-top transition-transform duration-100 ease-out"
                     style={{
-                        width: '215.9mm',
-                        minHeight: '279.4mm',
-                        padding: '12.7mm',
-                        flexShrink: 0, // Prevent shrinking
-                        transform: `scale(${scale})`, // Use transform for better browser support/rendering
-                        marginBottom: `${(scale - 1) * 300}px`, // Simple compensation for vertical growth
-                        marginRight: `${(scale - 1) * 200}px`  // Simple compensation for horizontal growth
-                    }}>
+                        width: '816px',        // Fixed internal width
+                        minHeight: '1056px',   // Fixed internal min-height
+                        transform: `scale(${scale})`,
+                        // Margins ensure that when scaled up, the scrollable area grows
+                        marginBottom: `${(scale - 1) * 1056}px`,
+                        // Note: Horizontal scaling usually handled by flex center, but large scaling might need margin compensation
+                        // For now flex justify-center handles horizontal centering well
+                    }}
+                >
+                    <div className="w-full h-full p-12 flex flex-col">
 
-                    {/* Header */}
-                    <div className="flex justify-between items-start border-b pb-6 mb-8">
-                        <div>
-                            {orgBranding?.logoUrl ? (
-                                <img src={orgBranding.logoUrl} alt="Logo" className="h-10 w-auto object-contain mb-2" />
-                            ) : (
-                                <div className="text-xl font-bold text-gray-800">Your Company</div>
-                            )}
-                            <div className="text-xs text-gray-500">123 Painter Lane</div>
-                            <div className="text-xs text-gray-500">Cityville, ST 12345</div>
-                        </div>
-                        <div className="text-right">
-                            <h1 className="text-2xl font-bold text-primary mb-2">QUOTE</h1>
-                            <div className="text-xs text-gray-500">Date: {new Date().toLocaleDateString()}</div>
-                        </div>
-                    </div>
-
-                    {/* Client Info Mock */}
-                    <div className="mb-8 text-sm">
-                        <h3 className="font-bold text-gray-700 mb-1">Prepared For:</h3>
-                        <div>John Doe</div>
-                        <div className="text-gray-500 text-xs">789 Client Street</div>
-                    </div>
-
-                    {/* Line Items Table */}
-                    <div className="w-full mb-6 flex-1">
-                        <div className="flex border-b border-gray-800 pb-2 mb-2 font-bold text-gray-700 text-[10px] uppercase tracking-wider">
-                            <div className="flex-1">Description</div>
-                            {config.showUnits && <div className="w-12 text-right">Qty</div>}
-                            {config.showUnits && <div className="w-12 text-left pl-2">Unit</div>}
-                            {config.showRates && <div className="w-20 text-right">Rate</div>}
-                            <div className="w-20 text-right">Amount</div>
+                        {/* Header */}
+                        <div className="flex justify-between items-start border-b pb-6 mb-8">
+                            <div>
+                                <div className="text-xl font-bold text-gray-800">{orgBranding?.name || "Your Company"}</div>
+                                <div className="text-xs text-gray-500">123 Painter Lane</div>
+                                <div className="text-xs text-gray-500">Cityville, ST 12345</div>
+                            </div>
+                            <div className="text-right">
+                                <h1 className="text-2xl font-bold text-primary mb-2">QUOTE</h1>
+                                <div className="text-xs text-gray-500">Date: {new Date().toLocaleDateString()}</div>
+                            </div>
                         </div>
 
-                        {lineItems.map((item, idx) => {
-                            if (item.type === 'header') {
+                        {/* Client Info Mock */}
+                        <div className="mb-8 text-sm">
+                            <h3 className="font-bold text-gray-700 mb-1">Prepared For:</h3>
+                            <div>John Doe</div>
+                            <div className="text-gray-500 text-xs">789 Client Street</div>
+                        </div>
+
+                        {/* Items */}
+                        <div className="flex-1">
+                            {/* Table Header */}
+                            <div className="flex border-b border-gray-800 pb-2 mb-2 font-bold text-gray-700 text-[10px] uppercase tracking-wider">
+                                <div className="flex-1">Description</div>
+                                {config.showUnits && <div className="w-12 text-right">Qty</div>}
+                                {config.showUnits && <div className="w-12 text-left pl-2">Unit</div>}
+                                {config.showRates && <div className="w-20 text-right">Rate</div>}
+                                <div className="w-20 text-right">Amount</div>
+                            </div>
+
+                            {lineItems.map((item) => {
+                                if (item.type === 'header') {
+                                    return (
+                                        <div key={item.id} className="mt-6 mb-2 pt-2 border-t border-gray-100 first:mt-0 first:border-0 flex justify-between items-end">
+                                            <h4 className="font-bold text-gray-800 text-sm">{item.description}</h4>
+                                            {(item.amount || 0) > 0 && (
+                                                <div className="font-bold text-gray-800 text-sm">${(item.amount || 0).toFixed(2)}</div>
+                                            )}
+                                        </div>
+                                    );
+                                }
                                 return (
-                                    <div key={item.id} className="mt-6 mb-2 pt-2 border-t border-gray-100 first:mt-0 first:border-0 flex justify-between items-end">
-                                        <h4 className="font-bold text-gray-800 text-sm">{item.description}</h4>
-                                        {(item.amount || 0) > 0 && (
-                                            <div className="font-bold text-gray-800 text-sm">
-                                                ${(item.amount || 0).toFixed(2)}
+                                    <React.Fragment key={item.id}>
+                                        <div className="flex items-start py-1.5 text-gray-600 text-[11px] leading-tight">
+                                            <div className="flex-1 pr-4 font-medium text-gray-800">{item.description}</div>
+                                            {config.showUnits && <div className="w-12 text-right text-gray-500">{item.quantity ? item.quantity.toFixed(0) : '-'}</div>}
+                                            {config.showUnits && <div className="w-12 text-left pl-2 text-gray-400 text-[9px] uppercase tracking-wide pt-0.5">{item.quantity ? (item.unit === 'linear_ft' ? 'ft' : item.unit) : ''}</div>}
+                                            {config.showRates && <div className="w-20 text-right text-gray-500">{item.rate ? `$${item.rate.toFixed(2)}` : '-'}</div>}
+                                            <div className="w-20 text-right font-medium text-gray-800">{item.amount ? `$${item.amount.toFixed(2)}` : ''}</div>
+                                        </div>
+                                        {/* Sub Items */}
+                                        {item.subItems?.map(sub => (
+                                            <div key={sub.id} className="flex items-start py-1 text-gray-500 text-[10px] leading-tight pl-4">
+                                                <div className="flex-1 pr-4 border-l-2 border-gray-100 pl-2">{sub.description}</div>
+                                                {config.showUnits && <div className="w-12 text-right text-gray-500">{sub.quantity ? sub.quantity.toFixed(0) : '-'}</div>}
+                                                {config.showUnits && <div className="w-12 text-left pl-2 text-gray-400 text-[9px] uppercase tracking-wide pt-0.5">{sub.quantity ? (sub.unit === 'linear_ft' ? 'ft' : sub.unit) : ''}</div>}
+                                                {config.showRates && <div className="w-20 text-right text-gray-500">{sub.rate ? `$${sub.rate.toFixed(2)}` : ''}</div>}
+                                                <div className="w-20 text-right text-gray-500">{sub.amount ? `$${sub.amount.toFixed(2)}` : ''}</div>
                                             </div>
-                                        )}
-                                    </div>
+                                        ))}
+                                    </React.Fragment>
                                 );
-                            }
+                            })}
+                        </div>
 
-                            return (
-                                <React.Fragment key={item.id}>
-                                    <div className="flex items-start py-1.5 text-gray-600 text-[11px] leading-tight">
-                                        <div className="flex-1 pr-4">
-                                            <div className="font-medium text-gray-800">{item.description}</div>
-                                        </div>
-                                        {config.showUnits && <div className="w-12 text-right text-gray-500">{item.quantity ? item.quantity.toFixed(0) : '-'}</div>}
-                                        {config.showUnits && <div className="w-12 text-left pl-2 text-gray-400 text-[9px] uppercase tracking-wide pt-0.5">{item.quantity ? (item.unit === 'linear_ft' || item.unit === 'LINEAR_FT' ? 'ft' : item.unit) : ''}</div>}
-                                        {config.showRates && <div className="w-20 text-right text-gray-500">{item.rate !== undefined ? `$${item.rate.toFixed(2)}` : '-'}</div>}
-                                        <div className="w-20 text-right font-medium text-gray-800">{item.amount !== undefined ? `$${item.amount.toFixed(2)}` : ''}</div>
-                                    </div>
-                                    {/* Sub Items */}
-                                    {item.subItems && item.subItems.map(sub => (
-                                        <div key={sub.id} className="flex items-start py-1 text-gray-500 text-[10px] leading-tight pl-4">
-                                            <div className="flex-1 pr-4 border-l-2 border-gray-100 pl-2">
-                                                <div>{sub.description}</div>
-                                            </div>
-                                            {config.showUnits && <div className="w-12 text-right text-gray-500">{sub.quantity ? sub.quantity.toFixed(0) : '-'}</div>}
-                                            {config.showUnits && <div className="w-12 text-left pl-2 text-gray-400 text-[9px] uppercase tracking-wide pt-0.5">{sub.quantity ? (sub.unit === 'linear_ft' || sub.unit === 'LINEAR_FT' ? 'ft' : sub.unit) : ''}</div>}
-                                            {config.showRates && <div className="w-20 text-right text-gray-500">{sub.rate !== undefined ? `$${sub.rate.toFixed(2)}` : ''}</div>}
-                                            <div className="w-20 text-right text-gray-500">{sub.amount !== undefined ? `$${sub.amount.toFixed(2)}` : ''}</div>
-                                        </div>
-                                    ))}
-                                </React.Fragment>
-                            );
-                        })}
-                    </div>
-
-                    {/* Totals */}
-                    <div className="flex justify-end">
-                        <div className="w-64 space-y-1">
-                            <div className="flex justify-between text-gray-500 text-xs">
-                                <span>Subtotal</span>
-                                <span>${subtotal.toFixed(2)}</span>
-                            </div>
-
-                            {config.showTaxLine && (
+                        {/* Totals */}
+                        <div className="mt-8 flex justify-end">
+                            <div className="w-64 space-y-1">
                                 <div className="flex justify-between text-gray-500 text-xs">
-                                    <span>Tax (8.0%)</span>
-                                    <span>${tax.toFixed(2)}</span>
+                                    <span>Subtotal</span>
+                                    <span>${subtotal.toFixed(2)}</span>
                                 </div>
-                            )}
-                            <div className="flex justify-between font-bold text-lg text-gray-800 border-t border-gray-300 pt-2 mt-2">
-                                <span>Total</span>
-                                <span>${total.toFixed(2)}</span>
+                                {config.showTaxLine && (
+                                    <div className="flex justify-between text-gray-500 text-xs">
+                                        <span>Tax (8.0%)</span>
+                                        <span>${tax.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between font-bold text-lg text-gray-800 border-t border-gray-300 pt-2 mt-2">
+                                    <span>Total</span>
+                                    <span>${total.toFixed(2)}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Footer Disclaimers */}
-                    <div className="mt-12 text-[10px] text-gray-400 border-t pt-4">
-                        {config.showDisclaimers && "Terms and conditions apply. Estimate valid for 30 days."}
+                        {/* Footer Disclaimers */}
+                        <div className="mt-12 text-[10px] text-gray-400 border-t pt-4 text-center">
+                            {config.showDisclaimers && "Terms and conditions apply. Estimate valid for 30 days."}
+                        </div>
                     </div>
-
                 </div>
             </div>
         </div>

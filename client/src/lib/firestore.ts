@@ -167,6 +167,7 @@ export interface ProjectSupplyConfig {
 
   wallCoverage?: number; // Override product/default coverage
   billablePaint?: boolean; // Override Org default
+  wallExcludeFromSharedPaint?: boolean;
 
   // Trim Paint
   trimProduct?: CatalogItem | null;
@@ -175,6 +176,7 @@ export interface ProjectSupplyConfig {
   trimRate?: number; // $/linear_ft override
   trimWidth?: number; // inches override
   trimCoverage?: number;
+  trimExcludeFromSharedPaint?: boolean;
   includeTrim?: boolean;
 
   // Ceiling Paint
@@ -182,6 +184,7 @@ export interface ProjectSupplyConfig {
   ceilingMethod?: 'roll' | 'spray';
   ceilingCoats?: number;
   ceilingCoverage?: number;
+  ceilingExcludeFromSharedPaint?: boolean;
   includeCeiling?: boolean; // Toggle for "Paint Ceiling too?"
 
   // Primer
@@ -281,6 +284,8 @@ export interface MiscMeasurement {
   coverage?: number; // sqft/gallon (for Paint calculation)
   paintProductId?: string; // ID of required paint product
   coats?: number; // Number of coats
+  excludeFromSharedPaint?: boolean;
+  customPaintArea?: number; // User-defined area for paint calc (sqft) when unit is not sqft/linear_ft
 }
 
 
