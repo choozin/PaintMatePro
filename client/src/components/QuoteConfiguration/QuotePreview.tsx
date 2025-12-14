@@ -13,8 +13,11 @@ const MOCK_PROJECT: any = {
         pricePerGallon: 48,
         deductionFactor: 0.15,
         wallProduct: { name: "Benjamin Moore Regal Select", pricePerGallon: 48 },
-        includeCeiling: true,
-        includeTrim: true,
+        ceilingProduct: { name: "Waterborne Ceiling Paint", pricePerGallon: 42 },
+        ceilingCoats: 2,
+        ceilingCoverage: 400,
+        includeTrim: false, // User requested "only happening in master bedroom", so disable global
+        trimProduct: { name: "Advance Satin", pricePerGallon: 65, unitPrice: 65 }, // Ensure unitPrice is set for catalog match if needed
         includeWallpaperRemoval: true,
         wallpaperRemovalRate: 0.75,
         billablePaint: true
@@ -30,12 +33,27 @@ const MOCK_PROJECT: any = {
     },
     internalCostConfig: { method: 'standard', averageWage: 25 },
     globalMiscItems: [
-        { id: 'stair', name: 'Refinish Staircase', unit: 'sqft', quantity: 120, rate: 12.50, roomId: 'global' },
+        {
+            id: 'stair',
+            name: 'Refinish Staircase',
+            unit: 'sqft',
+            quantity: 120,
+            rate: 12.50,
+            roomId: 'global',
+            prepTasks: [
+                { id: 'stair_sand', name: 'Sanding', unit: 'sqft', quantity: 120, rate: 2.00 }
+            ]
+        },
     ],
     globalPrepTasks: [
         { id: 'gp1', name: 'Mask Floors', unit: 'sqft', quantity: 0, rate: 0.15, globalId: 'gp1', roomId: 'global' },
     ]
 };
+
+const MOCK_CATALOG: any[] = [
+    { id: 'prod_bm_regal', name: 'Benjamin Moore Regal Select', unitPrice: 48 },
+    { id: 'prod_trim', name: 'Benjamin Moore Advance', unitPrice: 55 }
+];
 
 const MOCK_ROOMS: any[] = [
     {
@@ -48,15 +66,15 @@ const MOCK_ROOMS: any[] = [
     {
         id: '2', name: 'Master Bedroom', length: 16, width: 14, height: 9, // 224 sqft floor, ~540 wall
         prepTasks: [
-            { id: 'p_sand_k', name: 'Sand Trim', unit: 'ft', quantity: 51, rate: 0.50 }
+            { id: 'p_sand_k', name: 'Sand Trim', unit: 'ft', quantity: 51, rate: 0.50, linkedWorkItemId: 'w_trim' }
         ],
         materialItems: [
             { id: 'mat_stencil', name: 'Custom Stencil Template', quantity: 3, rate: 75, unit: 'ea', type: 'material' }
         ],
         miscItems: [
-            { id: 'w_trim', name: 'Paint Baseboards', unit: 'ft', quantity: 51, rate: 1.50 },
-            { id: 'w_win1', name: 'Window Frame Painting', unit: 'ft', quantity: 12, rate: 3.00 },
-            { id: 'w_win2', name: 'Window Frame Painting', unit: 'ft', quantity: 12, rate: 3.00 }
+            { id: 'w_trim', name: 'Paint Trim', unit: 'linear_ft', quantity: 51, width: 6, rate: 1.50, paintProductId: 'prod_trim', coverage: 350 },
+            { id: 'w_win1', name: 'Window Frame Painting', unit: 'linear_ft', quantity: 12, width: 4, rate: 3.00, paintProductId: 'prod_trim', coverage: 350 },
+            { id: 'w_win2', name: 'Window Frame Painting', unit: 'linear_ft', quantity: 12, width: 4, rate: 3.00, paintProductId: 'prod_trim', coverage: 350 }
         ]
     },
 
@@ -70,7 +88,7 @@ interface QuotePreviewProps {
 export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
 
     const lineItems = useMemo(() => {
-        return generateQuoteLinesV2(MOCK_PROJECT, MOCK_ROOMS, config);
+        return generateQuoteLinesV2(MOCK_PROJECT, MOCK_ROOMS, config, MOCK_CATALOG);
     }, [config]);
 
     const containerRef = useRef<HTMLDivElement>(null);
@@ -107,7 +125,9 @@ export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
         let s = 0;
         const calculateTotal = (items: any[]) => {
             items.forEach(item => {
-                s += (item.amount || 0);
+                if (item.type !== 'header') {
+                    s += (item.amount || 0);
+                }
                 if (item.subItems) {
                     calculateTotal(item.subItems);
                 }
@@ -192,8 +212,13 @@ export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
                         {lineItems.map((item, idx) => {
                             if (item.type === 'header') {
                                 return (
-                                    <div key={item.id} className="mt-6 mb-2 pt-2 border-t border-gray-100 first:mt-0 first:border-0">
+                                    <div key={item.id} className="mt-6 mb-2 pt-2 border-t border-gray-100 first:mt-0 first:border-0 flex justify-between items-end">
                                         <h4 className="font-bold text-gray-800 text-sm">{item.description}</h4>
+                                        {(item.amount || 0) > 0 && (
+                                            <div className="font-bold text-gray-800 text-sm">
+                                                ${(item.amount || 0).toFixed(2)}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             }
@@ -205,17 +230,19 @@ export function QuotePreview({ config, orgBranding }: QuotePreviewProps) {
                                             <div className="font-medium text-gray-800">{item.description}</div>
                                         </div>
                                         {config.showUnits && <div className="w-12 text-right text-gray-500">{item.quantity ? item.quantity.toFixed(0) : '-'}</div>}
-                                        {config.showUnits && <div className="w-12 text-left pl-2 text-gray-400 text-[9px] uppercase tracking-wide pt-0.5">{item.quantity ? item.unit : ''}</div>}
+                                        {config.showUnits && <div className="w-12 text-left pl-2 text-gray-400 text-[9px] uppercase tracking-wide pt-0.5">{item.quantity ? (item.unit === 'linear_ft' || item.unit === 'LINEAR_FT' ? 'ft' : item.unit) : ''}</div>}
                                         {config.showRates && <div className="w-20 text-right text-gray-500">{item.rate !== undefined ? `$${item.rate.toFixed(2)}` : '-'}</div>}
                                         <div className="w-20 text-right font-medium text-gray-800">{item.amount !== undefined ? `$${item.amount.toFixed(2)}` : ''}</div>
                                     </div>
                                     {/* Sub Items */}
                                     {item.subItems && item.subItems.map(sub => (
-                                        <div key={sub.id} className="flex items-start py-1 text-gray-500 text-[10px] leading-tight pl-4 italic">
+                                        <div key={sub.id} className="flex items-start py-1 text-gray-500 text-[10px] leading-tight pl-4">
                                             <div className="flex-1 pr-4 border-l-2 border-gray-100 pl-2">
                                                 <div>{sub.description}</div>
                                             </div>
-                                            {config.showRates && <div className="w-20 text-right text-gray-400">{sub.rate !== undefined ? `$${sub.rate.toFixed(2)}` : ''}</div>}
+                                            {config.showUnits && <div className="w-12 text-right text-gray-500">{sub.quantity ? sub.quantity.toFixed(0) : '-'}</div>}
+                                            {config.showUnits && <div className="w-12 text-left pl-2 text-gray-400 text-[9px] uppercase tracking-wide pt-0.5">{sub.quantity ? (sub.unit === 'linear_ft' || sub.unit === 'LINEAR_FT' ? 'ft' : sub.unit) : ''}</div>}
+                                            {config.showRates && <div className="w-20 text-right text-gray-500">{sub.rate !== undefined ? `$${sub.rate.toFixed(2)}` : ''}</div>}
                                             <div className="w-20 text-right text-gray-500">{sub.amount !== undefined ? `$${sub.amount.toFixed(2)}` : ''}</div>
                                         </div>
                                     ))}

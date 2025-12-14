@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useProject, useUpdateProject } from "@/hooks/useProjects";
 import { useRooms, useUpdateRoom } from "@/hooks/useRooms";
-import { Settings2, Save, Loader2, RotateCcw, MoreVertical, Clock, CheckCircle2, DollarSign, PaintBucket, AlertCircle, PlusCircle, ChevronDown, ChevronUp, Ruler, Package, Trash2, ArrowDownToLine, Copy, Pencil } from "lucide-react";
+import { Settings2, Save, Loader2, RotateCcw, MoreVertical, Clock, CheckCircle2, DollarSign, PaintBucket, AlertCircle, PlusCircle, ChevronDown, ChevronUp, Ruler, Package, Trash2, ArrowDownToLine, Copy, Pencil, Link as LinkIcon } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { orgOperations, PaintProduct, PaintDetails, roomOperations, Room, PrepTask, MiscMeasurement } from "@/lib/firestore";
+import { orgOperations, PaintProduct, PaintDetails, roomOperations, Room, PrepTask, MiscMeasurement, PaintConfig } from "@/lib/firestore";
 import { useDebounce } from "@/hooks/useDebounce";
 import { FileText } from "lucide-react";
 import { useCatalog } from "@/hooks/useCatalog";
@@ -236,7 +236,8 @@ function AddMiscItemDialog({
     allItems = [],
     globalItems = [],
     onMove,
-    initialItem
+    initialItem,
+    paintProducts = []
 }: {
     isOpen: boolean,
     onOpenChange: (o: boolean) => void,
@@ -246,7 +247,8 @@ function AddMiscItemDialog({
     allItems?: MiscMeasurement[],
     globalItems?: MiscMeasurement[],
     onMove?: (itemId: string, targetRoomId: string) => void,
-    initialItem?: MiscMeasurement | null
+    initialItem?: MiscMeasurement | null,
+    paintProducts?: any[]
 }) {
     const [name, setName] = useState("");
     const [unit, setUnit] = useState<'sqft' | 'linear_ft' | 'units' | 'fixed' | 'hours'>('units');
@@ -254,6 +256,12 @@ function AddMiscItemDialog({
     const [rate, setRate] = useState(0);
     const [width, setWidth] = useState(0.5);
     const [count, setCount] = useState(1);
+
+    // Paint Config State
+    const [requiresPaint, setRequiresPaint] = useState(false);
+    const [coverage, setCoverage] = useState(350);
+    const [coats, setCoats] = useState(2);
+    const [paintProductId, setPaintProductId] = useState<string>("default");
 
     // Load initial item on open
     useEffect(() => {
@@ -264,12 +272,29 @@ function AddMiscItemDialog({
             setRate(initialItem.rate);
             if (initialItem.width) setWidth(initialItem.width);
             if (initialItem.count) setCount(initialItem.count);
+
+            // Paint fields
+            if (initialItem.coverage || initialItem.paintProductId) {
+                setRequiresPaint(true);
+                setCoverage(initialItem.coverage || 350);
+                setCoats(initialItem.coats || 2);
+                setPaintProductId(initialItem.paintProductId || "default");
+            } else {
+                setRequiresPaint(false);
+                setCoverage(350);
+                setCoats(2);
+                setPaintProductId("default");
+            }
         } else if (isOpen && !initialItem) {
             setName("");
             setUnit('units');
             setQuantity(1);
             setRate(0);
             setCount(1);
+            setRequiresPaint(false);
+            setCoverage(350);
+            setCoats(2);
+            setPaintProductId("default");
         }
     }, [isOpen, initialItem]);
 
@@ -293,12 +318,20 @@ function AddMiscItemDialog({
             setRate(item.rate);
             if (item.width) setWidth(item.width);
             setQuantity(item.quantity);
+
+            if (item.coverage || item.paintProductId) {
+                setRequiresPaint(true);
+                setCoverage(item.coverage || 350);
+                setCoats(item.coats || 2);
+                setPaintProductId(item.paintProductId || "default");
+            }
+
             setOpenSection(null); // Close after selection to focus on form
         }
     };
 
     const handleSubmit = () => {
-        onAdd({
+        const newItem: MiscMeasurement = {
             id: initialItem?.id || crypto.randomUUID(),
             name,
             unit,
@@ -307,12 +340,29 @@ function AddMiscItemDialog({
             width: unit === 'linear_ft' ? width : undefined,
             roomId,
             count
-        });
+        };
+
+        // Add paint props if applicable
+        if (requiresPaint && (unit === 'sqft' || (unit === 'linear_ft' && width > 0))) {
+            newItem.coverage = coverage;
+            newItem.coats = coats;
+            if (paintProductId !== "default") {
+                newItem.paintProductId = paintProductId;
+            }
+        }
+
+        onAdd(newItem);
         onOpenChange(false);
         setName(""); setQuantity(1); setRate(0); setCount(1);
     };
 
     const totalQty = quantity * count;
+
+    // Paint Calculation
+    const showPaintConfig = unit === 'sqft' || (unit === 'linear_ft' && width > 0);
+    const estimatedPaintVolume = showPaintConfig && requiresPaint && coverage > 0
+        ? ((unit === 'sqft' ? totalQty : totalQty * width) / coverage)
+        : 0;
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -446,12 +496,59 @@ function AddMiscItemDialog({
                         </div>
                     </div>
 
-                    {unit === 'linear_ft' && (
-                        <div className="space-y-2">
-                            <Label>Approx Width (ft) for Paint Calc</Label>
-                            <Input type="number" value={width} onChange={e => setWidth(Number(e.target.value))} step={0.1} />
+                    {showPaintConfig && (
+                        <div className="p-3 bg-slate-50 border rounded-md space-y-3">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-semibold flex items-center gap-2">
+                                    <PaintBucket className="h-3 w-3" /> Requires Paint?
+                                </Label>
+                                <Switch checked={requiresPaint} onCheckedChange={setRequiresPaint} />
+                            </div>
+
+                            {requiresPaint && (
+                                <div className="space-y-3 pt-2 text-xs">
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] text-muted-foreground">Coverage (sqft/gal)</Label>
+                                            <Input
+                                                className="h-7 text-xs"
+                                                type="number"
+                                                value={coverage}
+                                                onChange={e => setCoverage(Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] text-muted-foreground">Coats</Label>
+                                            <Input
+                                                className="h-7 text-xs"
+                                                type="number"
+                                                value={coats}
+                                                onChange={e => setCoats(Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] text-muted-foreground">Paint Product</Label>
+                                            <Select value={paintProductId} onValueChange={setPaintProductId}>
+                                                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select Product" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="default">Use Global Default</SelectItem>
+                                                    {paintProducts.map(p => (
+                                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center pt-1 border-t border-slate-200">
+                                <span className="text-muted-foreground">Est. Paint Volume:</span>
+                                <span className="font-medium">{estimatedPaintVolume.toFixed(2)} gal</span>
+                            </div>
                         </div>
-                    )}
+                    )
+                    }
+
 
                     <div className="p-3 bg-blue-50 text-blue-800 rounded text-sm flex justify-between font-medium">
                         <span>{unit === 'fixed' ? 'Total Price' : 'Total Quantity'}:</span>
@@ -461,13 +558,13 @@ function AddMiscItemDialog({
                                 : `${totalQty} ${formatUnit(unit)}`}
                         </span>
                     </div>
-                </div>
+                </div >
 
 
                 <DialogFooter>
                     <Button onClick={handleSubmit}>Add Item</Button>
                 </DialogFooter>
-            </DialogContent>
+            </DialogContent >
         </Dialog >
     );
 }
@@ -937,25 +1034,87 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
         const itemToMove = globalMiscItems.find(i => i.id === itemId);
         if (!itemToMove) return;
 
-        // 1. Remove from Global
-        const newGlobals = globalMiscItems.filter(i => i.id !== itemId);
-        setGlobalMiscItems(newGlobals);
+        // 1. Find linked Global Prep Tasks
+        const linkedPrepTasks = globalPrepTasks.filter(t => t.linkedWorkItemId === itemId);
 
-        // 2. Add to Room
+        // 2. Remove from Global
+        const newGlobalMisc = globalMiscItems.filter(i => i.id !== itemId);
+        const newGlobalPrep = globalPrepTasks.filter(t => t.linkedWorkItemId !== itemId);
+        setGlobalMiscItems(newGlobalMisc);
+        if (linkedPrepTasks.length > 0) {
+            setGlobalPrepTasks(newGlobalPrep);
+        }
+
+        // 3. Add to Room
         const room = rooms?.find(r => r.id === targetRoomId);
         if (room) {
             const newItem = { ...itemToMove, roomId: targetRoomId };
             const currentMisc = room.miscItems || [];
+
+            const movedPrepTasks = linkedPrepTasks.map(t => ({
+                ...t,
+                roomId: targetRoomId,
+                // ID stays same? Or new ID? If we move, we can keep ID usually. 
+                // But room prep IDs might need to be unique? IDs are UUIDs, so moving is fine.
+            }));
+            const currentPrep = room.prepTasks || [];
+
             await updateRoom.mutateAsync({
                 id: targetRoomId,
-                data: { miscItems: [...currentMisc, newItem] }
+                data: {
+                    miscItems: [...currentMisc, newItem],
+                    prepTasks: [...currentPrep, ...movedPrepTasks]
+                }
             });
-            // Also need to push global update immediately to avoid sync issues or wait for debounce?
-            // Debounce handles global state, so changing setGlobalMiscItems triggers pending project update.
-            // But we should probably force project update for atomic feel? 
-            // The debouncer will catch it.
-            toast({ title: "Item Moved", description: `Moved to ${room.name}` });
+
+            const desc = linkedPrepTasks.length > 0
+                ? `Moved with ${linkedPrepTasks.length} linked prep tasks to ${room.name}`
+                : `Moved to ${room.name}`;
+            toast({ title: "Item Moved", description: desc });
         }
+    };
+
+    const handleLinkPrep = async (roomId: string, prepId: string, workItemId: string | null, isGlobal: boolean) => {
+        if (roomId === 'global') {
+            setGlobalPrepTasks(prev => {
+                return prev.map(t => t.id === prepId ? { ...t, linkedWorkItemId: workItemId || undefined } : t);
+            });
+            // Debounce will save
+            toast({ title: workItemId ? "Global Link Created" : "Global Link Removed", description: "Association updated." });
+            return;
+        }
+
+        const room = rooms?.find(r => r.id === roomId);
+        if (!room) return;
+
+        let newPrepTasks = [...(room.prepTasks || [])];
+        const existingTaskIndex = newPrepTasks.findIndex(t => t.id === prepId || (isGlobal && t.globalId === prepId));
+
+        if (existingTaskIndex >= 0) {
+            // Update existing override or local task
+            newPrepTasks[existingTaskIndex] = {
+                ...newPrepTasks[existingTaskIndex],
+                linkedWorkItemId: workItemId || undefined
+            };
+        } else if (isGlobal) {
+            // Create new override for global task
+            const globalTask = globalPrepTasks.find(t => t.id === prepId);
+            if (globalTask) {
+                newPrepTasks.push({
+                    ...globalTask,
+                    id: crypto.randomUUID(),
+                    globalId: prepId,
+                    roomId: roomId,
+                    linkedWorkItemId: workItemId || undefined
+                });
+            }
+        }
+
+        await updateRoom.mutateAsync({
+            id: roomId,
+            data: { prepTasks: newPrepTasks }
+        });
+        toast({ title: workItemId ? "Link Created" : "Link Removed", description: "Association updated." });
     };
 
 
@@ -1015,23 +1174,64 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                 <Separator />
                                 {/* Ceiling & Trim Toggles */}
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label>Include Ceilings?</Label>
-                                        <Switch checked={config.includeCeiling} onCheckedChange={c => handleConfigChange('includeCeiling', c)} />
+                                    <div className="space-y-2 pt-2 pb-2 border-b border-dashed">
+                                        <div className="flex items-center justify-between">
+                                            <Label>Include Ceilings?</Label>
+                                            <Switch checked={config.includeCeiling} onCheckedChange={c => handleConfigChange('includeCeiling', c)} />
+                                        </div>
+                                        {config.includeCeiling && (
+                                            <div className="p-3 border rounded-md bg-slate-50 space-y-3">
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs">Ceiling Paint</Label>
+                                                    <div className="flex gap-2">
+                                                        <div className="flex-1 p-2 border rounded-md bg-white text-xs flex justify-between items-center">
+                                                            <span>{config.ceilingProduct?.name || "Standard Ceiling Paint"}</span>
+                                                            <span className="text-muted-foreground">{config.ceilingProduct ? `$${config.ceilingProduct.unitPrice}/gal` : "$35/gal"}</span>
+                                                        </div>
+                                                        <Button variant="outline" size="sm" onClick={() => { setActiveSelectorField('ceilingProduct'); setSelectorContext('global'); setSelectorOpen(true); }} className="h-9">Change</Button>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <Label className="text-xs">Coats</Label>
+                                                        <Input type="number" value={config.ceilingCoats ?? 2} onChange={e => handleConfigChange('ceilingCoats', Number(e.target.value))} className="h-7 text-xs" />
+                                                    </div>
+                                                    <div>
+                                                        <Label className="text-xs">Coverage (sqft/gal)</Label>
+                                                        <Input type="number" value={config.ceilingCoverage ?? 400} onChange={e => handleConfigChange('ceilingCoverage', Number(e.target.value))} className="h-7 text-xs" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <div className="space-y-1">
                                             <Label>Include Trim?</Label>
                                             {config.includeTrim && (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-muted-foreground">Default Rate: $</span>
-                                                    <Input
-                                                        type="number"
-                                                        className="h-6 w-20 text-xs"
-                                                        value={config.defaultTrimRate ?? 1.50}
-                                                        onChange={e => handleConfigChange('defaultTrimRate', Number(e.target.value))}
-                                                    />
-                                                    <span className="text-xs text-muted-foreground">/ft</span>
+                                                <div className="space-y-1 mt-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-muted-foreground min-w-[30px]">Rate: $</span>
+                                                        <Input
+                                                            type="number"
+                                                            className="h-6 w-14 text-xs px-1"
+                                                            value={config.defaultTrimRate ?? 1.50}
+                                                            onChange={e => handleConfigChange('defaultTrimRate', Number(e.target.value))}
+                                                        />
+                                                        <span className="text-xs text-muted-foreground">/ft</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-muted-foreground min-w-[30px]">Width:</span>
+                                                        <Input
+                                                            type="number"
+                                                            className="h-6 w-14 text-xs px-1"
+                                                            value={config.defaultTrimWidth ?? 4}
+                                                            onChange={e => handleConfigChange('defaultTrimWidth', Number(e.target.value))}
+                                                        />
+                                                        <span className="text-xs text-muted-foreground">in</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-muted-foreground pl-[38px]">
+                                                        Global: {Math.round((rooms?.reduce((acc, r) => acc + ((r.length + r.width) * 2), 0) || 0) * ((config.defaultTrimWidth || 4) / 12))} sqft
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -1110,6 +1310,41 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-1">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="sm" title={item.linkedWorkItemId ? "Linked to Work Item" : "Link to Work Item"}>
+                                                        <LinkIcon className={`h-4 w-4 ${item.linkedWorkItemId ? "text-indigo-600" : "text-muted-foreground"}`} />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-[200px]">
+                                                    <div className="p-2 text-xs font-semibold text-muted-foreground border-b mb-1">Link to Global Work Item</div>
+                                                    {globalMiscItems.length > 0 ? (
+                                                        <>
+                                                            {globalMiscItems.map(mi => (
+                                                                <DropdownMenuItem
+                                                                    key={mi.id}
+                                                                    className={`text-xs ${item.linkedWorkItemId === mi.id ? "bg-indigo-50 text-indigo-700" : ""}`}
+                                                                    onClick={() => handleLinkPrep('global', item.id!, mi.id, false)}
+                                                                >
+                                                                    {item.linkedWorkItemId === mi.id && <CheckCircle2 className="h-3 w-3 mr-2" />}
+                                                                    {mi.name}
+                                                                </DropdownMenuItem>
+                                                            ))}
+                                                            {item.linkedWorkItemId && (
+                                                                <>
+                                                                    <div className="border-t my-1"></div>
+                                                                    <DropdownMenuItem className="text-xs text-destructive" onClick={() => handleLinkPrep('global', item.id!, null, false)}>
+                                                                        Unlink
+                                                                    </DropdownMenuItem>
+                                                                </>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <div className="p-2 text-xs text-muted-foreground">No Global Work Items.</div>
+                                                    )}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+
                                             <Button variant="ghost" size="sm" onClick={() => openEditPrep(item, 'global')}><Pencil className="h-4 w-4 text-blue-500" /></Button>
                                             <Button variant="ghost" size="sm" onClick={() => setGlobalPrepTasks(prev => prev.filter(t => t.id !== item.id))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                         </div>
@@ -1293,6 +1528,88 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                         </div>
                                                     </div>
 
+                                                    {/* Ceiling Paint Overrides */}
+                                                    {(room.supplyConfig?.includeCeiling ?? config.includeCeiling) && (
+                                                        <div className="space-y-4 pt-4 border-t border-dashed">
+                                                            <div className="flex items-center gap-2">
+                                                                <Label className="text-xs font-semibold text-muted-foreground">Ceiling Overrides</Label>
+                                                            </div>
+
+                                                            {/* Ceiling Product */}
+                                                            <div className="space-y-2">
+                                                                <Label className="text-xs">Ceiling Paint Product</Label>
+                                                                <div className="flex gap-2">
+                                                                    <div className="flex-1 p-2 border rounded-md bg-white text-sm flex justify-between items-center">
+                                                                        <span className={room.supplyConfig?.ceilingProduct ? "font-medium" : "text-muted-foreground italic"}>
+                                                                            {room.supplyConfig?.ceilingProduct?.name || config.ceilingProduct?.name || "Standard Ceiling Paint"}
+                                                                        </span>
+                                                                        <div className="flex items-center">
+                                                                            <span className="text-muted-foreground text-xs mr-2">
+                                                                                {room.supplyConfig?.ceilingProduct
+                                                                                    ? `$${room.supplyConfig.ceilingProduct.unitPrice}/gal`
+                                                                                    : (config.ceilingProduct ? `$${config.ceilingProduct.unitPrice}/gal` : "$35/gal")}
+                                                                            </span>
+                                                                            {room.supplyConfig?.ceilingProduct && <Badge variant="secondary" className="text-[10px]">Override</Badge>}
+                                                                        </div>
+                                                                    </div>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        onClick={() => {
+                                                                            setActiveSelectorField('ceilingProduct');
+                                                                            setSelectorContext({ roomId: room.id });
+                                                                            setSelectorOpen(true);
+                                                                        }}
+                                                                    >
+                                                                        Change
+                                                                    </Button>
+                                                                    {room.supplyConfig?.ceilingProduct && (
+                                                                        <Button variant="ghost" size="icon" onClick={() => handleRoomSupplyUpdate(room.id, 'ceilingProduct', null)}><RotateCcw className="h-4 w-4" /></Button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Ceiling Grid */}
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                {/* Ceiling Coats */}
+                                                                <div className="space-y-2 border p-3 rounded bg-white">
+                                                                    <div className="flex justify-between items-center">
+                                                                        <Label className="text-xs">Ceiling Coats</Label>
+                                                                        {room.supplyConfig?.ceilingCoats !== undefined && <Badge variant="secondary" className="text-[10px]">Override</Badge>}
+                                                                    </div>
+                                                                    <div className="flex gap-2 items-center">
+                                                                        <Input
+                                                                            type="number"
+                                                                            className="h-8"
+                                                                            value={room.supplyConfig?.ceilingCoats ?? config.ceilingCoats ?? 2}
+                                                                            onChange={e => handleRoomSupplyUpdate(room.id, 'ceilingCoats', Number(e.target.value))}
+                                                                        />
+                                                                        {room.supplyConfig?.ceilingCoats !== undefined && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleRoomSupplyUpdate(room.id, 'ceilingCoats', null)}><RotateCcw className="h-3 w-3" /></Button>}
+                                                                    </div>
+                                                                    <p className="text-[10px] text-muted-foreground">Global: {config.ceilingCoats ?? 2}</p>
+                                                                </div>
+
+                                                                {/* Ceiling Coverage */}
+                                                                <div className="space-y-2 border p-3 rounded bg-white">
+                                                                    <div className="flex justify-between items-center">
+                                                                        <Label className="text-xs">Coverage</Label>
+                                                                        {room.supplyConfig?.ceilingCoverage !== undefined && <Badge variant="secondary" className="text-[10px]">Override</Badge>}
+                                                                    </div>
+                                                                    <div className="flex gap-2 items-center">
+                                                                        <Input
+                                                                            type="number"
+                                                                            className="h-8"
+                                                                            value={room.supplyConfig?.ceilingCoverage ?? config.ceilingCoverage ?? 400}
+                                                                            onChange={e => handleRoomSupplyUpdate(room.id, 'ceilingCoverage', Number(e.target.value))}
+                                                                        />
+                                                                        {room.supplyConfig?.ceilingCoverage !== undefined && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleRoomSupplyUpdate(room.id, 'ceilingCoverage', null)}><RotateCcw className="h-3 w-3" /></Button>}
+                                                                    </div>
+                                                                    <p className="text-[10px] text-muted-foreground">Global: {config.ceilingCoverage ?? 400}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                                         {/* Ceiling Toggle */}
                                                         <div className="flex flex-col justify-between space-y-2 border p-3 rounded bg-white">
@@ -1350,9 +1667,33 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                                             </Button>
                                                                         )}
                                                                     </div>
-                                                                    <div className="text-[10px] bg-slate-50 p-1 rounded text-center border">
-                                                                        Est: <span className="font-semibold">${(((room.length + room.width) * 2) * (room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50)).toFixed(2)}</span>
-                                                                        <span className="text-muted-foreground ml-1">({(room.length + room.width) * 2} ft)</span>
+
+                                                                    <div className="flex justify-between items-center mt-1">
+                                                                        <Label className="text-[10px] text-muted-foreground">Width (in)</Label>
+                                                                        {room.supplyConfig?.trimWidth !== undefined && <Badge variant="secondary" className="text-[9px] px-1 h-4">Override</Badge>}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <Input
+                                                                            type="number"
+                                                                            className="h-7 text-xs"
+                                                                            value={room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4}
+                                                                            onChange={e => handleRoomSupplyUpdate(room.id, 'trimWidth', Number(e.target.value))}
+                                                                        />
+                                                                        {room.supplyConfig?.trimWidth !== undefined && (
+                                                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRoomSupplyUpdate(room.id, 'trimWidth', null)}>
+                                                                                <RotateCcw className="h-3 w-3" />
+                                                                            </Button>
+                                                                        )}
+                                                                    </div>
+
+                                                                    <div className="text-[10px] bg-slate-50 p-1 rounded text-center border space-y-1">
+                                                                        <div>
+                                                                            Est: <span className="font-semibold">${(((room.length + room.width) * 2) * (room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50)).toFixed(2)}</span>
+                                                                            <span className="text-muted-foreground ml-1">({(room.length + room.width) * 2} ft)</span>
+                                                                        </div>
+                                                                        <div className="text-[9px] text-muted-foreground">
+                                                                            Area: {(((room.length + room.width) * 2) * ((room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4) / 12)).toFixed(1)} sqft
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -1420,6 +1761,41 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                                             </div>
                                                                         </div>
                                                                         <div className="flex items-center gap-1">
+                                                                            <DropdownMenu>
+                                                                                <DropdownMenuTrigger asChild>
+                                                                                    <Button variant="ghost" size="sm" title={item.linkedWorkItemId ? "Linked to Work Item" : "Link to Work Item"}>
+                                                                                        <LinkIcon className={`h-4 w-4 mr-2 ${item.linkedWorkItemId ? "text-indigo-600" : "text-muted-foreground"}`} />
+                                                                                        <span className={`${item.linkedWorkItemId ? "text-indigo-600 font-medium" : "text-muted-foreground"}`}>Link to Work Item</span>
+                                                                                    </Button>
+                                                                                </DropdownMenuTrigger>
+                                                                                <DropdownMenuContent align="end" className="w-[200px]">
+                                                                                    <div className="p-2 text-xs font-semibold text-muted-foreground border-b mb-1">Link to Work Item</div>
+                                                                                    {room.miscItems && room.miscItems.length > 0 ? (
+                                                                                        <>
+                                                                                            {room.miscItems.map(mi => (
+                                                                                                <DropdownMenuItem
+                                                                                                    key={mi.id}
+                                                                                                    className={`text-xs ${item.linkedWorkItemId === mi.id ? "bg-indigo-50 text-indigo-700" : ""}`}
+                                                                                                    onClick={() => handleLinkPrep(room.id, item.id || item.globalId!, mi.id, !!item.globalId)}
+                                                                                                >
+                                                                                                    {item.linkedWorkItemId === mi.id && <CheckCircle2 className="h-3 w-3 mr-2" />}
+                                                                                                    {mi.name}
+                                                                                                </DropdownMenuItem>
+                                                                                            ))}
+                                                                                            {item.linkedWorkItemId && (
+                                                                                                <>
+                                                                                                    <div className="border-t my-1"></div>
+                                                                                                    <DropdownMenuItem className="text-xs text-destructive" onClick={() => handleLinkPrep(room.id, item.id || item.globalId!, null, !!item.globalId)}>
+                                                                                                        Unlink
+                                                                                                    </DropdownMenuItem>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <div className="p-2 text-xs text-muted-foreground">No Work Items in this room.</div>
+                                                                                    )}
+                                                                                </DropdownMenuContent>
+                                                                            </DropdownMenu>
                                                                             {item._status === 'inherited' ? (
                                                                                 <Button variant="ghost" size="sm" title="Override/Edit" onClick={() => openEditPrep({ ...item, id: undefined, globalId: item.id } as any, room.id)}><Pencil className="h-4 w-4 text-blue-500 opacity-50 hover:opacity-100" /></Button>
                                                                             ) : (
@@ -1442,9 +1818,36 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                             <h3 className="font-medium text-sm">Additional Work Items In This Room</h3>
                                                             <p className="text-xs text-muted-foreground">Items added here apply only to this room. Use the Global tab for project-wide items.</p>
                                                         </div>
-                                                        <Button variant="outline" size="sm" onClick={() => { setActiveRoomIdForMisc(room.id); setMiscDialogOpen(true); }}>
-                                                            <PlusCircle className="h-4 w-4 mr-2" /> Add Work Item
-                                                        </Button>
+                                                        <div className="flex gap-2">
+                                                            {globalMiscItems.length > 0 && (
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="outline" size="sm" className="border-dashed border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100">
+                                                                            <ArrowDownToLine className="h-4 w-4 mr-2" /> Assign Global Item
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="w-64">
+                                                                        <div className="p-2 text-xs font-semibold text-muted-foreground border-b mb-1">Select Global Item to Move</div>
+                                                                        <div className="py-1">
+                                                                            <p className="px-2 text-[10px] text-muted-foreground mb-2">
+                                                                                Moving an item will remove it from the Global list and add it to this room, along with any linked prep tasks.
+                                                                            </p>
+                                                                        </div>
+                                                                        {globalMiscItems.map(gi => (
+                                                                            <DropdownMenuItem key={gi.id} onClick={() => moveMiscItem(gi.id, room.id)}>
+                                                                                <div className="flex flex-col">
+                                                                                    <span>{gi.name}</span>
+                                                                                    <span className="text-[10px] text-muted-foreground">{gi.quantity} {formatUnit(gi.unit)}</span>
+                                                                                </div>
+                                                                            </DropdownMenuItem>
+                                                                        ))}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            )}
+                                                            <Button variant="outline" size="sm" onClick={() => { setActiveRoomIdForMisc(room.id); setMiscDialogOpen(true); }}>
+                                                                <PlusCircle className="h-4 w-4 mr-2" /> Add Work Item
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                     {(!room.miscItems || room.miscItems.length === 0) && (
                                                         <div className="text-center p-6 border-2 border-dashed rounded-lg text-muted-foreground text-sm">
@@ -1506,6 +1909,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                 globalItems={globalMiscItems}
                 onMove={moveMiscItem}
                 initialItem={editingMiscItem}
+                paintProducts={paintProducts}
             />
             <AddPrepTaskDialog
                 isOpen={prepDialogOpen}

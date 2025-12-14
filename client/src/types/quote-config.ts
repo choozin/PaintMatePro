@@ -21,6 +21,7 @@ export type LaborUnit = 'geometric' | 'hourly' | 'lump_sum';
 export interface QuoteConfiguration {
     // Step 1: Listing Strategy
     listingStrategy: ListingStrategy;
+    activityPrepStrategy?: 'separate_section' | 'combined_labor';
 
     // Step 2: Paint Costs
     paintPlacement: CostPlacement;
@@ -48,11 +49,12 @@ export interface QuoteConfiguration {
 
     showTaxLine: boolean;
     showDisclaimers: boolean;
-    multiplesDisplay: 'x_notation' | 'separate_lines';
+
 }
 
 export const DEFAULT_QUOTE_CONFIG: QuoteConfiguration = {
     listingStrategy: 'by_room',
+    activityPrepStrategy: 'separate_section',
     paintPlacement: 'subline',
     paintDetails: { showName: true, showVolume: true, showCoats: true, showPrice: true },
     primerStrategy: 'separate_line',
@@ -68,5 +70,5 @@ export const DEFAULT_QUOTE_CONFIG: QuoteConfiguration = {
 
     showTaxLine: true,
     showDisclaimers: true,
-    multiplesDisplay: 'x_notation'
+
 };

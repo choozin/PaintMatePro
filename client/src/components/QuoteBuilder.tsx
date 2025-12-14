@@ -17,6 +17,7 @@ import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
 import { orgOperations } from "@/lib/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useCatalog } from "@/hooks/useCatalog";
 import { Timestamp } from "firebase/firestore";
 import type { Quote } from "@/lib/firestore";
 import { useEntitlements } from "@/hooks/useEntitlements";
@@ -75,6 +76,8 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
   const showProfitMargin = hasFeature('quote.profitMargin');
   const showTiers = hasFeature('quote.tiers');
   const showDigitalSign = hasFeature('eSign');
+
+  const { items: catalogItems } = useCatalog();
 
   const [status, setStatus] = useState<'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'>('draft');
   const [notes, setNotes] = useState("");
@@ -342,7 +345,7 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       }
     }
 
-    const generatedItems = generateQuoteLinesV2(project as any, rooms as any[], activeConfig);
+    const generatedItems = generateQuoteLinesV2(project as any, rooms as any[], activeConfig, catalogItems);
     const flatItems = flattenQuoteLines(generatedItems);
 
     setLineItems(flatItems);
@@ -581,13 +584,25 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         autoTable(doc, {
           startY: yPos + 15,
           head: [['Description', 'Quantity', 'Unit', 'Rate', 'Amount']],
-          body: lineItems.map(item => [
-            item.description,
-            item.quantity.toFixed(2),
-            item.unit,
-            `$${item.rate.toFixed(2)}`,
-            `$${(item.quantity * item.rate).toFixed(2)}`
-          ]),
+          body: lineItems.map(item => {
+            if ((item as any).isHeader) {
+              const amt = (item as any).amount;
+              return [
+                item.description,
+                '',
+                '',
+                '',
+                amt ? `$${Number(amt).toFixed(2)}` : ''
+              ];
+            }
+            return [
+              item.description,
+              item.quantity.toFixed(2),
+              item.unit,
+              `$${item.rate.toFixed(2)}`,
+              `$${(item.quantity * item.rate).toFixed(2)}`
+            ];
+          }),
           theme: 'plain',
           headStyles: {
             fillColor: [245, 245, 245],
@@ -683,13 +698,25 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         autoTable(doc, {
           startY: 90,
           head: [['Description', 'Quantity', 'Unit', 'Rate', 'Amount']],
-          body: lineItems.map(item => [
-            item.description,
-            item.quantity.toFixed(2),
-            item.unit,
-            `$${item.rate.toFixed(2)}`,
-            `$${(item.quantity * item.rate).toFixed(2)}`
-          ]),
+          body: lineItems.map(item => {
+            if ((item as any).isHeader) {
+              const amt = (item as any).amount;
+              return [
+                item.description,
+                '',
+                '',
+                '',
+                amt ? `$${Number(amt).toFixed(2)}` : ''
+              ];
+            }
+            return [
+              item.description,
+              item.quantity.toFixed(2),
+              item.unit,
+              `$${item.rate.toFixed(2)}`,
+              `$${(item.quantity * item.rate).toFixed(2)}`
+            ];
+          }),
           theme: 'striped',
           headStyles: {
             fillColor: [primaryRgb.r, primaryRgb.g, primaryRgb.b],

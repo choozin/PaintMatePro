@@ -173,12 +173,15 @@ export interface ProjectSupplyConfig {
   trimMethod?: 'brush' | 'spray';
   trimCoats?: number;
   trimRate?: number; // $/linear_ft override
+  trimWidth?: number; // inches override
+  trimCoverage?: number;
   includeTrim?: boolean;
 
   // Ceiling Paint
   ceilingProduct?: CatalogItem | null;
   ceilingMethod?: 'roll' | 'spray';
   ceilingCoats?: number;
+  ceilingCoverage?: number;
   includeCeiling?: boolean; // Toggle for "Paint Ceiling too?"
 
   // Primer
@@ -201,7 +204,10 @@ export interface PaintConfig {
   wallCoats: number;
   ceilingCoats: number;
   trimCoats: number;
+  trimCoverage?: number;
+  ceilingCoverage?: number;
   defaultTrimRate?: number; // $/linear_ft
+  defaultTrimWidth?: number; // inches
   includePrimer: boolean;
   includeCeiling: boolean;
   includeTrim: boolean;
@@ -259,6 +265,7 @@ export interface PrepTask {
   count?: number;
   globalId?: string; // If this is an override of a global task
   excluded?: boolean; // If true, this potentially global task is excluded from this room
+  linkedWorkItemId?: string; // ID of a work item this prep task is linked to
 }
 
 export interface MiscMeasurement {
@@ -271,6 +278,9 @@ export interface MiscMeasurement {
   count?: number; // Multiplier (e.g. 12 window frames)
   chargeOverride?: number; // Optional flat fee override (Deprecated? Use unit='fixed'?)
   roomId: string; // 'global' or specific roomId
+  coverage?: number; // sqft/gallon (for Paint calculation)
+  paintProductId?: string; // ID of required paint product
+  coats?: number; // Number of coats
 }
 
 

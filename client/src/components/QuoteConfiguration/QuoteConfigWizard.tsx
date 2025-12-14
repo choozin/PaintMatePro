@@ -25,7 +25,7 @@ const STEPS = [
 
 export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: QuoteConfigWizardProps) {
     const [step, setStep] = useState(1);
-    const [config, setConfig] = useState<QuoteConfiguration>(initialConfig || DEFAULT_QUOTE_CONFIG);
+    const [config, setConfig] = useState<QuoteConfiguration>({ ...DEFAULT_QUOTE_CONFIG, ...initialConfig });
 
     const updateConfig = (key: keyof QuoteConfiguration, value: any) => {
         setConfig(prev => ({ ...prev, [key]: value }));
@@ -68,11 +68,13 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                                     <p className="text-sm text-muted-foreground">Group items by their location (e.g., Living Room Header &rarr; Walls, Ceiling lines).</p>
                                 </div>
                             </div>
-                            <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${config.listingStrategy === 'by_surface' ? 'border-primary bg-primary/5' : 'border-transparent bg-muted/50 hover:bg-muted'}`}>
-                                <RadioGroupItem value="by_surface" id="by_surface" className="mt-1" />
-                                <div className="grid gap-1.5 cursor-pointer" onClick={() => updateConfig('listingStrategy', 'by_surface')}>
-                                    <Label htmlFor="by_surface" className="font-semibold text-lg cursor-pointer">By Surface/Activity</Label>
-                                    <p className="text-sm text-muted-foreground">Group items by the type of work (e.g., Walls Header &rarr; Living Room, Kitchen lines).</p>
+                            <div className={`flex flex-col space-y-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${config.listingStrategy === 'by_surface' ? 'border-primary bg-primary/5' : 'border-transparent bg-muted/50 hover:bg-muted'}`}>
+                                <div className="flex items-start space-x-3">
+                                    <RadioGroupItem value="by_surface" id="by_surface" className="mt-1" />
+                                    <div className="grid gap-1.5 cursor-pointer" onClick={() => updateConfig('listingStrategy', 'by_surface')}>
+                                        <Label htmlFor="by_surface" className="font-semibold text-lg cursor-pointer">By Surface/Activity</Label>
+                                        <p className="text-sm text-muted-foreground">Group items by the type of work (e.g., Walls Header &rarr; Living Room, Kitchen lines).</p>
+                                    </div>
                                 </div>
                             </div>
                         </RadioGroup>
@@ -236,19 +238,7 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
                                 <Switch checked={config.showDisclaimers} onCheckedChange={(c) => updateConfig('showDisclaimers', c)} />
                             </div>
 
-                            <div className="space-y-3 pt-2">
-                                <Label className="text-base">Multiples Display</Label>
-                                <RadioGroup value={config.multiplesDisplay} onValueChange={(val) => updateConfig('multiplesDisplay', val)} className="grid grid-cols-2 gap-4">
-                                    <div className={`flex items-center space-x-2 p-3 rounded border cursor-pointer ${config.multiplesDisplay === 'x_notation' ? 'border-primary bg-primary/5' : 'border-input'}`}>
-                                        <RadioGroupItem value="x_notation" id="x_not" />
-                                        <Label htmlFor="x_not" className="cursor-pointer">x-Notation (Window x6)</Label>
-                                    </div>
-                                    <div className={`flex items-center space-x-2 p-3 rounded border cursor-pointer ${config.multiplesDisplay === 'separate_lines' ? 'border-primary bg-primary/5' : 'border-input'}`}>
-                                        <RadioGroupItem value="separate_lines" id="sep_lines" />
-                                        <Label htmlFor="sep_lines" className="cursor-pointer">Separate Lines (Window 1...)</Label>
-                                    </div>
-                                </RadioGroup>
-                            </div>
+
                         </div>
                     </div>
                 );
