@@ -19,6 +19,7 @@ PaintMatePro is a comprehensive, production-grade, offline-first quoting and pro
 - **Styling:** [Tailwind CSS](https://tailwindcss.com/) with [shadcn/ui](https://ui.shadcn.com/) components
 
 For a more detailed breakdown of the architecture, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+For development standards and workflow, see [WORKFLOW.md](./WORKFLOW.md).
 
 ## Getting Started
 

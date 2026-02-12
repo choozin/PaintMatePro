@@ -22,6 +22,14 @@ import { QuoteConfiguration } from '@/types/quote-config';
 
 // Type definitions matching your Firestore schema
 // Comprehensive Paint Data Structure based on Supplier TDS
+export interface ProjectEvent {
+  id: string;
+  type: string;
+  label: string;
+  date: Timestamp;
+  notes?: string;
+}
+
 export interface PaintDetails {
   // Identity
   productCode?: string; // e.g. N524
@@ -96,6 +104,8 @@ export interface Org {
   // Global Feature Flags
   enableTeamFeatures?: boolean; // Default true. detailed crew assignment, payroll, etc.
   defaultQuoteStyle?: 'detailed' | 'split' | 'bundled'; // Default 'detailed'
+  defaultMarkupType?: 'percent' | 'fixed'; // New: Pricing strategy
+  defaultMarkupValue?: number; // New: Markup amount (e.g. 25 for 25%, or 10 for $10)
 
   // Quoting System Phase 1: Global Defaults
   estimatingSettings?: {
@@ -138,6 +148,8 @@ export interface Org {
   quoteTemplates?: QuoteTemplate[]; // New: List of saved configurations
   defaultQuoteTemplateId?: string; // New: Default to use
 }
+
+export type OrgWithId = Org & { id: string };
 
 
 
@@ -325,11 +337,22 @@ export interface Project {
   clientId: string;
   name: string;
   address: string;
-  status: 'lead' | 'active' | 'completed' | 'cancelled';
+  status: 'lead' | 'new' | 'active' | 'completed' | 'cancelled' | 'quote_created' | 'quote_sent' | 'pending' | 'booked' | 'in-progress' | 'paused' | 'on-hold' | 'invoiced' | 'paid' | 'overdue';
+
+  // Unified Schedule Fields
+  type?: 'project' | 'task' | 'appointment' | 'event';
+  eventCategory?: 'task' | 'appointment' | 'training' | 'meeting' | 'other';
+  visibilityRoles?: string[];
+  linkedProjectId?: string;
+
+  startDate?: Timestamp | string; // ISO String or Firestore Timestamp
+  estimatedCompletion?: Timestamp | string;
+  completedAt?: Timestamp | string; // Actual completion date
   createdAt: Timestamp;
   updatedAt: Timestamp;
 
   // Data
+  assignedCrewId?: string;
   rooms: Room[]; // Now sources of truth for room items
 
   // Global Configs
@@ -342,18 +365,21 @@ export interface Project {
   globalMiscItems?: MiscMeasurement[];
 
   notes?: string;
-  timeline?: {
-    id: string;
-    type: string;
-    label: string;
-    date: Timestamp;
-    notes?: string;
-  }[];
+  timeline?: ProjectEvent[];
   quoteTemplateId?: string;
+
+  // Pauses
+  pauses?: Array<{
+    startDate: Timestamp | string;
+    endDate?: Timestamp | string;
+    reason?: string;
+  }>;
 
   // Legacy / Deprecated fields kept for safety
   customSupplies?: CustomSupplyItem[];
 }
+
+export const deleteProject = (id: string) => deleteDocument('projects', id);
 
 export interface QuoteOption {
   id: string;
@@ -534,7 +560,9 @@ export async function deleteDocument(collectionName: string, id: string): Promis
 
 // --- Specific Operations ---
 export const orgOperations = {
+  create: (data: Omit<Org, 'id'>) => addDocument<Org>('orgs', data),
   get: (id: string) => getDocById<Org>('orgs', id),
+  getAll: () => getDocs<Org>('orgs', [orderBy('name')]),
   update: (id: string, data: Partial<Org>) => updateDocument<Org>('orgs', id, data),
 };
 
@@ -544,6 +572,7 @@ export const projectOperations = {
   create: (data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<Project, 'id' | 'createdAt' | 'updatedAt'>>('projects', data),
   get: (id: string) => getDocById<Project>('projects', id),
   getByOrg: (orgId: string) => getDocs<Project>('projects', [where('orgId', '==', orgId)]), // Removed orderBy to fix potential index issue
+  getByLinkedProject: (projectId: string) => getDocs<Project>('projects', [where('linkedProjectId', '==', projectId)]),
   update: (id: string, data: Partial<Project>) => updateDocument<Project>('projects', id, data),
   delete: (id: string) => deleteDocument('projects', id),
 };
@@ -588,6 +617,7 @@ export interface Crew {
   orgId: string;
   name: string;
   color?: string;
+  paletteId?: string;
   memberIds?: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -605,6 +635,7 @@ export const employeeOperations = {
   create: (data: Omit<Employee, 'id' | 'createdAt'>) => addDocument<Omit<Employee, 'id' | 'createdAt'>>('employees', data),
   get: (id: string) => getDocById<Employee>('employees', id),
   getByOrg: (orgId: string) => getDocs<Employee>('employees', [where('orgId', '==', orgId)]),
+  getByEmail: (email: string) => getDocs<Employee>('employees', [where('email', '==', email)]),
   update: (id: string, data: Partial<Employee>) => updateDocument<Employee>('employees', id, data),
   delete: (id: string) => deleteDocument('employees', id),
 };
@@ -617,18 +648,35 @@ export const roomOperations = {
   delete: (id: string) => deleteDocument('rooms', id),
 };
 
+import { GlobalRole } from './permissions';
+
 export interface OrgEntitlement {
   id?: string;
   orgId: string;
-  featureKey: string;
-  isEnabled: boolean;
-  limit?: number;
-  usage?: number;
+  plan: 'free' | 'pro' | 'enterprise';
+  features: Record<string, any>; // Map of feature keys to values
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export const entitlementOperations = {
-  get: (orgId: string) => getDocs<OrgEntitlement>('entitlements', [where('orgId', '==', orgId)]),
-  update: (id: string, data: Partial<OrgEntitlement>) => updateDocument<OrgEntitlement>('entitlements', id, data),
+  create: (orgId: string, data: { plan: 'free' | 'pro' | 'enterprise', features: Record<string, any> }) => {
+    // Single document per Org, ID = orgId
+    return setDoc(doc(db, 'entitlements', orgId), {
+      orgId,
+      ...data,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+  },
+  get: (orgId: string) => getDocById<OrgEntitlement>('entitlements', orgId),
+  // Update a specific feature toggle using dot notation
+  update: (orgId: string, featureKey: string, value: boolean) => {
+    return updateDoc(doc(db, 'entitlements', orgId), {
+      [`features.${featureKey}`]: value,
+      updatedAt: Timestamp.now()
+    });
+  }
 };
 
 export type Entitlement = OrgEntitlement;
@@ -660,20 +708,103 @@ export interface UserProfile {
   username?: string;
   orgId?: string; // Current active org
   orgIds: string[]; // All orgs user belongs to
+  roles?: Record<string, string>; // Map of orgId -> roleId/roleName
+  globalRole?: GlobalRole;
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export const userOperations = {
   create: (data: Omit<UserProfile, 'createdAt'>) => setDoc(doc(db, 'users', data.id), { ...data, createdAt: Timestamp.now() }),
+  set: (id: string, data: UserProfile) => setDoc(doc(db, 'users', id), data),
   get: (id: string) => getDocById<UserProfile>('users', id),
+  getAll: () => getDocs<UserProfile>('users', []),
   update: (id: string, data: Partial<UserProfile>) => updateDocument<UserProfile>('users', id, data),
 };
+
+export type User = UserProfile; // Alias for backward compatibility
+
 
 export const timeEntryOperations = {
   create: (data: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>>('time_entries', data),
   get: (id: string) => getDocById<TimeEntry>('time_entries', id),
+  getByOrg: (orgId: string) => getDocs<TimeEntry>('time_entries', [where('orgId', '==', orgId)]),
   getByProject: (projectId: string) => getDocs<TimeEntry>('time_entries', [where('projectId', '==', projectId), orderBy('date', 'desc')]),
   getByEmployee: (employeeId: string) => getDocs<TimeEntry>('time_entries', [where('employeeId', '==', employeeId), orderBy('date', 'desc')]),
   update: (id: string, data: Partial<TimeEntry>) => updateDocument<TimeEntry>('time_entries', id, data),
   delete: (id: string) => deleteDocument('time_entries', id),
 };
+
+import { Permission } from './permissions';
+
+export interface DevNoteItem {
+  id: string;
+  text: string;
+  url?: string;
+}
+
+export interface DevNote {
+  id: string;
+  orgId?: string; // Optional for personal notes
+  userId?: string;
+  title: string;
+  content: string;
+  type: 'short_term' | 'long_term' | 'competitor' | 'general';
+  items?: DevNoteItem[];
+  relatedUrl?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export const devNoteOperations = {
+  create: (data: Omit<DevNote, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<DevNote, 'id' | 'createdAt' | 'updatedAt'>>('dev_notes', data),
+  get: (id: string) => getDocById<DevNote>('dev_notes', id),
+  getByOrg: (orgId: string) => getDocs<DevNote>('dev_notes', [where('orgId', '==', orgId), orderBy('createdAt', 'desc')]),
+  getByUser: (userId: string) => getDocs<DevNote>('dev_notes', [where('userId', '==', userId)]),
+  update: (id: string, data: Partial<DevNote>) => updateDocument<DevNote>('dev_notes', id, data),
+  delete: (id: string) => deleteDocument('dev_notes', id),
+};
+
+// --- Roles & Permissions (New) ---
+
+// 1. Role Templates (Global Defaults managed by App Admin)
+export interface RoleTemplate {
+  id: string;
+  name: string;
+  description: string;
+  defaultPermissions: Permission[];
+  isSystemDefault: boolean; // e.g. Owner/Admin templates cannot be deleted globally
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// 2. Org Roles (Instances specific to an Org)
+export interface OrgRoleDef {
+  id: string;
+  orgId: string;
+  name: string;
+  description?: string;
+  permissions: Permission[];
+  isSystemProtected?: boolean; // If true, cannot delete (e.g. 'org_owner')
+  sourceTemplateId?: string; // Link to original template
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export const roleTemplateOperations = {
+  create: (data: Omit<RoleTemplate, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<RoleTemplate, 'id' | 'createdAt' | 'updatedAt'>>('role_templates', data),
+  get: (id: string) => getDocById<RoleTemplate>('role_templates', id),
+  getAll: () => getDocs<RoleTemplate>('role_templates', [orderBy('name')]),
+  update: (id: string, data: Partial<RoleTemplate>) => updateDocument<RoleTemplate>('role_templates', id, data),
+  delete: (id: string) => deleteDocument('role_templates', id),
+};
+
+export const orgRoleOperations = {
+  create: (data: Omit<OrgRoleDef, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<OrgRoleDef, 'id' | 'createdAt' | 'updatedAt'>>('roles', data),
+  get: (id: string) => getDocById<OrgRoleDef>('roles', id),
+  getByOrg: (orgId: string) => getDocs<OrgRoleDef>('roles', [where('orgId', '==', orgId)]),
+  update: (id: string, data: Partial<OrgRoleDef>) => updateDocument<OrgRoleDef>('roles', id, data),
+  delete: (id: string) => deleteDocument('roles', id),
+};
+
+

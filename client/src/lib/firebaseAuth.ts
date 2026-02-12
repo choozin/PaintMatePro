@@ -178,8 +178,8 @@ export async function updateUserProfile(profile: { displayName?: string; photoUR
 /**
  * Get the current user's custom claims (orgIds, role)
  */
-export async function getUserClaims(): Promise<{ orgIds: string[]; role: OrgRole | string; globalRole?: string; rolesMap?: Record<string, string> } | null> {
-  const user = auth.currentUser;
+export async function getUserClaims(currentUser?: User | null): Promise<{ orgIds: string[]; role: OrgRole | string; globalRole?: string; rolesMap?: Record<string, string> } | null> {
+  const user = currentUser || auth.currentUser;
   if (!user) return null;
 
   try {

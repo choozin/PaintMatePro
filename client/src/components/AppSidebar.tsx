@@ -11,7 +11,8 @@ import {
   Building2,
   SlidersHorizontal,
   Clock,
-  DollarSign
+  DollarSign,
+  NotebookPen
 } from "lucide-react";
 import {
   Sidebar,
@@ -43,7 +44,7 @@ interface MenuItem {
 
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
-  const { user, claims, currentOrgRole, signOut, org } = useAuth();
+  const { user, claims, currentOrgRole, currentPermissions, signOut, org } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
   const { t } = useTranslation();
 
@@ -128,7 +129,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems.map((item) => {
                 // Permission Check
-                if (item.requiredPermission && !hasPermission(currentOrgRole as OrgRole, item.requiredPermission)) {
+                if (item.requiredPermission && !hasPermission(currentPermissions, item.requiredPermission)) {
                   return null;
                 }
                 // Global Admin Check
@@ -189,6 +190,17 @@ export function AppSidebar() {
             </SidebarMenuItem>
           )}
 
+
+          {/* Dev Notes */}
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={location === '/dev-notes'} data-testid="link-dev-notes">
+              <a href="/dev-notes" onClick={(e) => { e.preventDefault(); handleNav('/dev-notes'); }}>
+                <NotebookPen className="h-5 w-5" />
+                <span>Development Notes</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
           {/* Profile Settings */}
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={location === '/profile'} data-testid="link-profile">
@@ -199,8 +211,9 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
 
+
           {/* Organization Settings (Conditional) */}
-          {hasPermission(currentOrgRole as OrgRole, 'manage_org') && (
+          {hasPermission(currentPermissions, 'manage_org') && (
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={location === '/organization'} data-testid="link-org-settings">
                 <a href="/organization" onClick={(e) => { e.preventDefault(); handleNav('/organization'); }}>

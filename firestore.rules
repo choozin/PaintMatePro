@@ -30,8 +30,8 @@ service cloud.firestore {
       allow read, update: if request.auth != null && (
         request.auth.uid == userId || isPlatformAdmin()
       );
-      // Allow creation if it matches auth UID (Critical for registration)
-      allow create: if request.auth != null && request.auth.uid == userId;
+      // Allow creation if it matches auth UID OR if platform admin (for admin-created users)
+      allow create: if request.auth != null && (request.auth.uid == userId || isPlatformAdmin());
       allow delete: if request.auth != null && isPlatformAdmin();
     }
 
@@ -44,7 +44,7 @@ service cloud.firestore {
       allow update: if request.auth != null && (isOrgOwner(orgId) || isPlatformAdmin());
       // Allow create by anyone (Authentication required)
       allow create: if request.auth != null; 
-      allow delete: if false;
+      allow delete: if request.auth != null && isPlatformAdmin();
 
       match /catalogItems/{itemId} {
         allow read: if request.auth != null && (isOrgMember(orgId) || isPlatformAdmin());
@@ -57,7 +57,7 @@ service cloud.firestore {
       allow read: if request.auth != null && (isOrgMember(orgId) || isPlatformAdmin());
       allow update: if request.auth != null && (isOrgOwner(orgId) || isPlatformAdmin());
       allow create: if request.auth != null; 
-      allow delete: if false;
+      allow delete: if request.auth != null && isPlatformAdmin();
     }
 
     // Projects
@@ -78,10 +78,10 @@ service cloud.firestore {
     match /rooms/{roomId} {
        // Note: complex nested gets can be expensive, but necessary here
       allow read: if request.auth != null &&
-                  isOrgMember(get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId);
-      allow create: if request.auth != null && isOrgMember(request.resource.data.orgId);
+                  (isPlatformAdmin() || isOrgMember(get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId));
+      allow create: if request.auth != null && (isPlatformAdmin() || isOrgMember(request.resource.data.orgId));
       allow update, delete: if request.auth != null &&
-                            isOrgMember(get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId);
+                            (isPlatformAdmin() || isOrgMember(get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId));
     }
 
     // Quotes
@@ -110,6 +110,13 @@ service cloud.firestore {
       );
     }
 
+    // Time Entries
+    match /time_entries/{entryId} {
+      allow read: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+      allow create: if request.auth != null && (isOrgMember(request.resource.data.orgId) || isPlatformAdmin());
+      allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+    }
+
     // Crews
     match /crews/{crewId} {
       allow read: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
@@ -117,8 +124,26 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && (isOrgOwner(resource.data.orgId) || isPlatformAdmin());
     }
 
+    // Dev Notes
+    match /dev_notes/{noteId} {
+      allow read, write: if true;
+    }
+
     match /portalTokens/{tokenId} {
       allow read, write: if false;
     }
+    // Role Templates (Global)
+    match /role_templates/{templateId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isPlatformAdmin();
+    }
+
+    // Org Roles (Instances)
+    match /roles/{roleId} {
+      allow read: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+      allow create: if request.auth != null && (isOrgOwner(request.resource.data.orgId) || isPlatformAdmin());
+      allow update, delete: if request.auth != null && (isOrgOwner(resource.data.orgId) || isPlatformAdmin());
+    }
+
   }
 }

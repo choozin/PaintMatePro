@@ -10,8 +10,8 @@ interface PublicLayoutProps {
 export function PublicLayout({ children }: PublicLayoutProps) {
   const { user, loading } = useAuth();
 
-  // Sidebar should be open by default if not logged in and not loading auth state
-  const defaultSidebarOpen = !loading && !user;
+  // Sidebar should be closed by default for mobile-first approach
+  const defaultSidebarOpen = false;
 
   const style = {
     "--sidebar-width": "16rem",

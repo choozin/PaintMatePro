@@ -11,9 +11,10 @@ import { Loader2, Save, ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { SupplyRulesEditor } from './SupplyRulesEditor';
+import { hasPermission, OrgRole } from '@/lib/permissions';
 
 export function EstimatingDefaultsCard() {
-    const { currentOrgId, currentOrgRole } = useAuth();
+    const { currentOrgId, currentOrgRole, currentPermissions, org } = useAuth();
     const { toast } = useToast();
     const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
@@ -29,43 +30,34 @@ export function EstimatingDefaultsCard() {
         defaultTrimCoats: 2,
         defaultTaxRate: 0,
         defaultBillablePaint: true,
+        defaultPricePerGallon: 45,
+        defaultCostPerGallon: 25,
     });
 
     const [supplyRules, setSupplyRules] = useState<SupplyRule[]>([]);
 
-    const canEdit = currentOrgRole === 'owner' || currentOrgRole === 'admin';
-
     useEffect(() => {
-        if (!currentOrgId) return;
-
-        async function loadDefaults() {
-            if (!currentOrgId) return;
-            setIsLoading(true);
-            try {
-                const org = await orgOperations.get(currentOrgId);
-                if (org?.estimatingSettings) {
-                    setDefaults(prev => ({
-                        ...prev,
-                        ...org.estimatingSettings
-                    }));
-                }
-                if (org?.supplyRules) {
-                    setSupplyRules(org.supplyRules);
-                }
-            } catch (error) {
-                console.error("Failed to load defaults", error);
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: "Failed to load estimating defaults."
-                });
-            } finally {
-                setIsLoading(false);
+        if (org) {
+            setDefaults(prev => ({
+                ...prev,
+                ...(org.estimatingSettings || {})
+            }));
+            if (org.supplyRules) {
+                setSupplyRules(org.supplyRules);
             }
         }
+    }, [org]);
 
-        loadDefaults();
-    }, [currentOrgId, toast]);
+    // Updated permission check using centralized logic
+    const canEdit = hasPermission(currentPermissions, 'manage_org');
+
+    const handleChange = (key: string, value: any) => {
+        setDefaults(prev => ({ ...prev, [key]: value }));
+    };
+
+    const handleToggle = (key: string, value: boolean) => {
+        setDefaults(prev => ({ ...prev, [key]: value }));
+    };
 
     const handleSave = async () => {
         if (!currentOrgId) return;
@@ -75,58 +67,25 @@ export function EstimatingDefaultsCard() {
                 estimatingSettings: defaults,
                 supplyRules: supplyRules
             });
-            toast({
-                title: "Settings Saved",
-                description: "Organization estimating defaults updated successfully."
-            });
+            toast({ title: "Settings Saved", description: "Estimating defaults updated successfully." });
         } catch (error) {
-            console.error("Failed to save defaults", error);
-            toast({
-                variant: "destructive",
-                title: "Error",
-                description: "Failed to save settings."
-            });
+            console.error(error);
+            toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleChange = (key: string, value: number) => {
-        setDefaults(prev => ({ ...prev, [key]: value }));
-    };
-
-    const handleToggle = (key: string, value: boolean) => {
-        setDefaults(prev => ({ ...prev, [key]: value }));
-    };
-
-    if (isLoading) {
-        return (
-            <Card>
-                <CardHeader>
-                    <CardTitle>Default Project Settings</CardTitle>
-                    <CardDescription>Loading settings...</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex justify-center py-8">
-                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
-                </CardContent>
-            </Card>
-        );
-    }
-
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Default Project Settings</CardTitle>
-                <CardDescription>
-                    Set the baseline values for new projects. These can be overridden on a per-project basis.
-                </CardDescription>
+                <CardTitle>Estimating Defaults</CardTitle>
+                <CardDescription>Set global defaults for new projects. These values can be overridden per project.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                        <Label>Default Labor Rate ($/hr)</Label>
+                        <Label>Labor Rate ($/hr)</Label>
                         <Input
                             type="number"
                             value={defaults.defaultLaborRate}
@@ -135,11 +94,30 @@ export function EstimatingDefaultsCard() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Default Wall Speed (sq ft/hr)</Label>
+                        <Label>Production Rate (sq ft/hr)</Label>
                         <Input
                             type="number"
                             value={defaults.defaultProductionRate}
                             onChange={(e) => handleChange('defaultProductionRate', parseFloat(e.target.value) || 0)}
+                            disabled={!canEdit}
+                        />
+                    </div>
+                    {/* Paint Price/Cost Fields */}
+                    <div className="space-y-2">
+                        <Label>Default Paint Price ($/gal)</Label>
+                        <Input
+                            type="number"
+                            value={defaults.defaultPricePerGallon}
+                            onChange={(e) => handleChange('defaultPricePerGallon', parseFloat(e.target.value) || 0)}
+                            disabled={!canEdit}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Default Paint Cost ($/gal)</Label>
+                        <Input
+                            type="number"
+                            value={defaults.defaultCostPerGallon}
+                            onChange={(e) => handleChange('defaultCostPerGallon', parseFloat(e.target.value) || 0)}
                             disabled={!canEdit}
                         />
                     </div>
@@ -233,16 +211,14 @@ export function EstimatingDefaultsCard() {
                     </p>
                 )}
             </CardContent>
-            {
-                canEdit && (
-                    <CardFooter className="border-t px-6 py-4">
-                        <Button onClick={handleSave} disabled={isSaving}>
-                            {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                            Save Settings
-                        </Button>
-                    </CardFooter>
-                )
-            }
-        </Card >
+            {canEdit && (
+                <CardFooter className="border-t px-6 py-4">
+                    <Button onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                        Save Settings
+                    </Button>
+                </CardFooter>
+            )}
+        </Card>
     );
 }

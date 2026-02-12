@@ -11,14 +11,15 @@ import {
   registerUser as authRegisterUser
 } from '@/lib/firebaseAuth';
 import { getDocById } from '@/lib/firestore';
-import type { Org, Entitlement, OrgWithId } from '@/lib/firestore';
+import type { Org, Entitlement, OrgWithId, OrgRoleDef } from '@/lib/firestore';
+import { orgRoleOperations } from '@/lib/firestore';
 
-import { OrgRole, normalizeRole, GlobalRole } from '@/lib/permissions';
+import { OrgRole, normalizeRole, GlobalRole, Permission, getLegacyFallbackPermissions } from '@/lib/permissions';
 
 // Define the full context type
 export interface UserClaims {
   orgIds: string[];
-  role: OrgRole | string;
+  role: OrgRole | string; // Can be legacy role name OR new Role ID
   globalRole?: string;
   rolesMap?: Record<string, string>;
 }
@@ -28,6 +29,7 @@ interface AuthContextType {
   claims: UserClaims | null;
   currentOrgId: string | null;
   currentOrgRole: OrgRole | string | null;
+  currentPermissions: Permission[]; // New: The actual permission set
   org: OrgWithId | null;
   entitlements: Entitlement | null;
   loading: boolean;
@@ -49,9 +51,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [claims, setClaims] = useState<UserClaims | null>(null);
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
   const [currentOrgRole, setCurrentOrgRole] = useState<OrgRole | string | null>(null);
+  const [currentPermissions, setCurrentPermissions] = useState<Permission[]>([]);
   const [org, setOrg] = useState<OrgWithId | null>(null);
   const [entitlements, setEntitlements] = useState<Entitlement | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Fetch Permissions anytime OrgRole or OrgId changes
+  const loadPermissions = useCallback(async () => {
+    if (!currentOrgRole || !currentOrgId) {
+      setCurrentPermissions([]);
+      return;
+    }
+
+    // 1. Check Global Admin (Implicit Superuser)
+    if (claims?.globalRole === 'platform_owner') {
+      // Grant ALL permissions (or a specific super-set)
+      // For simplicity, we can fallback to the 'owner' set which has everything
+      setCurrentPermissions(getLegacyFallbackPermissions('org_owner'));
+      return;
+    }
+
+    try {
+      // 2. Try to fetch Role from DB (assuming role is an ID)
+      // We start by checking if the string looks like a standard legacy role
+      const legacyRoles = ['org_owner', 'org_admin', 'manager', 'estimator', 'foreman', 'painter', 'subcontractor'];
+      if (legacyRoles.includes(getCurrentNormalizedRole(currentOrgRole))) {
+        // It's a legacy string, use fallback
+        setCurrentPermissions(getLegacyFallbackPermissions(currentOrgRole));
+      } else {
+        // It's likely an ID. Try to fetch it.
+        const roleDoc = await orgRoleOperations.get(currentOrgRole);
+        if (roleDoc) {
+          setCurrentPermissions(roleDoc.permissions || []);
+        } else {
+          // ID not found? Fallback to painter or empty
+          console.warn(`Role ID ${currentOrgRole} not found in DB. Falling back.`);
+          setCurrentPermissions(getLegacyFallbackPermissions('painter'));
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching permissions:", e);
+      // Fallback safety
+      setCurrentPermissions(getLegacyFallbackPermissions(currentOrgRole));
+    }
+
+  }, [currentOrgRole, currentOrgId, claims]);
+
+  // Helper to normalize locally for the check above
+  const getCurrentNormalizedRole = (r: string) => normalizeRole(r) as string;
 
   const loadOrgData = useCallback(async () => {
     if (!user || !currentOrgId) {
@@ -76,16 +123,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (claims && currentOrgId) {
       // Priority 1: Check rolesMap from DB
       if (claims.rolesMap && claims.rolesMap[currentOrgId]) {
+        // This might be a Role ID or a Role Name
         const role = claims.rolesMap[currentOrgId];
-        setCurrentOrgRole(normalizeRole(role));
+        setCurrentOrgRole(role);
         return;
       }
       // Priority 2: Check if global admin
       if (claims.globalRole === 'platform_owner') {
-        setCurrentOrgRole('org_owner');
+        setCurrentOrgRole('org_owner'); // Virtual role for context
         return;
       }
       // Priority 3: Fallback to token role
+      // This is usually a legacy role name
       setCurrentOrgRole(normalizeRole(claims.role as string));
     } else {
       setCurrentOrgRole(null);
@@ -94,7 +143,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadOrgData();
-  }, [loadOrgData]);
+    loadPermissions();
+  }, [loadOrgData, loadPermissions]);
 
   useEffect(() => {
     const unsubscribe = onAuthChange(async (firebaseUser) => {
@@ -206,6 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     claims,
     currentOrgId,
     currentOrgRole,
+    currentPermissions, // EXPOSED
     org,
     entitlements,
     loading,

@@ -16,7 +16,7 @@ async function fetchUsers(orgId: string): Promise<AppUser[]> {
   }
 
   const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('orgId', '==', orgId));
+  const q = query(usersRef, where('orgIds', 'array-contains', orgId));
   const querySnapshot = await getDocs(q);
 
   const users: AppUser[] = [];

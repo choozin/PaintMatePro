@@ -33,6 +33,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { PaintProductDialog, NewPaintFormData } from "./dialogs/PaintProductDialog";
 
 // --- Types ---
 
@@ -42,21 +43,7 @@ interface ProjectSpecsProps {
     onNext?: () => void;
 }
 
-interface NewPaintFormData {
-    name: string;
-    price: number;
-    coverage: number;
-    details: PaintDetails;
-}
 
-const INITIAL_DETAILS: PaintDetails = {
-    productCode: "", manufacturer: "", line: "", colorFamily: "",
-    containerSize: "Gallon", availabilityStatus: "", maxTintLoad: "",
-    baseType: "", resinType: "", glossLevel: "", voc: "", solidsVol: "", weightPerGallon: "", flashPoint: "", pH: "",
-    coverageRate: "", dryToTouch: "", dryToRecoat: "", cureTime: "", performanceRatings: "", recommendedUses: [],
-    applicationMethods: [], thinning: "", primerRequirements: "", substrates: [], cleanup: "",
-    certifications: [], hazards: "", compositionNotes: ""
-};
 
 const formatUnit = (unit: string) => {
     switch (unit) {
@@ -71,127 +58,22 @@ const formatUnit = (unit: string) => {
 
 // --- Sub-Components ---
 
-function AddPaintDialog({ isOpen, onOpenChange, onAdd }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onAdd: (data: NewPaintFormData) => Promise<void> }) {
-    const [name, setName] = useState("");
-    const [price, setPrice] = useState(45);
-    const [coverage, setCoverage] = useState(350);
-    const [details, setDetails] = useState<PaintDetails>(INITIAL_DETAILS);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [activeTab, setActiveTab] = useState("identity");
-    const [showAdvanced, setShowAdvanced] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!name) return;
-        setIsSubmitting(true);
-        try {
-            await onAdd({ name, price, coverage, details });
-            onOpenChange(false);
-            setName(""); setPrice(45); setCoverage(350); setDetails(INITIAL_DETAILS); setActiveTab("identity"); setShowAdvanced(false);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const updateDetail = (key: keyof PaintDetails, value: any) => {
-        setDetails(prev => ({ ...prev, [key]: value }));
-    };
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className={`max-w-2xl flex flex-col p-0 transition-all duration-300 ${showAdvanced ? 'h-[90vh]' : 'h-auto'}`}>
-                <DialogHeader className="p-6 pb-2">
-                    <DialogTitle>Add New Paint Product</DialogTitle>
-                </DialogHeader>
-
-                <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                    <ScrollArea className="flex-1">
-                        <div className="px-6 pb-4 space-y-4 pt-4">
-                            <div className="space-y-2">
-                                <Label>Product Name *</Label>
-                                <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Benjamin Moore Aura" required />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Price ($/gal) *</Label>
-                                    <Input type="number" value={price} onChange={e => setPrice(parseFloat(e.target.value))} required min={0} step={0.01} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Calc Coverage (sqft/gal) *</Label>
-                                    <Input type="number" value={coverage} onChange={e => setCoverage(parseInt(e.target.value))} required min={1} placeholder="350" />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="px-6 pb-2">
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                className="w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 flex items-center justify-center gap-2 h-8 text-sm"
-                                onClick={() => setShowAdvanced(!showAdvanced)}
-                            >
-                                {showAdvanced ? (
-                                    <>Hide Advanced Details <ChevronUp className="h-4 w-4" /></>
-                                ) : (
-                                    <>Show Advanced Details ({activeTab === 'identity' ? 'TDS' : 'More'}) <ChevronDown className="h-4 w-4" /></>
-                                )}
-                            </Button>
-                        </div>
-
-                        {showAdvanced && (
-                            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col border-t animate-in fade-in zoom-in-95 duration-200">
-                                <div className="px-6 border-b sticky top-0 bg-background z-10 pt-2">
-                                    <TabsList className="w-full justify-start h-auto p-0 bg-transparent border-b-0 space-x-6 overflow-x-auto no-scrollbar">
-                                        {["identity", "specs", "app", "compliance"].map(t => (
-                                            <TabsTrigger
-                                                key={t}
-                                                value={t}
-                                                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-2 py-3 capitalize"
-                                            >
-                                                {t === 'app' ? 'Application' : t}
-                                            </TabsTrigger>
-                                        ))}
-                                    </TabsList>
-                                </div>
-
-                                <div className="p-6">
-                                    <TabsContent value="identity" className="mt-0 space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2"><Label>Product Code / SKU</Label><Input value={details.productCode} onChange={e => updateDetail('productCode', e.target.value)} placeholder="e.g. N524" /></div>
-                                            <div className="space-y-2"><Label>Manufacturer</Label><Input value={details.manufacturer} onChange={e => updateDetail('manufacturer', e.target.value)} placeholder="e.g. Benjamin Moore" /></div>
-                                            {/* ... other fields ... */}
-                                        </div>
-                                    </TabsContent>
-                                    {/* ... other tabs ... */}
-                                </div>
-                            </Tabs>
-                        )}
-                    </ScrollArea>
-
-                    <DialogFooter className="p-6 pt-2 border-t mt-auto bg-background z-20">
-                        <Button type="submit" disabled={isSubmitting}>
-                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            Save to Catalog
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
-    );
-}
 
 function PaintSelectorDialog({
     isOpen,
     onOpenChange,
     products,
     onSelect,
-    onAddNew
+    onAddNew,
+    onEdit
 }: {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     products: PaintProduct[];
     onSelect: (product: PaintProduct) => void;
     onAddNew: () => void;
+    onEdit?: (product: PaintProduct) => void;
 }) {
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -202,15 +84,22 @@ function PaintSelectorDialog({
                 <ScrollArea className="h-[50vh] pr-4">
                     <div className="space-y-2 p-1">
                         {products.map(p => (
-                            <div key={p.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 cursor-pointer group" onClick={() => onSelect(p)}>
-                                <div>
-                                    <div className="font-medium group-hover:text-blue-600 transition-colors">{p.name}</div>
-                                    <div className="text-sm text-muted-foreground flex gap-3">
-                                        <span className="flex items-center"><DollarSign className="h-3 w-3 mr-1" />{p.unitPrice}/gal</span>
-                                        <span className="flex items-center"><PaintBucket className="h-3 w-3 mr-1" />{p.coverage || 350} sqft/gal</span>
+                            <div key={p.id} className="flex items-center gap-2">
+                                <div className="flex-1 flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 cursor-pointer group" onClick={() => onSelect(p)}>
+                                    <div>
+                                        <div className="font-medium group-hover:text-blue-600 transition-colors">{p.name}</div>
+                                        <div className="text-sm text-muted-foreground flex gap-3">
+                                            <span className="flex items-center"><DollarSign className="h-3 w-3 mr-1" />{p.unitPrice}/gal</span>
+                                            <span className="flex items-center"><PaintBucket className="h-3 w-3 mr-1" />{p.coverage || 350} sqft/gal</span>
+                                        </div>
                                     </div>
+                                    <Button size="sm" variant="ghost" className="opacity-0 group-hover:opacity-100 transition-opacity">Select</Button>
                                 </div>
-                                <Button size="sm" variant="ghost" className="opacity-0 group-hover:opacity-100 transition-opacity">Select</Button>
+                                {onEdit && (
+                                    <Button size="icon" variant="ghost" className="h-full shrink-0 aspect-square border hover:bg-slate-100" onClick={() => onEdit(p)} title="Edit Paint">
+                                        <Pencil className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                )}
                             </div>
                         ))}
                         {products.length === 0 && <div className="text-center py-8 text-muted-foreground">No paint products found.</div>}
@@ -642,7 +531,7 @@ function AddMiscItemDialog({
                 isOpen={paintSelectorOpen}
                 onOpenChange={setPaintSelectorOpen}
                 products={paintProducts || []}
-                onSelect={(p) => { setPaintProductId(p.id); setPaintSelectorOpen(false); }}
+                onSelect={(p) => { setPaintProductId(p.id || ""); setPaintSelectorOpen(false); }}
                 onAddNew={() => { setPaintSelectorOpen(false); if (onAddNewPaint) onAddNewPaint(); }}
             />
         </>
@@ -838,6 +727,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
 
     const isInitialLoad = useRef(true);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+    const [editingPaintProduct, setEditingPaintProduct] = useState<PaintProduct | null>(null);
 
     // State
     const [config, setConfig] = useState<PaintConfig>({
@@ -880,9 +770,31 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
     // Initial Load
     useEffect(() => {
         if (project && isInitialLoad.current) {
-            // Load Configs
-            if (project.supplyConfig) setConfig(prev => ({ ...prev, ...project.supplyConfig }));
-            if (project.laborConfig) setLaborConfig(prev => ({ ...prev, ...project.laborConfig }));
+            // Priority: Project Config > Org Defaults > Hardcoded
+            const orgDefaults = org?.estimatingSettings || {};
+
+            // 1. Merge Paint/Supply Config
+            const mergedConfig: PaintConfig = {
+                ...config, // Keep hardcoded defaults as base
+                // Map Org Defaults
+                coveragePerGallon: orgDefaults.defaultCoverage ?? 350,
+                wallCoats: orgDefaults.defaultWallCoats ?? 2,
+                ceilingCoats: orgDefaults.defaultCeilingCoats ?? 2,
+                trimCoats: orgDefaults.defaultTrimCoats ?? 2,
+                pricePerGallon: orgDefaults.defaultPricePerGallon ?? 45,
+                // Override with Project Config if it exists
+                ...(project.supplyConfig || {})
+            };
+            setConfig(mergedConfig);
+
+            // 2. Merge Labor Config
+            const mergedLabor = {
+                ...laborConfig,
+                hourlyRate: orgDefaults.defaultLaborRate ?? 60,
+                productionRate: orgDefaults.defaultProductionRate ?? 150,
+                ...(project.laborConfig || {})
+            };
+            setLaborConfig(mergedLabor);
 
             // Load Lists
             if (project.globalPrepTasks) setGlobalPrepTasks(project.globalPrepTasks);
@@ -890,7 +802,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
 
             setTimeout(() => { isInitialLoad.current = false; }, 500);
         }
-    }, [project]);
+    }, [project, org]);
 
     // Auto-Save
     useEffect(() => {
@@ -953,18 +865,35 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
         setSelectorOpen(false);
     };
 
+    const { updateItem } = useCatalog();
+
     const handleAddNewPaint = async (data: NewPaintFormData) => {
         await addItem({
             name: data.name,
             category: 'paint',
             unitPrice: data.price,
-            unitCost: data.price * 0.6,
+            unitCost: data.cost,
             unit: 'gal',
             coverage: data.coverage,
             sheen: data.details.glossLevel,
             paintDetails: data.details
         });
         toast({ title: "Paint Added", description: "Added to your catalog." });
+        setEditingPaintProduct(null); // Reset
+    };
+
+    const handleUpdatePaint = async (id: string, data: NewPaintFormData) => {
+        await updateItem(id, {
+            name: data.name,
+            unitPrice: data.price,
+            unitCost: data.cost,
+            coverage: data.coverage,
+            sheen: data.details.glossLevel,
+            paintDetails: data.details,
+            updatedAt: undefined // Let hook handle timestamp
+        });
+        toast({ title: "Paint Updated", description: "Changes saved to catalog." });
+        setEditingPaintProduct(null); // Reset
     };
 
     // --- Prep Tasks Logic ---
@@ -2044,8 +1973,31 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                 </div>
             </Tabs>
 
-            <AddPaintDialog isOpen={isAddPaintOpen} onOpenChange={setIsAddPaintOpen} onAdd={handleAddNewPaint} />
-            <PaintSelectorDialog isOpen={selectorOpen} onOpenChange={setSelectorOpen} products={paintProducts} onSelect={handleProductSelect} onAddNew={() => setIsAddPaintOpen(true)} />
+            <PaintProductDialog
+                isOpen={isAddPaintOpen}
+                onOpenChange={(open) => {
+                    setIsAddPaintOpen(open);
+                    if (!open) setEditingPaintProduct(null);
+                }}
+                onAdd={handleAddNewPaint}
+                onUpdate={handleUpdatePaint}
+                initialData={editingPaintProduct}
+            />
+            <PaintSelectorDialog
+                isOpen={selectorOpen}
+                onOpenChange={setSelectorOpen}
+                products={paintProducts}
+                onSelect={handleProductSelect}
+                onAddNew={() => {
+                    setEditingPaintProduct(null);
+                    setIsAddPaintOpen(true);
+                }}
+                onEdit={(product) => {
+                    setEditingPaintProduct(product);
+                    setSelectorOpen(false);
+                    setIsAddPaintOpen(true);
+                }}
+            />
             <AddMiscItemDialog
                 isOpen={miscDialogOpen}
                 onOpenChange={(open) => { setMiscDialogOpen(open); if (!open) setEditingMiscItem(null); }}

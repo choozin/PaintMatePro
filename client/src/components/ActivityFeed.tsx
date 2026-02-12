@@ -16,10 +16,15 @@ export function ActivityFeed({ projects }: ActivityFeedProps) {
                 ...event,
                 projectName: project.name,
                 projectId: project.id,
-                clientName: "Client", // Ideally we'd map this if we had the client list handy, but for speed we'll use generic or fetch
+                clientName: "Client",
             }))
         )
-        .sort((a, b) => b.date.toDate().getTime() - a.date.toDate().getTime())
+        .filter(event => event.date && typeof event.date.toDate === 'function')
+        .sort((a, b) => {
+            const timeA = a.date?.toDate ? a.date.toDate().getTime() : 0;
+            const timeB = b.date?.toDate ? b.date.toDate().getTime() : 0;
+            return timeB - timeA;
+        })
         .slice(0, 10); // Top 10 recent events
 
     const getIcon = (type: ProjectEvent['type']) => {
@@ -59,7 +64,9 @@ export function ActivityFeed({ projects }: ActivityFeedProps) {
                             <div className="flex justify-between items-start text-sm">
                                 <span className="font-medium">{event.label}</span>
                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                    {formatDistanceToNow(event.date.toDate(), { addSuffix: true })}
+                                    {event.date && typeof event.date.toDate === 'function'
+                                        ? formatDistanceToNow(event.date.toDate(), { addSuffix: true })
+                                        : 'Unknown date'}
                                 </span>
                             </div>
                             <p className="text-xs text-muted-foreground">

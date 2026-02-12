@@ -21,9 +21,22 @@ export function getDerivedStatus(
 
     // If no timeline, checking defaultStatus 'new' or 'quote_created' etc.
     if (!timeline || timeline.length === 0) {
-        // If status is 'new', it stays 'new' regardless of dates (as per user request: "start as New... status won't become Quoted until Quote Has been saved")
-        // Actually, if we have start/end dates but no events, it technically shouldn't move to Booked unless Quote is Accepted.
-        // But if defaultStatus is 'lead' or 'new', we keep it.
+        // If we have explicit dates, we should try to derive status from them
+        // This handles legacy projects or projects where dates were set without generating timeline events
+        if (start && end) {
+            const currentDate = new Date();
+            if (currentDate > end) {
+                return 'overdue' as ProjectStatus;
+            } else if (currentDate >= start) {
+                // specific logic: if now is past start, it's either in-progress or overdue
+                return 'in-progress' as ProjectStatus;
+            } else {
+                // Future start date
+                return 'booked' as ProjectStatus;
+            }
+        }
+
+        // If no dates and no timeline, fallback to default
         return defaultStatus;
     }
 
@@ -98,7 +111,9 @@ export function getDerivedStatus(
     // "Booked should only apply if a start and end date have been entered"
     // "In Progress should only apply if the current date falls within a Booked project's start or end dates"
 
-    if (currentStatus === 'pending') {
+    // Allow derived status from dates to override early lifecycle statuses if dates are explicitly set
+    // This fixed the issue where projects with dates but without specific timeline events were stuck as "New"
+    if (['new', 'lead', 'quote_created', 'quote_sent', 'pending'].includes(currentStatus)) {
         if (start && end) {
             currentStatus = 'booked';
         }
@@ -114,13 +129,14 @@ export function getDerivedStatus(
             // But if now > end and not marked finished? Still In Progress (Overdue)?
             // User said: "In Progress should only apply if the current date falls within a Booked project's start or end dates, inclusively"
 
-            if (now >= start && ((now <= end) || (now > end))) {
-                // Wait, "falls within" implies <= end. 
-                // But if it's past end date and not "Completed", it's still technically in progress (or overdue).
-                // Let's stick to strict "within dates" first, or maybe "started and not finished".
-                // User said: "In Progress should only apply if the current date falls within...".
+            if (start && end) {
+                // Set end date to end of day to avoid premature overdue status on the due date itself
+                const endOfDay = new Date(end);
+                endOfDay.setHours(23, 59, 59, 999);
 
-                if (now >= start) {
+                if (now > endOfDay) {
+                    currentStatus = 'overdue';
+                } else if (now >= start) {
                     currentStatus = 'in-progress';
                 }
             }

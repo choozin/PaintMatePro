@@ -21,6 +21,7 @@ import AllQuotes from "@/pages/AllQuotes";
 import NotFound from "@/pages/not-found";
 import TimeTracking from "@/pages/TimeTracking";
 import Payroll from "@/pages/Payroll";
+import DevNotes from "@/pages/DevNotes";
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -96,6 +97,7 @@ function Router() {
           <Route path="/schedule" component={Schedule} />
           <Route path="/time-tracking" component={TimeTracking} />
           <Route path="/payroll" component={Payroll} />
+          <Route path="/dev-notes" component={DevNotes} />
 
           {/* Settings Routes */}
           <Route path="/settings" component={AppSettings} />

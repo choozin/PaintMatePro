@@ -26,14 +26,16 @@ interface ProjectDialogProps {
   mode?: "create" | "edit";
   onSuccess?: () => void;
   defaultClientId?: string;
+  defaultStartDate?: string;
+  defaultOpen?: boolean;
 }
 
-export function ProjectDialog({ project, trigger, mode = "create", onSuccess, defaultClientId }: ProjectDialogProps) {
-  const [open, setOpen] = useState(false);
+export function ProjectDialog({ project, trigger, mode = "create", onSuccess, defaultClientId, defaultStartDate, defaultOpen }: ProjectDialogProps) {
+  const [open, setOpen] = useState(defaultOpen || false);
   const [name, setName] = useState("");
   const [clientId, setClientId] = useState(defaultClientId || "");
   const [location, setLocation] = useState("");
-  const [startDate, setStartDate] = useState("");
+  const [startDate, setStartDate] = useState(defaultStartDate || "");
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
   const [status, setStatus] = useState<ProjectStatus>(project?.status || "new");
 

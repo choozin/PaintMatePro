@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Project, ProjectEvent, Timestamp } from "@/lib/firestore";
+import { useState, useMemo } from "react";
+import { Project, ProjectEvent, Timestamp, projectOperations, quoteOperations, clientOperations } from "@/lib/firestore";
 import { getDerivedStatus } from "@/lib/project-status";
+import { getProjectTimelineEvents } from "@/lib/timelineUtils";
 import { useUpdateProject } from "@/hooks/useProjects";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,8 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, Clock, CheckCircle2, AlertCircle, FileText, CalendarCheck, Calendar } from "lucide-react";
 import { format } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
+import { QuickAddDialog } from "./QuickAddDialog";
+import { TaskDetailsDialog } from "./TaskDetailsDialog";
 import { v4 as uuidv4 } from "uuid";
 import { cn } from "@/lib/utils";
 import { ProjectDialog } from "@/components/ProjectDialog";
@@ -45,75 +49,104 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
     const [notes, setNotes] = useState("");
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-    // Implicitly add core events if they don't exist in the timeline
-    const timeline = [...(project.timeline || [])];
+    // New additions
+    const [quickAddOpen, setQuickAddOpen] = useState(false);
+    const [quickAddTab, setQuickAddTab] = useState("task");
+    const [selectedTask, setSelectedTask] = useState<Project | null>(null);
+    const [taskDetailsOpen, setTaskDetailsOpen] = useState(false);
 
-    // 1. Lead Created...
-    if (!timeline.some(e => e.type === 'lead_created')) {
-        timeline.push({
-            id: 'implicit-lead',
-            type: 'lead_created',
-            label: 'Lead Created',
-            date: project.createdAt || null as any,
-            notes: 'Project created'
-        });
-    }
-
-    if (!timeline.some(e => e.type === 'started') && project.startDate) {
-        timeline.push({
-            id: 'implicit-start',
-            type: 'started',
-            label: 'Project Started',
-            date: project.startDate,
-            notes: 'Booked start date'
-        });
-    }
-
-    // Implicit Due/Start Date Logic
-    // If we have a start date but no end date, suggest adding end date.
-    // If we have NO start date, suggest adding start date.
-    const hasDueDate = timeline.some(e => e.label === 'Project Due');
-
-    if (!project.startDate) {
-        // Case 1: No Start Date - Prompt to add it
-        timeline.push({
-            id: 'implicit-start-missing',
-            type: 'scheduled',
-            label: 'Project Start',
-            date: null as any,
-            notes: 'Date not set'
-        });
-    } else if (!hasDueDate && !project.estimatedCompletion) {
-        // Case 2: Has Start, No End - Prompt to add End
-        timeline.push({
-            id: 'implicit-due-missing',
-            type: 'scheduled',
-            label: 'Project Completion',
-            date: null as any,
-            notes: 'Date not set'
-        });
-    } else if (!hasDueDate && project.estimatedCompletion) {
-        // Case 3: Has End Date (Normal)
-        timeline.push({
-            id: 'implicit-due',
-            type: 'scheduled',
-            label: 'Project Due',
-            date: project.estimatedCompletion,
-            notes: 'Estimated completion date'
-        });
-    }
-
-    // Sort ASCENDING (Past -> Future)
-    const sortedTimeline = timeline.sort((a, b) => {
-        const dateA = a.date?.seconds || 0;
-        const dateB = b.date?.seconds || 0;
-
-        // Ensure prompt items (null date) appear at the END (future)
-        if (!a.date) return 1;
-        if (!b.date) return -1;
-
-        return dateA - dateB;
+    // Fetch linked tasks
+    const { data: linkedTasks = [] } = useQuery({
+        queryKey: ['projects', 'linked', project.id],
+        queryFn: () => projectOperations.getByLinkedProject(project.id),
+        enabled: !!project.id
     });
+
+    // Fetch Quotes for Timeline
+    const { data: quotes = [] } = useQuery({
+        queryKey: ['quotes', 'project', project.id],
+        queryFn: () => quoteOperations.getByProject(project.id),
+        enabled: !!project.id
+    });
+
+    // Fetch Client
+    const { data: clientData } = useQuery({
+        queryKey: ['client', project.clientId],
+        queryFn: () => clientOperations.get(project.clientId),
+        enabled: !!project.clientId
+    });
+
+    // Unified Timeline Events
+    const unifiedEvents = useMemo(() => {
+        return getProjectTimelineEvents(project, clientData, quotes);
+    }, [project, clientData, quotes]);
+
+    // Merge Tasks into Timeline
+    const displayItems = useMemo(() => {
+        // Filter out future events to clean up the view
+        const visibleEvents = unifiedEvents.filter(e =>
+            e.status === 'completed' ||
+            e.status === 'pending' ||
+            (e.status === 'future' && e.id === 'project_due') // Show due date target
+        );
+
+        const items: any[] = [...visibleEvents];
+
+        // Merge manual notes/events
+        const customEvents = (project.timeline || []).filter(e =>
+            !['lead_created', 'project_created', 'quote_provided', 'quote_accepted', 'started', 'scheduled', 'finished', 'invoice_provided', 'invoice_paid'].includes(e.type)
+        );
+
+        customEvents.forEach(e => {
+            items.push({
+                id: e.id,
+                label: e.label,
+                date: e.date?.toDate ? e.date.toDate() : new Date(),
+                status: 'completed',
+                notes: e.notes,
+                type: 'custom',
+                order: 99 // Custom events go to bottom or sort by date? User said "static order".
+                // Let's rely on date for custom events, but insert them relative to the static order if possible.
+                // Actually, simply putting them at the end or mixing them by date might break the "static" feel.
+                // For now, let's keep them sorted by date but AFTER the static structure if undefined.
+                // Better approach: User wants static lines. Custom notes are extra.
+            });
+        });
+
+        // Linked tasks
+        linkedTasks.forEach(task => {
+            items.push({
+                isTask: true,
+                id: task.id,
+                date: task.startDate instanceof Timestamp ? task.startDate.toDate() : (task.startDate ? new Date(task.startDate) : null),
+                label: task.name,
+                type: task.type === 'appointment' ? 'appointment' : 'task',
+                notes: task.notes,
+                original: task,
+                status: 'future',
+                order: 99
+            });
+        });
+
+        // Sort: Primary by Order (if exists), Secondary by Date
+        return items.sort((a, b) => {
+            if (a.order !== undefined && b.order !== undefined) {
+                return a.order - b.order;
+            }
+            if (a.order !== undefined) {
+                // a has order, b doesn't. a comes first.
+                return -1;
+            }
+            if (b.order !== undefined) {
+                // b has order, a doesn't. b comes first.
+                return 1;
+            }
+
+            const dateA = a.date ? (a.date instanceof Date ? a.date.getTime() : a.date.toDate().getTime()) : 9999999999999;
+            const dateB = b.date ? (b.date instanceof Date ? b.date.getTime() : b.date.toDate().getTime()) : 9999999999999;
+            return dateA - dateB;
+        });
+    }, [unifiedEvents, project.timeline, linkedTasks]);
 
     const now = new Date();
 
@@ -133,6 +166,7 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
             notes,
         };
 
+        const timeline = project.timeline || [];
         const newTimeline = [...timeline, newEvent];
 
         // Auto-update status mapping using time-aware logic
@@ -151,121 +185,193 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
         setCustomLabel("");
     };
 
+    // Helper to format date safely
+    const formatDate = (d: any) => {
+        if (!d) return null;
+        const dateObj = d.toDate ? d.toDate() : d;
+        return format(dateObj, "MMM d, yyyy");
+    };
+
+    // Helper to navigate or execute action
+    const handleAction = (action: any) => {
+        if (action.link) {
+            window.location.href = action.link; // Or use wouter location
+        } else if (action.onClick) {
+            action.onClick();
+        } else if (action.label === 'Set Start' || action.label === 'ADD START DATE') {
+            // handled via dialog trigger in render
+        }
+    };
+
     return (
         <Card className="h-full flex flex-col">
-            <CardHeader className="flex flex-row items-center justify-between py-4">
-                <CardTitle className="text-lg">Timeline</CardTitle>
-                <Dialog open={isOpen} onOpenChange={setIsOpen}>
-                    <DialogTrigger asChild>
-                        <Button size="sm" variant="outline">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Event
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Add Timeline Event</DialogTitle>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid gap-2">
-                                <Label>Event Type</Label>
-                                <Select
-                                    value={eventType}
-                                    onValueChange={(v) => setEventType(v as ProjectEvent['type'])}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {EVENT_TYPES.map(t => (
-                                            <SelectItem key={t.type} value={t.type}>
-                                                {t.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            {eventType === 'custom' && (
+            <CardHeader className="flex flex-col gap-3 py-4">
+                <div className="flex flex-row items-center justify-between">
+                    <CardTitle className="text-lg">Timeline</CardTitle>
+                </div>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => { setQuickAddTab('event'); setQuickAddOpen(true); }}>
+                        <CalendarCheck className="h-4 w-4 mr-2" />
+                        Add Event
+                    </Button>
+                    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                        <DialogTrigger asChild>
+                            <Button size="sm" variant="outline">
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Note
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Add Timeline Note</DialogTitle>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
                                 <div className="grid gap-2">
-                                    <Label>Label</Label>
+                                    <Label>Event Type</Label>
+                                    <Select
+                                        value={eventType}
+                                        onValueChange={(v) => setEventType(v as ProjectEvent['type'])}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {EVENT_TYPES.map(t => (
+                                                <SelectItem key={t.type} value={t.type}>
+                                                    {t.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {eventType === 'custom' && (
+                                    <div className="grid gap-2">
+                                        <Label>Label</Label>
+                                        <Input
+                                            value={customLabel}
+                                            onChange={e => setCustomLabel(e.target.value)}
+                                            placeholder="e.g. Permit Approved"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="grid gap-2">
+                                    <Label>Date</Label>
                                     <Input
-                                        value={customLabel}
-                                        onChange={e => setCustomLabel(e.target.value)}
-                                        placeholder="e.g. Permit Approved"
+                                        type="date"
+                                        value={date}
+                                        onChange={e => setDate(e.target.value)}
                                     />
                                 </div>
-                            )}
 
-                            <div className="grid gap-2">
-                                <Label>Date</Label>
-                                <Input
-                                    type="date"
-                                    value={date}
-                                    onChange={e => setDate(e.target.value)}
-                                />
+                                <div className="grid gap-2">
+                                    <Label>Notes</Label>
+                                    <Textarea
+                                        value={notes}
+                                        onChange={e => setNotes(e.target.value)}
+                                        placeholder="Optional details..."
+                                    />
+                                </div>
+
+                                <Button onClick={handleAddEvent}>Save Event</Button>
                             </div>
-
-                            <div className="grid gap-2">
-                                <Label>Notes</Label>
-                                <Textarea
-                                    value={notes}
-                                    onChange={e => setNotes(e.target.value)}
-                                    placeholder="Optional details..."
-                                />
-                            </div>
-
-                            <Button onClick={handleAddEvent}>Save Event</Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto pl-4 pr-1">
                 <div className="relative border-l border-muted ml-2 space-y-6 pb-4">
-                    {sortedTimeline.length === 0 && (
+                    {displayItems.length === 0 && (
                         <div className="text-sm text-muted-foreground pl-6 italic">No history yet.</div>
                     )}
-                    {sortedTimeline.map((event, i) => {
-                        const typeDef = EVENT_TYPES.find(t => t.type === event.type) || EVENT_TYPES[EVENT_TYPES.length - 1];
+                    {displayItems.map((event, i) => {
+                        // Handle Task Items
+                        if (event.isTask) {
+                            const isPast = event.date && (event.date.seconds * 1000 < now.getTime());
+                            return (
+                                <div key={event.id} className={cn("relative pl-6 transition-opacity duration-300", isPast ? "opacity-90" : "")}>
+                                    <div className={cn(
+                                        "absolute -left-1.5 top-1 h-3 w-3 rounded-full shadow-sm ring-2 ring-background",
+                                        event.type === 'appointment' ? 'bg-blue-500' : 'bg-green-500'
+                                    )} />
+                                    <div className="flex flex-col gap-1 cursor-pointer hover:bg-muted/10 p-1 rounded" onClick={() => { setSelectedTask(event.original); setTaskDetailsOpen(true); }}>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                {event.type === 'appointment' ? <Clock className="h-3 w-3 text-blue-500" /> : <FileText className="h-3 w-3 text-green-500" />}
+                                                <span className="font-semibold text-sm">{event.label}</span>
+                                            </div>
+                                            <span className="text-xs text-muted-foreground mr-2">
+                                                {event.date?.toDate ? format(event.date.toDate(), "MMM d, yyyy") : "TBD"}
+                                            </span>
+                                        </div>
+                                        {event.notes && (
+                                            <p className="text-xs text-muted-foreground bg-muted p-2 rounded truncate max-w-[300px]">
+                                                {event.notes}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }
 
-                        // Check if event is in the past
-                        const eventDate = event.date?.toDate ? event.date.toDate() : new Date(); // timestamp to date
-                        const isPast = eventDate.getTime() < now.getTime();
+                        // Handle Standard Events
+                        const typeDef = EVENT_TYPES.find(t => t.type === event.type) || EVENT_TYPES[EVENT_TYPES.length - 1];
+                        // Convert Timestamp or Date to Date object for comparison
+                        const eventDateObj = event.date ? (event.date.toDate ? event.date.toDate() : event.date) : null;
+                        const isPast = eventDateObj ? eventDateObj.getTime() < now.getTime() : false;
+
+                        // Check if actionable pending item
+                        const isActionable = event.action && event.status === 'pending';
 
                         return (
                             <div key={event.id} className={cn("relative pl-6 transition-opacity duration-300", isPast ? "opacity-60 grayscale-[50%] hover:opacity-100 hover:grayscale-0" : "")}>
                                 <div className={cn(
                                     "absolute -left-1.5 top-1 h-3 w-3 rounded-full shadow-sm ring-2 ring-background",
-                                    typeDef.color // Use brightness directly from updated array
+                                    isActionable ? "bg-red-500 animate-pulse" : (typeDef.color || "bg-gray-400")
                                 )} />
                                 <div className="flex flex-col gap-1">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-sm">{event.label}</span>
-                                        {event.id === 'implicit-start-missing' ? (
-                                            <ProjectDialog
-                                                project={project}
-                                                mode="edit"
-                                                trigger={
-                                                    <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-amber-600 hover:text-amber-700 hover:bg-transparent font-medium flex items-center">
-                                                        <Clock className="w-3 h-3 mr-1" />
-                                                        You haven't added a start date yet. Click here to add one.
-                                                    </Button>
-                                                }
-                                            />
-                                        ) : event.id === 'implicit-due-missing' ? (
-                                            <ProjectDialog
-                                                project={project}
-                                                mode="edit"
-                                                trigger={
-                                                    <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-amber-600 hover:text-amber-700 hover:bg-transparent font-medium flex items-center">
-                                                        <Clock className="w-3 h-3 mr-1" />
-                                                        You haven't added an end date yet. Click here to add one.
-                                                    </Button>
-                                                }
-                                            />
+                                    <div className="flex items-center justify-between min-h-[24px]">
+                                        {isActionable ? (
+                                            /* ACTION BUTTON REPLACEMENT */
+                                            event.action.label === 'Set Start' || event.action.label === 'ADD START DATE' ? (
+                                                <ProjectDialog
+                                                    project={project}
+                                                    mode="edit"
+                                                    trigger={
+                                                        <Button variant="destructive" size="sm" className="h-8 px-4 text-xs w-full justify-center">
+                                                            {event.action.label}
+                                                        </Button>
+                                                    }
+                                                />
+                                            ) : event.action.label === 'Set Due Date' || event.action.label === 'SET DUE DATE' ? (
+                                                <ProjectDialog
+                                                    project={project}
+                                                    mode="edit"
+                                                    trigger={
+                                                        <Button variant="destructive" size="sm" className="h-8 px-4 text-xs w-full justify-center">
+                                                            {event.action.label}
+                                                        </Button>
+                                                    }
+                                                />
+                                            ) : (
+                                                <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    className="h-8 px-4 text-xs font-bold w-full justify-center" // "attention grabbing"
+                                                    onClick={() => handleAction(event.action)}
+                                                >
+                                                    {event.action.label}
+                                                </Button>
+                                            )
                                         ) : (
+                                            /* NORMAL LABEL */
+                                            <span className={cn("font-semibold text-sm", !isPast && "text-primary")}>{event.label}</span>
+                                        )}
+
+                                        {!isActionable && (
                                             <span className="text-xs text-muted-foreground mr-2">
-                                                {event.date?.toDate ? format(event.date.toDate(), "MMM d, yyyy") : "Unknown Date"}
+                                                {formatDate(event.date) || (event.status === 'pending' ? "Pending" : "")}
                                             </span>
                                         )}
                                     </div>
@@ -280,6 +386,19 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
                     })}
                 </div>
             </CardContent>
+            <QuickAddDialog
+                open={quickAddOpen}
+                onOpenChange={setQuickAddOpen}
+                initialLinkedProjectId={project.id}
+                defaultTab={quickAddTab}
+                hiddenTabs={['project']}
+                onSuccess={() => { /* maybe invalidate query */ }}
+            />
+            <TaskDetailsDialog
+                open={taskDetailsOpen}
+                onOpenChange={setTaskDetailsOpen}
+                task={selectedTask}
+            />
         </Card>
     );
 }

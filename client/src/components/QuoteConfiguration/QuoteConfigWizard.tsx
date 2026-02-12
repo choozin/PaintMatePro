@@ -251,7 +251,7 @@ export function QuoteConfigWizard({ initialConfig, onComplete, onCancel }: Quote
     return (
         <div className="flex gap-6 h-full w-full max-w-7xl mx-auto p-4">
             {/* Wizard Column - Hidden on mobile if preview is shown */}
-            <Card className={`flex-1 min-w-0 flex flex-col shadow-lg border-2 h-full ${showMobilePreview ? 'hidden xl:flex' : 'flex'}`}>
+            <Card className={`flex-1 min-w-0 min-h-0 flex flex-col shadow-lg border-2 h-full ${showMobilePreview ? 'hidden xl:flex' : 'flex'}`}>
                 <CardHeader className="border-b bg-muted/10 shrink-0 space-y-0 pb-4">
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 text-primary font-bold">

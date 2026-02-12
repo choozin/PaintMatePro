@@ -52,7 +52,7 @@ export default function TimeTracking() {
         ? employees
         : employees.filter(e => {
             const crew = crews.find(c => c.id === selectedCrewId);
-            return crew?.memberIds.includes(e.id);
+            return crew?.memberIds?.includes(e.id);
         });
 
     const navigateWeek = (direction: 'prev' | 'next') => {

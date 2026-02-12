@@ -10,12 +10,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, Upload, Palette, Image as ImageIcon, X } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
+import { hasPermission } from "@/lib/permissions";
+
 export function BrandingSettings() {
-    const { currentOrgId, currentOrgRole } = useAuth();
+    const { currentOrgId, currentOrgRole, currentPermissions } = useAuth();
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const canEdit = currentOrgRole === 'owner' || currentOrgRole === 'admin';
+    const canEdit = hasPermission(currentPermissions, 'manage_org');
 
     const [branding, setBranding] = useState({
         companyName: '',
@@ -172,7 +174,7 @@ export function BrandingSettings() {
     };
 
     const removeLogo = async () => {
-        if (!branding.logoUrl) return;
+        if (!branding.logoUrl || !currentOrgId) return;
 
         try {
             // Only delete from storage if it's a Firebase Storage URL

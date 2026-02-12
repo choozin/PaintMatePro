@@ -238,8 +238,11 @@
         "app": {
             "title": "Application Settings",
             "description": "Manage global application preferences.",
-            "language": "Language",
-            "language_desc": "Select your preferred language."
+            "language": {
+                "title": "Language",
+                "description": "Select your preferred language.",
+                "label": "Select Language"
+            }
         }
     },
     "supplies": {

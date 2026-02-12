@@ -11,6 +11,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/useRooms";
 import { useProject, useUpdateProject } from "@/hooks/useProjects";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Room, MiscMeasurement } from "@/lib/firestore";
 import { isIOS } from "@/lib/deviceDetection";
 import { ARRoomScanner, type ARScanData, type ARMode } from "./ARRoomScanner";
@@ -21,6 +22,15 @@ const ALL_AR_MODES: ARMode[] = ['hit-test', 'plane-detection', 'pose-based'];
 interface RoomMeasurementProps {
   projectId: string;
   onNext?: () => void;
+}
+
+// Helper to stabilize dependencies
+function useDeepCompareMemoize<T>(value: T) {
+  const ref = useRef<T>(value);
+  if (JSON.stringify(value) !== JSON.stringify(ref.current)) {
+    ref.current = value;
+  }
+  return ref.current;
 }
 
 interface LocalRoom {
@@ -66,6 +76,7 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
   const deleteRoom = useDeleteRoom();
   const updateProject = useUpdateProject();
   const { toast } = useToast();
+  const { currentOrgId } = useAuth();
   const { entitlements, hasFeature } = useEntitlements();
 
   const [localRooms, setLocalRooms] = useState<LocalRoom[]>([]);
@@ -82,24 +93,50 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
   const [arError, setArError] = useState<string | null>(null);
   const manualEntryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!isLoading && rooms) {
-      setLocalRooms(rooms.map(room => ({
-        ...room,
-        id: room.id || '',
-        type: room.type || 'interior', // Default to interior for legacy
-        length: String(room.length),
-        width: String(room.width),
-        height: String(room.height)
-      })));
-    }
-  }, [isLoading, rooms]);
+  const miscDirtyRef = useRef(false);
+
+  // Stabilize rooms array to prevent infinite loop if useQuery returns new ref every time
+  const stableRooms = useDeepCompareMemoize(rooms);
 
   useEffect(() => {
-    if (project?.globalMiscItems) {
-      setLocalMiscItems(project.globalMiscItems);
+    if (!isLoading && stableRooms) {
+      setLocalRooms(prev => {
+        // Map server rooms
+        const serverRooms = stableRooms.map(room => ({
+          ...room,
+          id: room.id || '',
+          type: room.type || 'interior', // Default to interior for legacy
+          length: String(room.length),
+          width: String(room.width),
+          height: String(room.height)
+        }));
+
+        const serverFunc = (id: string) => serverRooms.find(r => r.id === id);
+
+        // Keep local rooms that are:
+        // 1. New (unsaved)
+        // 2. Saved (have ID) but not yet in server response (optimistic/lag)
+
+        const localOnly = prev.filter(r => {
+          if (r.isNew) return true; // Keep unsaved
+          if (r.id && !serverFunc(r.id)) return true; // Keep optimistic saved
+          return false;
+        });
+
+        return [...serverRooms, ...localOnly];
+      });
     }
-  }, [project?.globalMiscItems]);
+  }, [isLoading, stableRooms]);
+
+  // Stabilize misc items
+  const stableMiscItems = useDeepCompareMemoize(project?.globalMiscItems);
+
+  useEffect(() => {
+    // Only sync misc items if we don't have unsaved local changes
+    if (stableMiscItems && !miscDirtyRef.current) {
+      setLocalMiscItems(stableMiscItems);
+    }
+  }, [stableMiscItems]);
 
   const addRoom = (type: 'interior' | 'exterior' = 'interior') => {
     // Entitlement Check for Exterior
@@ -143,22 +180,75 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
 
   const saveRoom = async (index: number) => {
     const room = localRooms[index];
-    if (!room.name || !room.length || !room.width || !room.height) { // Exterior might not need height? For now keep consistent schema
-      return toast({ variant: "destructive", title: "Validation Error", description: "Please fill in all measurements" });
+    // Validate inputs
+    const l = parseFloat(room.length);
+    const w = parseFloat(room.width);
+    const h = parseFloat(room.height);
+
+    if (!room.name || isNaN(l) || isNaN(w) || isNaN(h)) {
+      // For exterior, width might be hidden/unused, handle if needed.
+      // But assuming the loop logic relies on it.
+      // Current UI has hidden input for width in exterior.
+      // If empty string, parseFloat is NaN.
+      // We should default hidden width to 0 for exterior if it's really unused?
+      // Let's rely on strict validation for now but check if exterior.
+
+      if (room.type === 'exterior' && ((isNaN(w) || w <= 0))) {
+        // allow NaN/0 width for exterior
+      } else {
+        return toast({ variant: "destructive", title: "Validation Error", description: "Please ensure all dimensions are valid positive numbers." });
+      }
     }
+
+    // Additional strict check for interior negative input just in case
+    if (l < 0 || h < 0) {
+      return toast({ variant: "destructive", title: "Validation Error", description: "Dimensions cannot be negative." });
+    }
+
     const roomData = {
       projectId,
       name: room.name,
       type: room.type,
-      length: parseFloat(room.length),
-      width: parseFloat(room.width),
-      height: parseFloat(room.height)
+      length: l || 0,
+      width: (room.type === 'exterior' && isNaN(w)) ? 0 : w,
+      height: h || 0
     };
-    if (room.isNew) await createRoom.mutateAsync(roomData as any);
-    else if (room.id) await updateRoom.mutateAsync({ id: room.id, data: roomData });
+    if (room.isNew) {
+      try {
+        console.log("Saving new room. Data:", roomData, "Current OrgId:", currentOrgId);
+        if (!roomData.projectId) {
+          console.error("Project ID is missing!");
+          toast({ variant: "destructive", title: "Error", description: "Project ID is missing. Cannot save." });
+          return;
+        }
+
+        const newId = await createRoom.mutateAsync(roomData as any);
+        console.log("Room saved with ID:", newId);
+
+        toast({ title: "Room Saved", description: `${room.name} has been added.` });
+
+        // Update local state to reflect saved status immediately
+        // This + the useEffect logic ensures the room stays visible without duplication
+        updateLocalRoom(index, 'id', newId);
+        setLocalRooms(prev => prev.map((r, i) => i === index ? { ...r, id: newId, isNew: false, hasChanges: false } : r));
+
+      } catch (e: any) {
+        console.error("Error saving room:", e);
+        toast({
+          variant: "destructive",
+          title: "Save Failed",
+          description: e.message || "Could not save room. Check console for details."
+        });
+      }
+    }
+    else if (room.id) {
+      await updateRoom.mutateAsync({ id: room.id, data: roomData });
+      toast({ title: "Saved", description: `${room.name} updated.` });
+    }
   };
 
   const addMiscItem = () => {
+    miscDirtyRef.current = true;
     setLocalMiscItems(prev => [...prev, {
       id: crypto.randomUUID(),
       name: "New Item",
@@ -173,16 +263,29 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
     const newItems = [...localMiscItems];
     newItems.splice(index, 1);
     setLocalMiscItems(newItems);
-    await updateProject.mutateAsync({ id: projectId, data: { globalMiscItems: newItems } });
-    toast({ title: "Deleted", description: "Misc item removed." });
+    miscDirtyRef.current = true; // Mark dirty so we don't overwrite with old server data before saving
+
+    // Auto-save on delete? Original code did:
+    // await updateProject.mutateAsync({ id: projectId, data: { globalMiscItems: newItems } });
+    // If we auto-save, we can clear dirty.
+
+    try {
+      await updateProject.mutateAsync({ id: projectId, data: { globalMiscItems: newItems } });
+      miscDirtyRef.current = false; // Sync is safe again
+      toast({ title: "Deleted", description: "Misc item removed." });
+    } catch (error) {
+      miscDirtyRef.current = true; // Keep dirty if save failed
+    }
   };
 
   const updateMiscItem = (index: number, field: keyof MiscMeasurement, value: any) => {
+    miscDirtyRef.current = true;
     setLocalMiscItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
   };
 
   const saveMiscItems = async () => {
     await updateProject.mutateAsync({ id: projectId, data: { globalMiscItems: localMiscItems } });
+    miscDirtyRef.current = false;
     toast({ title: "Saved", description: "Misc items saved." });
   };
 

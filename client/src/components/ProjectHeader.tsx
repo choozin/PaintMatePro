@@ -1,12 +1,12 @@
 import React from "react";
 import { useLocation } from "wouter";
-import { Project, ProjectStatus } from "@/lib/firestore";
+import { Project, ProjectStatus, Client, quoteOperations, Timestamp } from "@/lib/firestore";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
     ArrowLeft, Phone, Mail, MapPin,
-    Calendar, PenSquare, User, Clock, ChevronRight, MessageSquare
+    Calendar, PenSquare, User, Clock, ChevronRight, MessageSquare, CheckCircle2, AlertCircle
 } from "lucide-react";
 import { ProjectTimelineSheet } from "@/components/ProjectTimelineSheet";
 import { ProjectDialog } from "@/components/ProjectDialog";
@@ -14,9 +14,15 @@ import { useTranslation } from "react-i18next";
 import { cn, getContrastColor } from "@/lib/utils";
 import { format } from "date-fns";
 import { CrewManagementDialog } from "@/components/CrewManagementDialog";
+import { getProjectTimelineEvents } from "@/lib/timelineUtils";
+import { getDerivedStatus } from "@/lib/project-status";
+import { useQuery } from "@tanstack/react-query";
+import { crewOperations, projectOperations } from "@/lib/firestore";
+import { useUpdateProject } from "@/hooks/useProjects";
 
 interface ProjectHeaderProps {
     project: Project & { id: string };
+    client?: Client | null;
     clientName?: string;
     clientPhone?: string;
     clientMobilePhone?: string;
@@ -24,14 +30,10 @@ interface ProjectHeaderProps {
     className?: string;
 }
 
-import { getDerivedStatus } from "@/lib/project-status";
-
-import { useQuery } from "@tanstack/react-query";
-import { crewOperations } from "@/lib/firestore";
-
-export function ProjectHeader({ project, clientName, clientPhone, clientMobilePhone, clientEmail, className }: ProjectHeaderProps) {
+export function ProjectHeader({ project, client, clientName, clientPhone, clientMobilePhone, clientEmail, className }: ProjectHeaderProps) {
     const [, setLocation] = useLocation();
     const { t } = useTranslation();
+    const updateProject = useUpdateProject();
 
     const displayStatus = getDerivedStatus(project.timeline, project.status, project.startDate, project.estimatedCompletion);
 
@@ -41,6 +43,16 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
         queryFn: () => crewOperations.get(project.assignedCrewId!),
         enabled: !!project.assignedCrewId
     });
+
+    // Fetch Quotes for Timeline
+    const { data: quotes = [] } = useQuery({
+        queryKey: ['quotes', 'project', project.id],
+        queryFn: () => quoteOperations.getByProject(project.id),
+        enabled: !!project.id
+    });
+
+    // Unified Timeline Events
+    const timelineEvents = getProjectTimelineEvents(project, client, quotes);
 
     // Status Logic
     const statusColors: Record<string, string> = {
@@ -55,6 +67,7 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
         paid: "bg-green-100 text-green-800 border-green-200",
         "on-hold": "bg-rose-100 text-rose-700 border-rose-200",
         pending: "bg-gray-100 text-gray-700 border-gray-200",
+        overdue: "bg-red-100 text-red-700 border-red-500 animate-pulse font-bold text-md px-4 border-2", // Custom prominent style
     };
 
     const handleCall = () => {
@@ -66,8 +79,8 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
     };
 
     const handleMap = () => {
-        if (project.location) {
-            const query = encodeURIComponent(project.location);
+        if (project.address) {
+            const query = encodeURIComponent(project.address);
             window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
         }
     };
@@ -76,62 +89,6 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
         if (clientEmail) window.location.href = `mailto:${clientEmail}`;
     };
 
-    // Date Logic
-    // Date Logic
-    const now = new Date();
-
-    // Helper to safely get Date object
-    const getDate = (d: any) => {
-        if (!d) return null;
-        if (typeof d.toDate === 'function') return d.toDate();
-        return new Date(d);
-    };
-
-    // Sort timeline by date
-    const sortedTimeline = [...(project.timeline || [])].sort((a: any, b: any) => {
-        const dateA = getDate(a.date)?.getTime() || 0;
-        const dateB = getDate(b.date)?.getTime() || 0;
-        return dateA - dateB;
-    });
-
-    const pastEvents = sortedTimeline.filter(e => {
-        const d = getDate(e.date);
-        return d && d.getTime() <= now.getTime();
-    });
-
-    const futureEvents = sortedTimeline.filter(e => {
-        const d = getDate(e.date);
-        return d && d.getTime() > now.getTime();
-    });
-
-    const latestEvent = pastEvents.length > 0
-        ? pastEvents[pastEvents.length - 1]
-        : { label: 'Project Created', date: project.createdAt };
-
-    // Determine Next Step
-    let nextStepObj = null;
-
-    if (futureEvents.length > 0) {
-        nextStepObj = {
-            label: futureEvents[0].label,
-            date: futureEvents[0].date
-        };
-    } else {
-        // Fallback to existing logic if no specific future events are logged
-        const startDate = getDate(project.startDate);
-        const completionDate = getDate(project.estimatedCompletion);
-
-        // If status suggests we haven't started, and startDate is future
-        if ((project.status === 'lead' || project.status === 'quoted' || project.status === 'booked') && startDate && startDate > now) {
-            nextStepObj = { label: "Booked Start", date: project.startDate };
-        } else if (completionDate && completionDate > now) {
-            nextStepObj = { label: "Due Date", date: project.estimatedCompletion };
-        }
-    }
-
-    const nextStepLabel = nextStepObj?.label;
-    const nextStepDate = nextStepObj?.date;
-
     const formatPhoneNumber = (phoneNumber: string) => {
         const cleaned = ('' + phoneNumber).replace(/\D/g, '');
         const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
@@ -139,6 +96,48 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
             return '(' + match[1] + ') ' + match[2] + '-' + match[3];
         }
         return phoneNumber;
+    };
+
+
+    // Determine Current/Next Steps from Unified Timeline
+    // Filter out "Invoice" steps for Current/Next if they are just pending placeholders?
+    // User wants to see "Awaiting Invoice" if project is completed.
+
+    // Find the last completed event
+    const completedEvents = timelineEvents.filter(e => e.status === 'completed');
+    const currentStep = completedEvents.length > 0 ? completedEvents[completedEvents.length - 1] : timelineEvents[0];
+
+    // Find the first pending/future event
+    // IMPORTANT: timelineEvents includes "Project Completed" but we removed it from timelineUtils output?
+    // Wait, I removed it from the *returned* array in timelineUtils. So it is GONE from here too?
+    // If so, `currentStep` might miss 'Completed'.
+    // Actually, I can check project status. If Status is 'overdue', it overrides next step?
+
+    const futureEvents = timelineEvents.filter(e => e.status === 'pending' || e.status === 'future');
+    const nextStep = futureEvents.length > 0 ? futureEvents[0] : null;
+
+    const handleToggleComplete = async () => {
+        const isCompleted = ['completed', 'invoiced', 'paid'].includes(project.status);
+        if (isCompleted) {
+            // Revert to in-progress? Or just un-complete?
+            // Simplest is to set back to 'in-progress' and clear completedAt
+            await updateProject.mutateAsync({
+                id: project.id,
+                data: {
+                    status: 'in-progress',
+                    completedAt: null as any // Hack to clear field if needed, or undefined
+                }
+            });
+        } else {
+            // Mark complete
+            await updateProject.mutateAsync({
+                id: project.id,
+                data: {
+                    status: 'completed',
+                    completedAt: Timestamp.now()
+                }
+            });
+        }
     };
 
     return (
@@ -150,6 +149,19 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
                     Back
                 </Button>
                 <div className="flex gap-2">
+                    {/* Complete Project Toggle */}
+                    <Button
+                        size="sm"
+                        variant={['completed', 'invoiced', 'paid'].includes(project.status) ? "default" : "outline"}
+                        className={cn(
+                            ['completed', 'invoiced', 'paid'].includes(project.status) ? "bg-teal-600 hover:bg-teal-700" : "border-teal-600/50 text-teal-700 hover:bg-teal-50"
+                        )}
+                        onClick={handleToggleComplete}
+                    >
+                        {['completed', 'invoiced', 'paid'].includes(project.status) ? <CheckCircle2 className="h-4 w-4 mr-2" /> : <div className="h-4 w-4 mr-2 border-2 border-current rounded-full" />}
+                        {['completed', 'invoiced', 'paid'].includes(project.status) ? "Completed" : "Mark Complete"}
+                    </Button>
+
                     <ProjectDialog
                         project={project}
                         mode="edit"
@@ -188,7 +200,8 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
                             }
                         />
                     )}
-                    <Badge className={cn("text-sm px-3 py-1", statusColors[displayStatus] || "bg-gray-100")}>
+                    <Badge className={cn("text-sm transition-all", statusColors[displayStatus] || "bg-gray-100", displayStatus === 'overdue' && "shadow-lg scale-105")}>
+                        {displayStatus === 'overdue' && <AlertCircle className="w-4 h-4 mr-2" />}
                         {t(`projects.status.${displayStatus.replace("-", "_")}`, { defaultValue: displayStatus.replace(/-/g, ' ').toUpperCase() })}
                     </Badge>
                 </div>
@@ -208,14 +221,14 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
                     {/* Location */}
                     <div>
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Location</p>
-                        {project.location ? (
+                        {project.address ? (
                             <Button
                                 variant="outline"
                                 className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-red-500 hover:bg-red-50"
                                 onClick={handleMap}
                             >
                                 <MapPin className="h-5 w-5 mr-3 text-red-600 shrink-0" />
-                                <span className="truncate text-left">{project.location}</span>
+                                <span className="truncate text-left">{project.address}</span>
                             </Button>
                         ) : (
                             <ProjectDialog
@@ -307,24 +320,31 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
                         {/* Current Step Card */}
                         <div className="relative border-l-2 border-indigo-200 pl-4 py-2 space-y-4 bg-muted/20 rounded-r-lg p-4">
                             {/* Current Step */}
-                            <div>
-                                <p className="text-xs text-muted-foreground">Current Step</p>
-                                <p className="font-medium text-sm">{latestEvent.label}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {latestEvent.date?.toDate ? format(latestEvent.date.toDate(), "MMM d, yyyy") : "Unknown Date"}
-                                </p>
-                            </div>
+                            {currentStep && (
+                                <div>
+                                    <p className="text-xs text-muted-foreground">Current Step</p>
+                                    <p className="font-medium text-sm">{currentStep.label}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {currentStep.date ? format(currentStep.date instanceof Date ? currentStep.date : currentStep.date.toDate(), "MMM d, yyyy") : "Completed"}
+                                    </p>
+                                </div>
+                            )}
                             <div className="absolute left-[-5px] top-[20px] w-2 h-2 rounded-full bg-indigo-500" />
 
                             {/* Next Step */}
-                            {nextStepDate && (
+                            {nextStep && (
                                 <div className="opacity-75">
                                     <p className="text-xs text-muted-foreground">Next Step</p>
-                                    <p className="font-medium text-sm">{nextStepLabel}</p>
+                                    <p className="font-medium text-sm">{nextStep.label}</p>
                                     <div className="flex items-center gap-2">
                                         <p className="text-xs text-muted-foreground">
-                                            {nextStepDate?.toDate ? format(nextStepDate.toDate(), "MMM d, yyyy") : "TBD"}
+                                            {nextStep.date ? format(nextStep.date instanceof Date ? nextStep.date : nextStep.date.toDate(), "MMM d, yyyy") : "Pending"}
                                         </p>
+                                        {nextStep.action && (
+                                            <Button variant="ghost" className="h-auto p-0 text-xs text-primary underline-offset-4 hover:underline" onClick={nextStep.action.onClick} disabled={nextStep.action.disabled}>
+                                                {nextStep.action.label}
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -336,7 +356,7 @@ export function ProjectHeader({ project, clientName, clientPhone, clientMobilePh
                             trigger={
                                 <Button variant="outline" className="w-auto self-start border-dashed border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300">
                                     <Calendar className="h-4 w-4 mr-2" />
-                                    View Full Timeline
+                                    View/Modify Project Timeline
                                 </Button>
                             }
                         />

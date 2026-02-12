@@ -1,21 +1,24 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Briefcase } from "lucide-react";
-import { useState } from "react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Briefcase, Clock, Lock } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useProjects } from "@/hooks/useProjects";
 import { Timestamp } from "firebase/firestore";
 import { useLocation } from "wouter";
 import { cn, getContrastColor } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { crewOperations } from "@/lib/firestore";
+import { Crew, crewOperations, employeeOperations, Project, ProjectStatus } from "@/lib/firestore";
+import { QuickAddDialog } from "./QuickAddDialog";
+import { TaskDetailsDialog } from "./TaskDetailsDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { hasPermission } from "@/lib/permissions";
 
 import { Users } from "lucide-react";
 import { CREW_PALETTES, PAUSE_STYLE } from "@/lib/crew-palettes";
 
-type ViewMode = 'week' | 'month';
+type ViewMode = 'week' | 'month' | 'day';
 
 export function CrewScheduler() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -23,8 +26,13 @@ export function CrewScheduler() {
   const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null);
   const { data: projects = [], isLoading } = useProjects();
   const [, setLocation] = useLocation();
-  const { currentOrgId, org } = useAuth();
+  const { currentOrgId, org, claims, user, currentPermissions } = useAuth();
   const enableTeam = org?.enableTeamFeatures !== false; // Default true
+
+  // PERMISSION CHECK: Use granular permission instead of role check
+  const canManageSchedule = hasPermission(currentPermissions, 'manage_schedule') ||
+    claims?.globalRole === 'platform_owner' ||
+    claims?.globalRole === 'platform_admin';
 
   const [selectedCrewId, setSelectedCrewId] = useState<string>("all");
 
@@ -32,6 +40,30 @@ export function CrewScheduler() {
     queryKey: ['crews', currentOrgId],
     queryFn: () => currentOrgId ? crewOperations.getByOrg(currentOrgId) : Promise.resolve([]),
     enabled: !!currentOrgId && enableTeam
+  });
+
+  // Self-Correction for Field Workers:
+  // If user cannot manage schedule, force select their assigned crew
+  useQuery({
+    queryKey: ['myEmployeeRecord', user?.uid],
+    queryFn: async () => {
+      if (!user?.email || !currentOrgId) return null;
+      const employees = await employeeOperations.getByOrg(currentOrgId);
+      // Find employee by email - simplistic but works for now. Ideally userId link.
+      const me = employees.find(e => e.email === user.email);
+      if (me && !canManageSchedule) {
+        // Find crew this employee belongs to
+        const myCrew = crews.find(c => c.memberIds?.includes(me.id));
+        if (myCrew) {
+          setSelectedCrewId(myCrew.id);
+        } else {
+          // Determine if we should show "Unassigned" or empty
+          setSelectedCrewId("mine_only");
+        }
+      }
+      return me;
+    },
+    enabled: !!user && !!currentOrgId && !canManageSchedule && crews.length > 0
   });
 
   const daysHeaders = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -51,6 +83,7 @@ export function CrewScheduler() {
 
   // 1. Generate Calendar Dates Flattened
   const getFlattenedDates = () => {
+    if (viewMode === 'day') return [currentDate]; // Not used for day view but safe fallback
     if (viewMode === 'week') {
       const start = getStartOfWeek(currentDate);
       return Array.from({ length: 7 }, (_, i) => {
@@ -82,8 +115,10 @@ export function CrewScheduler() {
   // 2. Group into Weeks
   const flattenedDates = getFlattenedDates();
   const weeks: Date[][] = [];
-  for (let i = 0; i < flattenedDates.length; i += 7) {
-    weeks.push(flattenedDates.slice(i, i + 7));
+  if (viewMode !== 'day') {
+    for (let i = 0; i < flattenedDates.length; i += 7) {
+      weeks.push(flattenedDates.slice(i, i + 7));
+    }
   }
 
   // 3. Status Colors Map
@@ -118,8 +153,14 @@ export function CrewScheduler() {
 
     // Filter projects touching this week AND match crew filter
     const relevantProjects = projects.filter(p => {
-      // SOLO MODE: Rename 'selectedCrewId' logic to check if filtering active
-      if (enableTeam && selectedCrewId !== "all" && p.assignedCrewId !== selectedCrewId) return false;
+      // Role & Filter Check
+      if (enableTeam && selectedCrewId !== "all") {
+        // If specific crew selected (or forced)
+        if (p.assignedCrewId !== selectedCrewId) return false;
+      }
+      // If "mine_only" and no crew found, maybe logic to show nothing or unassigned? 
+      // For now, simplify: if "mine_only", effectively shows nothing unless logic improved to find individual assigns.
+      if (selectedCrewId === 'mine_only') return false;
 
       if (!p.startDate) return false;
 
@@ -143,7 +184,6 @@ export function CrewScheduler() {
     });
 
     // Assign tracks
-    // Simple greedy packing: for each project, pick first available track
     const items: Array<{
       project: any,
       startDayIdx: number,
@@ -151,7 +191,9 @@ export function CrewScheduler() {
       isStart: boolean,
       isEnd: boolean,
       trackIndex: number,
-      isIndefinite: boolean
+      isIndefinite: boolean,
+      isSingleDay: boolean,
+      startTimeDisplay?: string
     }> = [];
 
     // Tracks state: trackIndex -> occupiedUntilDayIdx
@@ -165,9 +207,17 @@ export function CrewScheduler() {
 
       const isIndefinite = !project.estimatedCompletion;
 
+      // Determine Single Day status (Start and End on same calendar day)
+      const isSingleDay = pStart.toDateString() === pEnd.toDateString();
+
+      // Format Time if available (and not 00:00)
+      let startTimeDisplay = undefined;
+      if (pStart.getHours() !== 0 || pStart.getMinutes() !== 0) {
+        startTimeDisplay = pStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+
       // Clamp to this week
       // Calculate 0-6 index
-      // Start Index: if pStart < weekStart, then 0. Else (pStart - weekStart) in days
       let startIdx = 0;
       let isStart = false;
       if (pStart < weekStart) {
@@ -186,7 +236,6 @@ export function CrewScheduler() {
         endIdx = 6;
         isEnd = false; // Continues to next week
       } else {
-        // Calculate diff
         const diff = Math.floor((pEnd.getTime() - weekStart.getTime()) / 86400000);
         endIdx = Math.min(6, diff);
         isEnd = true;
@@ -197,8 +246,6 @@ export function CrewScheduler() {
 
       // Find Track
       // We need to know which tracks are free during [startIdx, endIdx]
-      // Actually, simplified greedy for "Ribbons" usually just needs to clear previous items on the same track.
-
       let assignedTrack = 0;
       while (true) {
         // Check collision with existing items on this track
@@ -220,7 +267,9 @@ export function CrewScheduler() {
         isStart,
         isEnd,
         trackIndex: assignedTrack,
-        isIndefinite
+        isIndefinite,
+        isSingleDay,
+        startTimeDisplay
       });
     });
 
@@ -230,12 +279,19 @@ export function CrewScheduler() {
 
   const navigate = (direction: 'prev' | 'next') => {
     const newDate = new Date(currentDate);
-    if (viewMode === 'week') {
+    if (viewMode === 'day') {
+      newDate.setDate(currentDate.getDate() + (direction === 'next' ? 1 : -1));
+    } else if (viewMode === 'week') {
       newDate.setDate(currentDate.getDate() + (direction === 'next' ? 7 : -7));
     } else {
       newDate.setMonth(currentDate.getMonth() + (direction === 'next' ? 1 : -1));
     }
     setCurrentDate(newDate);
+  };
+
+  const handleDayClick = (date: Date) => {
+    setCurrentDate(date);
+    setViewMode('day');
   };
 
   const isToday = (date: Date) => {
@@ -245,42 +301,14 @@ export function CrewScheduler() {
       date.getFullYear() === today.getFullYear();
   };
 
+  const isWeekend = (date: Date) => {
+    const d = date.getDay();
+    return d === 0 || d === 6; // Sun or Sat
+  };
+
   const isCurrentMonth = (date: Date) => {
     return date.getMonth() === currentDate.getMonth();
   };
-
-  const getProjectsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    return projects.filter(p => {
-      if (!p.startDate) return false;
-      let start: Date;
-      if (p.startDate && typeof (p.startDate as any).toDate === 'function') {
-        start = (p.startDate as any).toDate();
-      } else {
-        start = new Date(p.startDate as any);
-      }
-
-      let end: Date;
-      if (p.estimatedCompletion) {
-        if (typeof (p.estimatedCompletion as any).toDate === 'function') {
-          end = (p.estimatedCompletion as any).toDate();
-        } else {
-          end = new Date(p.estimatedCompletion as any);
-        }
-      } else {
-        end = new Date(start.getTime() + (3 * 24 * 60 * 60 * 1000));
-      }
-
-      const pStartStr = start.toISOString().split('T')[0];
-      const pEndStr = end.toISOString().split('T')[0];
-
-      return dateStr >= pStartStr && dateStr <= pEndStr;
-    });
-  };
-
-  if (isLoading) {
-    return <div className="p-8 text-center text-muted-foreground">Loading schedule...</div>;
-  }
 
   // Helper: Get status for a specific date based on timeline
   const getStatusForDate = (project: any, targetDate: Date) => {
@@ -336,11 +364,150 @@ export function CrewScheduler() {
         }
       }
     }
-
     return activeStatus;
   };
 
+  /* --- DAY VIEW RENDERER --- */
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddDate, setQuickAddDate] = useState("");
 
+  // Task Details
+  const [selectedTask, setSelectedTask] = useState<Project | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const handleTimeSlotClick = (date: Date, hour: number) => {
+    if (!canManageSchedule) return;
+    const targetDate = new Date(date);
+    // Convert to simplified YYYY-MM-DD for the form
+    const year = targetDate.getFullYear();
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const day = String(targetDate.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
+    setQuickAddDate(dateStr);
+    setQuickAddOpen(true);
+  };
+
+  const handleItemClick = (e: React.MouseEvent, item: Project) => {
+    e.stopPropagation();
+    if (!item.type || item.type === 'project') {
+      setLocation(`/projects/${item.id}`);
+    } else {
+      setSelectedTask(item);
+      setDetailsOpen(true);
+    }
+  };
+
+  const renderDayView = () => {
+    // Filter items for this day
+    const dayStart = new Date(currentDate); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(currentDate); dayEnd.setHours(23, 59, 59, 999);
+
+    const items = projects.filter(p => {
+      if (enableTeam && selectedCrewId !== "all" && p.assignedCrewId !== selectedCrewId) return false;
+      if (!p.startDate) return false;
+      const pStart = toDate(p.startDate);
+      const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : new Date(pStart.getTime() + 3 * 86400000);
+      return pStart <= dayEnd && pEnd >= dayStart;
+    });
+
+    // Split into "All Day" vs "Time Specific"
+    const allDayItems = items.filter(p => {
+      const pStart = toDate(p.startDate);
+      const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : pStart;
+      // Logic: It's all day if it spans > 24h OR has no specific time (00:00)
+      return (pEnd.getTime() - pStart.getTime()) >= 86400000 || (pStart.getHours() === 0 && pStart.getMinutes() === 0);
+    });
+
+    const timedItems = items.filter(p => !allDayItems.includes(p));
+    timedItems.sort((a, b) => toDate(a.startDate).getTime() - toDate(b.startDate).getTime());
+
+    const hours = Array.from({ length: 14 }, (_, i) => i + 6); // 6am to 7pm
+
+    return (
+      <>
+        <Card>
+          <CardContent className="p-0 min-h-[600px] flex flex-col">
+            {/* Header All Day Section */}
+            {allDayItems.length > 0 && (
+              <div className="p-4 border-b bg-muted/20">
+                <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-2">All Day / Multi-Day</h3>
+                <div className="space-y-2">
+                  {allDayItems.map(p => (
+                    <div key={p.id} onClick={(e) => handleItemClick(e, p)} className={cn("p-2 rounded border cursor-pointer hover:shadow-md transition-all flex items-center justify-between", statusColors[getStatusForDate(p, currentDate)] || "bg-white")}>
+                      <span className="font-medium text-sm">{p.name}</span>
+                      {p.assignedCrewId && enableTeam && (
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: crews.find(c => c.id === p.assignedCrewId)?.color || '#ccc' }} />
+                          <span className="text-xs text-muted-foreground">{crews.find(c => c.id === p.assignedCrewId)?.name}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Hourly Grid */}
+            <div className="flex-1 relative overflow-y-auto">
+              {hours.map(hour => (
+                <div
+                  key={hour}
+                  onClick={() => handleTimeSlotClick(currentDate, hour)}
+                  className={cn(
+                    "flex border-b min-h-[60px] group transition-colors",
+                    canManageSchedule ? "cursor-pointer hover:bg-muted/5" : ""
+                  )}
+                  title={canManageSchedule ? "Click to add item" : ""}
+                >
+                  <div className="w-16 flex-shrink-0 text-right pr-4 py-2 text-xs text-muted-foreground border-r bg-muted/10 font-medium">
+                    {hour > 12 ? `${hour - 12} PM` : hour === 12 ? `12 PM` : `${hour} AM`}
+                  </div>
+                  <div className="flex-1 relative p-1">
+                    {/* Render events starting in this hour */}
+                    {timedItems.filter(p => toDate(p.startDate).getHours() === hour && toDate(p.startDate).toDateString() === currentDate.toDateString()).map(p => (
+                      <div
+                        key={p.id}
+                        onClick={(e) => handleItemClick(e, p)}
+                        className={cn("absolute left-2 right-2 top-1 bottom-1 rounded p-2 text-xs border cursor-pointer hover:scale-[1.01] transition-all shadow-sm z-10", statusColors[getStatusForDate(p, currentDate)])}
+                      >
+                        <div className="font-bold flex items-center gap-2">
+                          <span className="opacity-75">{toDate(p.startDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                          <span>{p.name}</span>
+                        </div>
+                        {p.assignedCrewId && <div className="mt-1 text-[10px] opacity-80">{crews.find(c => c.id === p.assignedCrewId)?.name}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {/* Empty State for Times */}
+              {timedItems.length === 0 && allDayItems.length === 0 && (
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/40 font-medium pointer-events-none">
+                  No events scheduled for this day
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <QuickAddDialog
+          open={quickAddOpen}
+          onOpenChange={setQuickAddOpen}
+          defaultDate={quickAddDate}
+          onSuccess={() => { }}
+        />
+        <TaskDetailsDialog
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+          task={selectedTask}
+        />
+      </>
+    );
+  };
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-muted-foreground">Loading schedule...</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -353,15 +520,20 @@ export function CrewScheduler() {
         <div className="flex items-center gap-4">
           {enableTeam && (
             <div className="w-[200px]">
-              <Select value={selectedCrewId} onValueChange={setSelectedCrewId}>
+              <Select
+                value={selectedCrewId}
+                onValueChange={setSelectedCrewId}
+                disabled={!canManageSchedule} // Lock validation
+              >
                 <SelectTrigger className="h-9">
                   <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
+                    {canManageSchedule ? <Users className="h-4 w-4 text-muted-foreground" /> : <Lock className="h-3 w-3 text-muted-foreground" />}
                     <SelectValue placeholder="All Crews" />
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Crews</SelectItem>
+                  {canManageSchedule && <SelectItem value="all">All Crews</SelectItem>}
+                  <SelectItem value="mine_only" disabled className="hidden">My Assignments</SelectItem> {/* Hidden fallback */}
                   {crews.map(crew => (
                     <SelectItem key={crew.id} value={crew.id}>
                       <div className="flex items-center gap-2">
@@ -370,12 +542,25 @@ export function CrewScheduler() {
                       </div>
                     </SelectItem>
                   ))}
+                  {!canManageSchedule && crews.map(crew => (
+                    /* Only render current crew if locked? Or just rely on value being set */
+                    <div key="noop"></div>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
           )}
 
           <div className="flex bg-muted rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('day')}
+              className={cn(
+                "px-3 py-1 text-sm font-medium rounded-md transition-all",
+                viewMode === 'day' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Day
+            </button>
             <button
               onClick={() => setViewMode('week')}
               className={cn(
@@ -401,9 +586,11 @@ export function CrewScheduler() {
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-sm font-medium min-w-[140px] text-center">
-              {viewMode === 'week'
-                ? `Week of ${getStartOfWeek(currentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                : currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+              {viewMode === 'day'
+                ? currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric' })
+                : viewMode === 'week'
+                  ? `Week of ${getStartOfWeek(currentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                  : currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
               }
             </span>
             <Button variant="outline" size="icon" onClick={() => navigate('next')} data-testid="button-next">
@@ -413,195 +600,186 @@ export function CrewScheduler() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0 select-none">
-          {/* Calendar Header */}
-          <div className="grid grid-cols-7 border-b bg-muted/40 text-muted-foreground">
-            {daysHeaders.map((day) => (
-              <div key={day} className="py-2 text-center text-xs font-semibold uppercase tracking-wider">
-                {day}
-              </div>
-            ))}
-          </div>
+      {viewMode === 'day' ? renderDayView() : (
+        <Card>
+          <CardContent className="p-0 select-none">
+            {/* Calendar Header */}
+            <div className="grid grid-cols-7 border-b bg-muted/40 text-muted-foreground">
+              {daysHeaders.map((day) => (
+                <div key={day} className="py-2 text-center text-xs font-semibold uppercase tracking-wider">
+                  {day}
+                </div>
+              ))}
+            </div>
 
-          {/* Calendar Body */}
-          <div className="border-l border-b">
-            {weeks.map((week, weekIndex) => {
-              // Calculate layout for this week
-              const { items } = getLayoutForWeek(week);
+            {/* Calendar Body */}
+            <div className="border-l border-b">
+              {weeks.map((week, weekIndex) => {
+                // Calculate layout for this week
+                const { items } = getLayoutForWeek(week);
 
-              return (
-                <div key={weekIndex} className="relative min-h-[120px] bg-background border-b hover:bg-muted/5 transition-colors group/week">
-                  {/* Grid Lines (Background) */}
-                  <div className="absolute inset-0 grid grid-cols-7 pointer-events-none">
-                    {week.map((date, dayIdx) => (
-                      <div
-                        key={dayIdx}
-                        className={cn(
-                          "border-r h-full transition-colors",
-                          isToday(date) ? "bg-blue-50/40" : "",
-                          viewMode === 'month' && !isCurrentMonth(date) ? "bg-muted/10 border-r-muted/50" : ""
-                        )}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Day Numbers Layer */}
-                  <div className="absolute inset-0 grid grid-cols-7 pointer-events-none">
-                    {week.map((date, dayIdx) => (
-                      <div key={dayIdx} className="p-2">
-                        <span
-                          className={cn(
-                            "text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full transition-colors",
-                            isToday(date)
-                              ? "bg-blue-600 text-white shadow-sm"
-                              : viewMode === 'month' && !isCurrentMonth(date)
-                                ? "text-muted-foreground/50"
-                                : "text-muted-foreground group-hover/week:text-foreground"
-                          )}
-                        >
-                          {date.getDate()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Ribbon Layer */}
-                  <div className="relative pt-10 pb-2 px-1 grid grid-cols-7 gap-y-1">
-                    {items.map((item) => {
-                      const projectDaysInWeek = Array.from({ length: item.duration }, (_, i) => {
-                        const d = new Date(week[0]);
-                        d.setDate(d.getDate() + item.startDayIdx + i);
-                        return d;
-                      });
-
-                      const isHovered = hoveredProjectId === item.project.id;
-
-                      return (
+                return (
+                  <div key={weekIndex} className="relative min-h-[120px] bg-background border-b hover:bg-muted/5 transition-colors group/week">
+                    {/* Layer 1: Visual Grid Lines (Background) */}
+                    <div className="absolute inset-0 grid grid-cols-7 pointer-events-none z-0">
+                      {week.map((date, dayIdx) => (
                         <div
-                          key={`${item.project.id}-${weekIndex}`}
-                          onMouseEnter={() => setHoveredProjectId(item.project.id)}
-                          onMouseLeave={() => setHoveredProjectId(null)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setLocation(`/projects/${item.project.id}`);
-                          }}
+                          key={dayIdx}
                           className={cn(
-                            "cursor-pointer relative h-10 transition-all duration-200",
-                            isHovered ? "shadow-xl -translate-y-[2px] z-20" : "shadow-md", // Global hover effect
-                            item.isStart ? "ml-1" : "-ml-1",
-                            item.isEnd ? "mr-1" : "-mr-1",
+                            "border-r h-full transition-colors relative",
+                            isToday(date) ? "bg-blue-50/30 w-full border-l-2 border-l-red-500" : "",
+                            isWeekend(date) ? "bg-slate-100/60" : "", // Darker weekend shading
+                            viewMode === 'month' && !isCurrentMonth(date) ? "bg-muted/10 border-r-muted/50" : ""
                           )}
-                          style={{
-                            gridColumnStart: item.startDayIdx + 1,
-                            gridColumnEnd: `span ${item.duration}`,
-                            gridRow: item.trackIndex + 1,
-                            WebkitMask: item.isIndefinite ? "linear-gradient(to right, black 33%, transparent 100%)" : "none",
-                            mask: item.isIndefinite ? "linear-gradient(to right, black 33%, transparent 100%)" : "none",
-                          }}
-                          title={`${item.project.name} (${item.project.status})${item.isIndefinite ? " - No End Date Set" : ""}`}
-                        >
-                          {/* Segmented Background Layer */}
-                          <div className="absolute inset-0 flex rounded-md overflow-hidden">
-                            {projectDaysInWeek.map((dayDate, i) => {
-                              const status = getStatusForDate(item.project, dayDate);
+                        />
+                      ))}
+                    </div>
 
-                              // Determine Style
-                              let colorClass = statusColors[status] || "bg-gray-100 border-gray-200";
+                    {/* Layer 2: Click Capture Overlay (Transparent, Interactive) */}
+                    <div className="absolute inset-0 grid grid-cols-7 z-[5]">
+                      {week.map((date, dayIdx) => (
+                        <div
+                          key={dayIdx}
+                          onClick={() => handleDayClick(date)}
+                          className="cursor-pointer hover:bg-black/5 transition-colors"
+                          title="Click to view full day"
+                        />
+                      ))}
+                    </div>
 
-                              if (status === 'paused') {
-                                colorClass = PAUSE_STYLE;
-                              } else if (['booked', 'in-progress'].includes(status) && item.project.assignedCrewId) {
-                                // Try to use Crew Palette
-                                const crew = crews.find(c => c.id === item.project.assignedCrewId);
-                                if (crew?.paletteId) {
-                                  const palette = CREW_PALETTES.find(p => p.id === crew.paletteId);
-                                  if (palette) colorClass = palette.class;
-                                } else if (crew?.color) {
-                                  // Fallback to simpler dynamic style if no palette but has color
-                                  // Note: Tailwind doesn't support dynamic bg-[color] interpolation easily without safelist
-                                  // So we might rely on the style attribute for background if we wanted, 
-                                  // but we used classes in standard. 
-                                  // Let's stick to the palette class if available, or default status color.
-                                }
-                              }
+                    {/* Layer 3: Day Numbers (Visual, Non-Interactive) */}
+                    <div className="absolute inset-0 grid grid-cols-7 pointer-events-none z-[10]">
+                      {week.map((date, dayIdx) => (
+                        <div key={dayIdx} className={cn("p-2 border-t-2 border-transparent", isToday(date) && "border-primary")}>
+                          <span
+                            className={cn(
+                              "text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full transition-colors",
+                              isToday(date)
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : viewMode === 'month' && !isCurrentMonth(date)
+                                  ? "text-muted-foreground/50"
+                                  : "text-muted-foreground group-hover/week:text-foreground"
+                            )}
+                          >
+                            {date.getDate()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
 
-                              const dayStart = new Date(dayDate).setHours(0, 0, 0, 0);
-                              const dayEnd = new Date(dayDate).setHours(23, 59, 59, 999);
+                    {/* Layer 4: Ribbons (Interactive Content) */}
+                    <div className="relative pt-10 pb-2 px-1 grid grid-cols-7 gap-y-1 pointer-events-none z-[20]">
+                      {items.map((item) => {
+                        // Determines rendering style: Chip (Single) vs Ribbon (Multi)
 
-                              const eventsOnDay = item.project.timeline?.filter((e: any) => {
-                                const eTime = toDate(e.date).getTime();
-                                return eTime >= dayStart && eTime <= dayEnd;
-                              }) || [];
+                        const isHovered = hoveredProjectId === item.project.id;
 
-                              // Implicitly add Project Due event if matches day
-                              if (item.project.estimatedCompletion) {
-                                const dueTime = toDate(item.project.estimatedCompletion).getTime();
-                                if (dueTime >= dayStart && dueTime <= dayEnd) {
-                                  eventsOnDay.push({
-                                    type: 'scheduled',
-                                    label: 'Project Due'
-                                  });
-                                }
-                              }
+                        const projectDaysInWeek = Array.from({ length: item.duration }, (_, i) => {
+                          const d = new Date(week[0]);
+                          d.setDate(d.getDate() + item.startDayIdx + i);
+                          return d;
+                        });
 
-                              const labelEvent = eventsOnDay.find((e: any) =>
-                                ['paused', 'resumed', 'started', 'finished', 'completed', 'scheduled'].includes(e.type)
-                              ) || eventsOnDay[0];
+                        return (
+                          <div
+                            key={`${item.project.id}-${weekIndex}`}
+                            onMouseEnter={() => setHoveredProjectId(item.project.id)}
+                            onMouseLeave={() => setHoveredProjectId(null)}
+                            onClick={(e) => handleItemClick(e, item.project)}
+                            className={cn(
+                              "cursor-pointer relative h-8 transition-all duration-200 text-xs pointer-events-auto", // Enable pointer info
+                              isHovered ? "z-30 scale-[1.01]" : "z-10",
+                              // Styling specific to Type
+                              item.isSingleDay
+                                ? "rounded-full mx-1 shadow-sm hover:shadow-md border"
+                                : cn("shadow-md", item.isStart ? "rounded-l-md ml-1" : "-ml-1", item.isEnd ? "rounded-r-md mr-1" : "-mr-1")
+                            )}
+                            style={{
+                              gridColumnStart: item.startDayIdx + 1,
+                              gridColumnEnd: `span ${item.duration}`,
+                              gridRow: item.trackIndex + 1,
+                            }}
+                          >
+                            {/* --- SINGLE DAY RENDERER --- */}
+                            {item.isSingleDay ? (
+                              <div className={cn(
+                                "flex items-center h-full px-2 gap-2 overflow-hidden",
+                                // Helper to get color class - reuse logic
+                                (() => {
+                                  const status = getStatusForDate(item.project, projectDaysInWeek[0]);
+                                  if (['booked', 'in-progress'].includes(status) && item.project.assignedCrewId) {
+                                    const crew = crews.find(c => c.id === item.project.assignedCrewId);
+                                    if (crew?.paletteId) {
+                                      const scale = CREW_PALETTES.find(p => p.id === crew.paletteId);
+                                      return scale ? scale.class : "bg-primary/10 text-primary border-primary/20";
+                                    }
+                                  }
+                                  // Default fallback or status colors
+                                  return statusColors[status] || "bg-gray-100 border-gray-200 text-gray-700";
+                                })()
+                              )}>
+                                {item.startTimeDisplay && (
+                                  <span className="font-mono font-bold opacity-80 shrink-0 text-[10px]">
+                                    {item.startTimeDisplay}
+                                  </span>
+                                )}
+                                <span className="font-semibold truncate">{item.project.name}</span>
+                              </div>
+                            ) : (
+                              /* --- MULTI DAY RENDERER (Ribbon segments) --- */
+                              <div className="absolute inset-0 flex overflow-hidden rounded-inherit">
+                                {projectDaysInWeek.map((dayDate, i) => {
+                                  const status = getStatusForDate(item.project, dayDate);
+                                  let colorClass = statusColors[status] || "bg-gray-100 border-gray-200";
 
-                              return (
-                                <div
-                                  key={i}
-                                  className={cn(
-                                    "flex-1 h-full border-y border-r first:border-l relative group/segment",
-                                    colorClass,
-                                    "border-r-black/5"
-                                  )}
-                                  title={labelEvent ? `${labelEvent.label} (${status})` : status}
-                                >
-                                  {labelEvent && (
-                                    <span className="absolute left-1.5 top-0.5 text-[9px] font-bold uppercase tracking-tight opacity-90 truncate max-w-[150%] z-10 text-foreground/80 pointer-events-none">
-                                      {labelEvent.label}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
+                                  if (status === 'paused') {
+                                    colorClass = PAUSE_STYLE;
+                                  } else if (['booked', 'in-progress'].includes(status) && item.project.assignedCrewId) {
+                                    const crew = crews.find(c => c.id === item.project.assignedCrewId);
+                                    if (crew?.paletteId) {
+                                      const palette = CREW_PALETTES.find(p => p.id === crew.paletteId);
+                                      if (palette) colorClass = palette.class;
+                                    }
+                                  }
 
-                          {/* Main Project Label Layer */}
-                          {/* Always visible at the start of the ribbon segment (each row) */}
-                          {/* Standardized padding: pl-1.5 to match the event label's left-1.5 */}
-                          <div className="absolute inset-0 flex items-end px-0 py-1 pointer-events-none">
-                            <div className="flex items-center gap-1.5 pl-1.5 overflow-hidden">
-                              {enableTeam && item.project.assignedCrewId && (() => {
-                                const crew = crews.find(c => c.id === item.project.assignedCrewId);
-                                if (crew) {
                                   return (
                                     <div
-                                      className="w-2 h-2 rounded-full shrink-0 shadow-sm"
-                                      style={{ backgroundColor: crew.color || '#94a3b8' }}
-                                      title={`Assigned to ${crew.name}`}
-                                    />
+                                      key={i}
+                                      className={cn(
+                                        "flex-1 h-full border-y border-r first:border-l relative group/segment flex items-center px-1",
+                                        colorClass,
+                                        "border-r-black/5"
+                                      )}
+                                    >
+                                      {/* Label logic: Only on First segment OR Start of Project */}
+                                      {(i === 0 && item.isStart) && (
+                                        <div className="flex items-center gap-1.5 pl-1 overflow-hidden whitespace-nowrap">
+                                          {item.startTimeDisplay && (
+                                            <span className="text-[10px] bg-white/30 backdrop-blur-[1px] px-1 rounded-sm">
+                                              {item.startTimeDisplay}
+                                            </span>
+                                          )}
+                                          <span className="font-bold truncate text-[11px] drop-shadow-sm">
+                                            {item.project.name}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
                                   );
-                                }
-                                return null;
-                              })()}
-                              <span className="text-xs font-bold truncate leading-tight drop-shadow-sm text-foreground/90">
-                                {item.project.name}
-                              </span>
-                            </div>
+                                })}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

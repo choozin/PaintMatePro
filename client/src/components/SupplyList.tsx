@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCatalog } from "@/hooks/useCatalog";
 import { useDebounce } from "@/hooks/useDebounce";
 import { orgOperations } from "@/lib/firestore";
+import { hasPermission } from "@/lib/permissions";
 import {
     Dialog,
     DialogContent,
@@ -82,10 +83,10 @@ interface SupplyListProps {
 export function SupplyList({ projectId, onNext }: SupplyListProps) {
     const { data: rooms, isLoading: isLoadingRooms } = useRooms(projectId);
     const { data: project, isLoading: isLoadingProject } = useProject(projectId);
-    const { currentOrgId, currentOrgRole } = useAuth();
+    const { currentOrgId, currentOrgRole, currentPermissions } = useAuth();
     const updateProject = useUpdateProject();
     const { t } = useTranslation();
-    const canManageDefaults = currentOrgRole === 'owner' || currentOrgRole === 'admin';
+    const canManageDefaults = hasPermission(currentPermissions, 'manage_org');
     const { toast } = useToast();
     const { items: catalogItems, loading: loadingCatalog } = useCatalog();
     const [isCatalogOpen, setIsCatalogOpen] = useState(false);

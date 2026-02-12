@@ -10,21 +10,25 @@ import { RoleGuard } from '@/components/RoleGuard';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'wouter';
 import { hasPermission, OrgRole } from '@/lib/permissions';
+import { RolesSettings } from '@/components/RolesSettings';
 import { GeneralSettings } from '@/components/GeneralSettings';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Organization() {
     const { t } = useTranslation();
     const [, setLocation] = useLocation();
-    const { currentOrgRole, org } = useAuth();
+    const { currentOrgRole, currentPermissions, org } = useAuth();
+
+    // Check permission to show tab
+    const canManageRoles = hasPermission(currentPermissions, 'manage_roles') || currentOrgRole === 'org_owner';
 
     // Redirect if can't manage org
     React.useEffect(() => {
         if (!currentOrgRole) return; // Wait for load
-        if (!hasPermission(currentOrgRole as OrgRole, 'manage_org')) {
+        if (!hasPermission(currentPermissions, 'manage_org')) {
             setLocation('/dashboard');
         }
-    }, [currentOrgRole, setLocation]);
+    }, [currentOrgRole, currentPermissions, setLocation]);
 
     return (
         <div className="container mx-auto py-8 space-y-8">
@@ -50,6 +54,14 @@ export default function Organization() {
                                 >
                                     Branding
                                 </TabsTrigger>
+                                {canManageRoles && (
+                                    <TabsTrigger
+                                        value="roles"
+                                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
+                                    >
+                                        Roles
+                                    </TabsTrigger>
+                                )}
                                 <TabsTrigger
                                     value="estimating"
                                     className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
@@ -84,6 +96,12 @@ export default function Organization() {
                                 <TabsContent value="branding">
                                     <BrandingSettings />
                                 </TabsContent>
+
+                                {canManageRoles && (
+                                    <TabsContent value="roles">
+                                        <RolesSettings />
+                                    </TabsContent>
+                                )}
 
                                 <TabsContent value="estimating">
                                     <EstimatingDefaultsCard />

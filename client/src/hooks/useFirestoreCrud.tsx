@@ -65,17 +65,20 @@ export function useFirestoreDocument<T>(
 export function useCreateFirestoreDocument<T>(
   collectionName: string,
   operations: FirestoreOperations<T>,
-  queryKeysToInvalidate: (string | null | undefined)[] = [] // New parameter
+  queryKeysToInvalidate: (string | null | undefined)[] = [], // New parameter
+  requireOrg: boolean = true
 ) {
   const queryClient = useQueryClient();
   const { currentOrgId: orgId } = useAuth();
 
   return useMutation({
     mutationFn: async (data: Omit<T, 'id' | 'createdAt' | 'updatedAt' | 'orgId'>) => {
-      if (!orgId) throw new Error('No organization selected');
+      if (requireOrg && !orgId) throw new Error('No organization selected');
       if (!operations.create) throw new Error(`create not implemented for ${collectionName}`);
-      // The data passed to operations.create should include orgId
-      return operations.create({ ...data, orgId } as Omit<T, 'createdAt' | 'updatedAt'>);
+      // The data passed to operations.create should include orgId if present
+      const finalData = { ...data };
+      if (orgId) (finalData as any).orgId = orgId;
+      return operations.create(finalData as Omit<T, 'createdAt' | 'updatedAt'>);
     },
     onSuccess: () => {
       if (orgId) {
@@ -92,7 +95,8 @@ export function useCreateFirestoreDocument<T>(
 export function useUpdateFirestoreDocument<T>(
   collectionName: string,
   operations: FirestoreOperations<T>,
-  queryKeysToInvalidate: (string | null | undefined)[] = [] // New parameter
+  queryKeysToInvalidate: (string | null | undefined)[] = [], // New parameter
+  requireOrg: boolean = true
 ) {
   const queryClient = useQueryClient();
   const { currentOrgId: orgId } = useAuth();
@@ -118,7 +122,8 @@ export function useUpdateFirestoreDocument<T>(
 export function useDeleteFirestoreDocument<T>( // Add <T> here
   collectionName: string,
   operations: FirestoreOperations<T>, // Change from any to T
-  queryKeysToInvalidate: (string | null | undefined)[] = [] // New parameter
+  queryKeysToInvalidate: (string | null | undefined)[] = [], // New parameter
+  requireOrg: boolean = true
 ) {
   const queryClient = useQueryClient();
   const { currentOrgId: orgId } = useAuth();

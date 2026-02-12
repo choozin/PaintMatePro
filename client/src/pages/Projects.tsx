@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ArrowUpDown, Filter } from "lucide-react";
 
 import { Crew } from "@/lib/firestore";
+import { QuickAddDialog } from "@/components/QuickAddDialog";
 
 function ProjectCardWithClient({ project, crews }: { project: Project & { id: string }, crews: Crew[] }) {
   const [, setLocation] = useLocation();
@@ -50,6 +51,8 @@ export default function Projects() {
   const searchString = useSearch();
   const queryParams = new URLSearchParams(searchString);
   const filterClientId = queryParams.get('clientId');
+  const createParam = queryParams.get('create');
+  const startParam = queryParams.get('start');
   const { data: filterClient } = useClient(filterClientId || null);
   const { currentOrgId } = useAuth();
   const [, setLocation] = useLocation();
@@ -67,12 +70,13 @@ export default function Projects() {
   });
 
   const filteredProjects = projects.filter((project) => {
+    const isProject = !project.type || project.type === 'project';
     const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesClient = filterClientId ? project.clientId === filterClientId : true;
     const matchesStatus = statusFilter === "all" || project.status === statusFilter;
     const matchesCrew = crewFilter === "all" || (project.assignedCrewId === crewFilter) || (crewFilter === 'unassigned' && !project.assignedCrewId);
 
-    return matchesSearch && matchesClient && matchesStatus && matchesCrew;
+    return isProject && matchesSearch && matchesClient && matchesStatus && matchesCrew;
   }).sort((a, b) => {
     if (sortBy === 'name') return a.name.localeCompare(b.name);
     if (sortBy === 'status') return a.status.localeCompare(b.status);
@@ -93,7 +97,12 @@ export default function Projects() {
           <h1 className="text-4xl font-bold">{t('projects.title')}</h1>
           <p className="text-muted-foreground mt-2">{t('projects.subtitle')}</p>
         </div>
-        <ProjectDialog mode="create" />
+        <QuickAddDialog
+          open={createParam === 'true'}
+          onOpenChange={(isOpen) => !isOpen && setLocation('/projects')}
+          defaultDate={startParam || undefined}
+          onSuccess={() => setLocation('/projects')}
+        />
       </div>
 
       <div className="flex flex-col md:flex-row gap-4">

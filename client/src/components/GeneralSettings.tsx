@@ -96,6 +96,43 @@ export function GeneralSettings() {
                     </div>
                 </CardContent>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <FileText className="h-5 w-5" />
+                        Default Quote Style
+                    </CardTitle>
+                    <CardDescription>Choose how line items are presented to clients by default.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label>Quote Format</Label>
+                        <Select
+                            value={org.defaultQuoteStyle || 'detailed'}
+                            onValueChange={(val: any) => handleQuoteStyleChange(val)}
+                        >
+                            <SelectTrigger className="w-full md:w-[300px]">
+                                <SelectValue placeholder="Select style" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="detailed">
+                                    <span className="font-medium block">Detailed Itemization</span>
+                                    <span className="text-xs text-muted-foreground">Show every item and labor hour separately.</span>
+                                </SelectItem>
+                                <SelectItem value="split">
+                                    <span className="font-medium block">Materials & Labor Split</span>
+                                    <span className="text-xs text-muted-foreground">Group all materials and all labor into two lines.</span>
+                                </SelectItem>
+                                <SelectItem value="bundled">
+                                    <span className="font-medium block">Bundled (Value Pricing)</span>
+                                    <span className="text-xs text-muted-foreground">Hide breakdown, show one total per room/area.</span>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }

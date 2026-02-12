@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useProject } from "@/hooks/useProjects";
 import { useClient } from "@/hooks/useClients";
@@ -21,6 +21,10 @@ export default function ProjectDetail() {
 
   const { data: project, isLoading: projectLoading } = useProject(projectId);
   const { data: client } = useClient(project?.clientId || null);
+
+  useEffect(() => {
+    // Debug logs removed
+  }, [project]);
 
   // Manage tab state for stepper
   const [activeTab, setActiveTabState] = React.useState("rooms");
@@ -66,6 +70,7 @@ export default function ProjectDetail() {
       {/* Header */}
       <ProjectHeader
         project={project}
+        client={client}
         clientName={client?.name}
         clientPhone={client?.phone}
         clientMobilePhone={client?.mobilePhone}

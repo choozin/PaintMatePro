@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import Settings from './Settings';
+import AppSettings from './AppSettings';
 
 // Mocking wouter's useLocation hook as it's a dependency in the component tree
 vi.mock('wouter', () => ({
@@ -10,7 +10,7 @@ vi.mock('wouter', () => ({
 describe('Settings Page', () => {
   it('renders the main heading', () => {
     // Render the component
-    render(<Settings />);
+    render(<AppSettings />);
 
     // Find the heading element
     const heading = screen.getByRole('heading', {
@@ -23,7 +23,7 @@ describe('Settings Page', () => {
   });
 
   it('renders the placeholder cards', () => {
-    render(<Settings />);
+    render(<AppSettings />);
 
     expect(screen.getByText(/general settings/i)).toBeInTheDocument();
     expect(screen.getByText(/user management/i)).toBeInTheDocument();

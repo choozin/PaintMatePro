@@ -33,6 +33,7 @@ const statusConfig: Record<string, { color: string; label: string }> = {
   paid: { color: "bg-green-100 text-green-800 border-green-200", label: "Paid" },
   "on-hold": { color: "bg-rose-100 text-rose-700 border-rose-200", label: "On Hold" },
   pending: { color: "bg-gray-100 text-gray-700 border-gray-200", label: "Accepted" },
+  overdue: { color: "bg-red-100 text-red-700 border-red-200", label: "Overdue" },
 };
 
 import { useTranslation } from "react-i18next";
@@ -58,11 +59,12 @@ export function ProjectCard({
   // Derive an accent color border based on status for the left edge
   const accentBorderColor =
     displayStatus === 'completed' || displayStatus === 'paid' ? 'border-l-teal-500' :
-      displayStatus === 'booked' ? 'border-l-sky-500' :
-        displayStatus === 'in-progress' ? 'border-l-emerald-500' :
-          displayStatus === 'quoted' ? 'border-l-purple-500' :
-            displayStatus === 'lead' ? 'border-l-slate-400' :
-              'border-l-transparent';
+      displayStatus === 'overdue' ? 'border-l-red-500' :
+        displayStatus === 'booked' ? 'border-l-sky-500' :
+          displayStatus === 'in-progress' ? 'border-l-emerald-500' :
+            displayStatus === 'quote_created' || displayStatus === 'quote_sent' ? 'border-l-purple-500' :
+              displayStatus === 'lead' ? 'border-l-slate-400' :
+                'border-l-transparent';
 
   return (
     <Card

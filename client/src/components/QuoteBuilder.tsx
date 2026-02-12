@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, FileText, Wand2, Save, Download, Copy, PlusCircle, X, Eye, EyeOff, PenTool, Check, Settings2 } from "lucide-react";
+import { Plus, Trash2, FileText, Wand2, Save, Download, Copy, PlusCircle, X, Eye, EyeOff, PenTool, Check, Settings2, Mail, RefreshCw, User, Calendar } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { SignaturePad } from "@/components/SignaturePad";
@@ -25,7 +25,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
-import { DEFAULT_QUOTE_CONFIG } from "@/types/quote-config";
+import { QuoteConfiguration, DEFAULT_QUOTE_CONFIG } from "@/types/quote-config";
 import { generateQuoteLinesV2, flattenQuoteLines } from "@/lib/quote-generator-v2";
 import { QuoteConfigWizard } from "./QuoteConfiguration/QuoteConfigWizard";
 
@@ -49,6 +49,8 @@ interface LineItem {
   unit: string;
   rate: number;
   unitCost?: number;
+  isHeader?: boolean;
+  amount?: number;
 }
 
 interface QuoteOption {
@@ -99,18 +101,44 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
   // Template State
   const [activeTemplateId, setActiveTemplateId] = useState<string>("");
+  const [customConfig, setCustomConfig] = useState<QuoteConfiguration | null>(null);
   const [showWizard, setShowWizard] = useState(false);
 
   // Initialize Template Selection
   useEffect(() => {
-    if (!activeTemplateId && org?.quoteTemplates) {
+    if (!activeTemplateId) {
+      // Default to Project's template priority, then Org's default, then fallback to empty (Standard)
       if (project?.quoteTemplateId) {
         setActiveTemplateId(project.quoteTemplateId);
-      } else if (org.defaultQuoteTemplateId) {
+      } else if (org?.defaultQuoteTemplateId) {
         setActiveTemplateId(org.defaultQuoteTemplateId);
       }
+      // If neither, we stay empty, which implies Standard Template (DEFAULT_QUOTE_CONFIG)
     }
   }, [project?.quoteTemplateId, org, activeTemplateId]);
+
+  const handleEmailPDF = () => {
+    if (!client || !client.email) {
+      toast({
+        variant: "destructive",
+        title: "No Email Found",
+        description: "This client has no email address on file.",
+      });
+      return;
+    }
+
+    const subject = `Quote for ${project?.name || 'Project'}`;
+    const body = `Hi ${client.name},\n\nPlease find attached the quote for ${project?.name}.\n\nBest regards,\n${user?.displayName || 'The Team'}`;
+
+    // Note: We cannot attach files via mailto. User must attach manually.
+    const mailtoLink = `mailto:${client.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoLink;
+
+    toast({
+      title: "Email Client Opened",
+      description: "Please attach the generated PDF manually.",
+    });
+  };
 
   const handleSignatureSave = async (signatureData: string) => {
     setSignature(signatureData);
@@ -335,9 +363,9 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
     if (!project) return;
 
-    let activeConfig = DEFAULT_QUOTE_CONFIG;
+    let activeConfig = customConfig || DEFAULT_QUOTE_CONFIG;
 
-    if (org && org.quoteTemplates) {
+    if (!customConfig && org && org.quoteTemplates) {
       const targetId = activeTemplateId || project?.quoteTemplateId || org.defaultQuoteTemplateId;
       if (targetId) {
         const tmpl = org.quoteTemplates.find(t => t.id === targetId);
@@ -370,6 +398,7 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
   const handleTemplateChange = async (templateId: string) => {
     setActiveTemplateId(templateId);
+    setCustomConfig(null); // Reset custom config when template changes
     try {
       await updateProject.mutateAsync({
         id: projectId,
@@ -841,488 +870,340 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
   return (
     <div className="space-y-6">
 
-      {showWizard && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-background w-full max-w-6xl h-[90vh] rounded-lg shadow-lg overflow-hidden border">
-            <QuoteConfigWizard
-              initialConfig={(() => {
-                // Calculate current active config to start wizard with
-                if (org && org.quoteTemplates) {
-                  const targetId = activeTemplateId || project?.quoteTemplateId || org.defaultQuoteTemplateId;
-                  if (targetId) {
-                    const tmpl = org.quoteTemplates.find(t => t.id === targetId);
-                    if (tmpl) return tmpl.config;
-                  }
-                }
-                return DEFAULT_QUOTE_CONFIG;
-              })()}
-              onComplete={(newConfig) => {
-                const generated = generateQuoteLinesV2(project as any, rooms as any[], newConfig);
-                const flat = flattenQuoteLines(generated);
-                setLineItems(flat);
-                setShowWizard(false);
-                toast({ title: "Applied Configuration", description: "Quote lines regenerated." });
-              }}
-              onCancel={() => setShowWizard(false)}
-            />
-          </div>
-        </div>
-      )}
+      <div className="flex flex-col space-y-4">
+        {/* Top Controls Bar */}
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-card p-4 rounded-xl shadow-sm border border-border/40">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleRegenerateClick}
+              className="bg-amber-400 hover:bg-amber-500 text-amber-950 font-semibold shadow-sm border border-amber-500/20"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Regenerate Items
+            </Button>
 
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          <h2 className="text-2xl font-semibold">Quote Builder</h2>
-        </div>
-
-        {/* Template Selector */}
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          {org && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Template:</span>
-              <Select
-                value={activeTemplateId || "default"}
-                onValueChange={(val) => handleTemplateChange(val === 'default' ? "" : val)}
-                disabled={!org.quoteTemplates || org.quoteTemplates.length === 0}
-              >
-                <SelectTrigger className="h-9 bg-background">
-                  <SelectValue placeholder={
-                    (!org.quoteTemplates || org.quoteTemplates.length === 0)
-                      ? "No Templates Found"
-                      : "Default Template"
-                  } />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">
-                    <span className="text-muted-foreground">Org Default</span>
-                  </SelectItem>
-                  {org.quoteTemplates?.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setShowWizard(true)} title="Configure New Template">
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleRegenerateClick}
-            disabled={rooms.length === 0}
-            data-testid="button-generate-from-rooms"
-          >
-            <Wand2 className="h-4 w-4 mr-2" />
-            Regenerate Quote from Project Data
-          </Button>
-          <Button onClick={addLineItem} data-testid="button-add-line-item">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Line Item
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1">
-          <Label>Status</Label>
-          <Select value={status} onValueChange={(val: any) => setStatus(val)}>
-            <SelectTrigger className={
-              status === 'accepted' ? 'border-green-500 text-green-700 bg-green-50' :
-                status === 'sent' ? 'border-blue-500 text-blue-700 bg-blue-50' : ''
-            }>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="sent">Sent</SelectItem>
-              <SelectItem value="accepted">Accepted</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {createdByName && (
-            <div className="mt-4">
-              <Label className="text-muted-foreground text-xs">Created By</Label>
-              <div className="text-sm font-medium">{createdByName}</div>
-            </div>
-          )}
-        </div>
-        <div className="md:col-span-2">
-          <Label>Client Notes</Label>
-          <Input
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder="Optional notes for the customer (e.g. 'Includes 5% spring discount')"
-          />
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => toast({ title: "Coming Soon", description: "Email/SMS feature in development" })} disabled={isSaving}>
-            <span className="mr-2">✉️</span>
-            Send Quote Link
-          </Button>
-
-          <Button onClick={() => saveQuote()} disabled={isSaving} data-testid="button-save-quote">
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? "Saving..." : "Save Quote"}
-          </Button>
-
-          {showDigitalSign && (
-            <Dialog open={isSignatureDialogOpen} onOpenChange={setIsSignatureDialogOpen}>
+            <Dialog open={showWizard} onOpenChange={setShowWizard}>
               <DialogTrigger asChild>
-                <Button variant="outline" className={signature ? "border-green-500 text-green-600 hover:text-green-700" : ""}>
-                  <PenTool className="h-4 w-4 mr-2" />
-                  {signature ? "Signed" : "Sign Quote"}
+                <Button variant="outline" size="sm" className="text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900 shadow-sm">
+                  <Settings2 className="h-4 w-4 mr-2 text-slate-500" />
+                  Template Settings
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Customer Signature</DialogTitle>
-                </DialogHeader>
-                <SignaturePad onSave={handleSignatureSave} onCancel={() => setIsSignatureDialogOpen(false)} />
+              <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0 overflow-hidden bg-slate-50/50 backdrop-blur-sm">
+                <QuoteConfigWizard
+                  onComplete={async (newConfig) => {
+                    setShowWizard(false);
+                    setCustomConfig(newConfig);
+                    // Defer generation to ensure state update, though strictly not necessary if passing direct, 
+                    // but we want the "Regenerate" button to work later too.
+                    setTimeout(() => generateFromRooms(false), 0);
+                  }}
+                  onCancel={() => setShowWizard(false)}
+                />
               </DialogContent>
             </Dialog>
-          )}
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <span className={`text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-500 font-medium uppercase tracking-wider ${status === 'accepted' ? 'bg-green-100 text-green-700' : ''}`}>
+              {status}
+            </span>
+            {showTiers && (
+              <div className="flex border rounded-lg p-0.5 bg-muted/20">
+                {/* Tier tabs would go here if cleaner implementation needed, reused existing logic below for now */}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {signature && (
-        <Card className="border-green-200 bg-green-50/30">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
-              <h3 className="font-medium text-green-800 flex items-center gap-2">
-                <Check className="h-4 w-4" />
-                Quote Signed
-              </h3>
-              <p className="text-sm text-green-600">
-                {signedAt ? new Date(signedAt.seconds * 1000).toLocaleString() : 'Just now'}
-              </p>
-            </div>
-            <div className="border bg-white p-2 rounded">
-              <img src={signature} alt="Customer Signature" className="h-12" />
-            </div>
-            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => { setSignature(null); setSignedAt(null); }}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+        {/* Main Quote Content */}
+        <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm overflow-hidden ring-1 ring-slate-900/5">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500 opacity-80" />
 
-      {showProfitMargin && (
-        <div className="flex items-center justify-end space-x-2">
-          <Switch
-            id="show-internal"
-            checked={showInternalData}
-            onCheckedChange={setShowInternalData}
-          />
-          <Label htmlFor="show-internal" className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
-            {showInternalData ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            Show Internal Data
-          </Label>
-        </div>
-      )}
-
-      {showTiers && (
-        <div className="flex items-center gap-2">
-          {options.length > 0 ? (
-            <Tabs value={activeOptionId || undefined} onValueChange={handleTabChange} className="w-full">
-              <div className="flex items-center justify-between mb-2">
-                <TabsList>
-                  {options.map(option => (
-                    <TabsTrigger key={option.id} value={option.id} className="group relative pr-8">
-                      {option.name}
-                      <span
-                        onClick={(e) => removeOption(e, option.id)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 hover:text-destructive cursor-pointer p-0.5 rounded-full hover:bg-muted"
+          <CardContent className="p-0">
+            {/* Header Section */}
+            <div className="p-8 pb-4 grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <h1 className="text-3xl font-light tracking-tight text-slate-900">
+                  Quote
+                  <span className="text-slate-300 mx-3 font-thin">/</span>
+                  <span className="text-xl font-normal text-slate-500">{project?.name}</span>
+                </h1>
+                <div className="mt-4 space-y-1 text-sm text-muted-foreground">
+                  {client && <p className="flex items-center gap-2"><User className="h-3.5 w-3.5" /> {client.name}</p>}
+                  <p className="flex items-center gap-2"><Calendar className="h-3.5 w-3.5" /> {new Date().toLocaleDateString()}</p>
+                </div>
+              </div>
+              <div className="flex justify-start md:justify-end items-start">
+                {/* Option Tabs (Pill Design) */}
+                {showTiers && options.length > 0 && (
+                  <div className="flex bg-slate-100/80 p-1 rounded-xl">
+                    {options.map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => handleTabChange(opt.id)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeOptionId === opt.id
+                          ? 'bg-white text-primary shadow-sm ring-1 ring-black/5'
+                          : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+                          }`}
                       >
-                        <X className="h-3 w-3" />
-                      </span>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                <Button variant="outline" size="sm" onClick={addOption}>
-                  <PlusCircle className="h-4 w-4 mr-2" />
-                  Add Option
-                </Button>
-              </div>
-            </Tabs>
-          ) : (
-            <div className="w-full flex justify-end">
-              <Button variant="ghost" size="sm" onClick={addOption} className="text-muted-foreground hover:text-primary">
-                <Copy className="h-4 w-4 mr-2" />
-                Enable Tiered Options
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {lineItems.length === 0 && (
-        <Card>
-          <CardContent className="flex items-center justify-center p-12">
-            <div className="text-center space-y-3">
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
-              <p className="text-muted-foreground">No line items yet</p>
-              <p className="text-sm text-muted-foreground">
-                {rooms.length > 0
-                  ? "Click 'Generate from Rooms' to auto-create a quote from room measurements"
-                  : "Add room measurements first, then generate a quote automatically"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {showProfitMargin && showInternalData && lineItems.length > 0 && (
-        <Card className="bg-muted/30 border-dashed">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Profit Analysis (Internal Only)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Revenue</p>
-                <p className="text-2xl font-bold">${subtotal.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Cost</p>
-                <p className="text-2xl font-bold text-orange-600">${totalCost.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Gross Profit</p>
-                <p className={`text-2xl font-bold ${grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  ${grossProfit.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Margin</p>
-                <p className={`text-2xl font-bold ${margin >= 30 ? 'text-green-600' : margin >= 0 ? 'text-yellow-600' : 'text-red-600'}`}>
-                  {margin.toFixed(1)}%
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="space-y-4">
-        {lineItems.map((item, index) => (
-          <Card key={index} data-testid={`card-line-item-${index}`}>
-            <CardContent className="pt-6">
-              <div className="grid gap-4">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                  <div className={showProfitMargin && showInternalData ? "md:col-span-5" : "md:col-span-6"}>
-                    <Label htmlFor={`desc-${index}`}>Description</Label>
-                    <Input
-                      id={`desc-${index}`}
-                      value={item.description}
-                      onChange={(e) => updateLineItem(index, "description", e.target.value)}
-                      placeholder="Paint, primer, labor..."
-                      data-testid={`input-description-${index}`}
-                    />
-                  </div>
-                  <div className="md:col-span-1">
-                    <Label htmlFor={`qty-${index}`}>Qty</Label>
-                    <Input
-                      id={`qty-${index}`}
-                      type="number"
-                      step="0.01"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(index, "quantity", parseFloat(e.target.value) || 0)}
-                      className="font-mono text-center px-1"
-                      data-testid={`input-quantity-${index}`}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor={`unit-${index}`}>Unit</Label>
-                    <Select
-                      value={item.unit}
-                      onValueChange={(value) => updateLineItem(index, "unit", value)}
-                    >
-                      <SelectTrigger data-testid={`select-unit-${index}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sq ft">sq ft</SelectItem>
-                        <SelectItem value="gallon">gallon</SelectItem>
-                        <SelectItem value="hour">hour</SelectItem>
-                        <SelectItem value="unit">unit</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {showProfitMargin && showInternalData && (
-                    <div className="md:col-span-1">
-                      <Label htmlFor={`cost-${index}`} className="text-orange-600">Cost</Label>
-                      <Input
-                        id={`cost-${index}`}
-                        type="number"
-                        step="0.01"
-                        value={item.unitCost || 0}
-                        onChange={(e) => updateLineItem(index, "unitCost", parseFloat(e.target.value) || 0)}
-                        className="font-mono border-orange-200 focus-visible:ring-orange-500 px-2"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  )}
-
-                  <div className="md:col-span-2">
-                    <Label htmlFor={`rate-${index}`}>Rate ($)</Label>
-                    <Input
-                      id={`rate-${index}`}
-                      type="number"
-                      step="0.01"
-                      value={item.rate}
-                      onChange={(e) => updateLineItem(index, "rate", parseFloat(e.target.value) || 0)}
-                      className="font-mono"
-                      data-testid={`input-rate-${index}`}
-                    />
-                  </div>
-                  <div className="md:col-span-1 flex items-end">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeLineItem(index)}
-                      data-testid={`button-remove-${index}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-
-                </div>
-                <div className="text-right">
-                  <span className="text-sm text-muted-foreground">Amount: </span>
-                  <span className="font-mono text-lg font-semibold">
-                    ${(item.quantity * item.rate).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {lineItems.length > 0 && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-3">
-              <div className="flex justify-between items-center text-base">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-mono font-semibold" data-testid="text-subtotal">
-                  ${subtotal.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-base">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Discount</span>
-                  <div className="flex items-center border rounded-md overflow-hidden h-7">
-                    <input
-                      type="number"
-                      value={discount}
-                      onChange={e => setDiscount(parseFloat(e.target.value) || 0)}
-                      className="w-16 h-full px-2 text-sm font-mono border-none focus:outline-none"
-                    />
-                    <button
-                      onClick={() => setDiscountType(discountType === 'fixed' ? 'percent' : 'fixed')}
-                      className="bg-muted px-2 h-full text-xs hover:bg-muted/80 border-l"
-                    >
-                      {discountType === 'fixed' ? '$' : '%'}
+                        {opt.name}
+                      </button>
+                    ))}
+                    <button onClick={addOption} className="px-3 py-2 text-slate-400 hover:text-primary transition-colors">
+                      <Plus className="h-4 w-4" />
                     </button>
                   </div>
-                </div>
-                <span className="font-mono font-semibold text-red-500">
-                  -${discountAmount.toFixed(2)}
-                </span>
+                )}
               </div>
-              <div className="flex justify-between items-center text-base">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Tax</span>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={taxRate}
-                    onChange={(e) => setTaxRate(e.target.value)}
-                    className="w-20 h-7 text-sm font-mono"
-                    data-testid="input-tax-rate"
-                  />
-                  <span className="text-muted-foreground">%</span>
-                </div>
-                <span className="font-mono font-semibold" data-testid="text-tax">
-                  ${tax.toFixed(2)}
-                </span>
+            </div>
+
+            {/* Line Items Table */}
+            <div className="mt-4">
+              {/* Table Header */}
+              <div className="grid grid-cols-12 gap-4 px-8 py-3 bg-slate-50/50 border-y border-slate-100 text-xs font-semibold uppercase tracking-widest text-slate-500">
+                <div className="col-span-8 md:col-span-6">Description</div>
+                <div className="col-span-2 text-right">Quantity</div>
+                <div className="col-span-2 md:col-span-1">Unit</div>
+                <div className="hidden md:block md:col-span-1 text-right">Rate</div>
+                <div className="col-span-2 text-right">Amount</div>
+                {/* Action Col Placeholder */}
+                <div className="w-8"></div>
               </div>
-              <div className="border-t pt-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xl font-semibold">Total</span>
-                  <span className="font-mono text-3xl font-bold" data-testid="text-total">
-                    ${total.toFixed(2)}
-                  </span>
+
+              {/* Items */}
+              <div className="divide-y divide-slate-50">
+                {lineItems.length === 0 ? (
+                  <div className="p-12 text-center text-muted-foreground bg-slate-50/20">
+                    <Wand2 className="h-8 w-8 mx-auto mb-3 text-slate-300" />
+                    <p>No items yet. Generate from rooms to start.</p>
+                  </div>
+                ) : (
+                  lineItems.map((item, index) => {
+                    const isHeader = item.isHeader;
+
+                    if (isHeader) {
+                      return (
+                        <div key={index} className="grid grid-cols-12 gap-4 px-8 py-4 bg-slate-50/80 mt-2 first:mt-0 group transition-colors hover:bg-slate-100/50">
+                          <div className="col-span-8 md:col-span-6 font-bold text-slate-700 flex items-center tracking-tight">
+                            {item.description}
+                          </div>
+                          <div className="col-span-6 md:col-span-6 text-right font-semibold text-slate-900">
+                            ${(item.amount || 0).toFixed(2)}
+                          </div>
+                          <div className="w-8 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Headers typically not deletable in this view or need care */}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={index} className="grid grid-cols-12 gap-4 px-8 py-2 items-center group transition-colors hover:bg-blue-50/30">
+                        <div className="col-span-8 md:col-span-6">
+                          <input
+                            className="w-full bg-transparent border border-transparent rounded px-2 py-1 text-slate-700 placeholder:text-slate-300 focus:border-primary/20 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                            value={item.description}
+                            onChange={(e) => updateLineItem(index, "description", e.target.value)}
+                            placeholder="Item description"
+                          />
+                        </div>
+
+                        <div className="col-span-2">
+                          <input
+                            type="number"
+                            className="w-full bg-transparent border border-transparent rounded px-2 py-1 text-right text-slate-600 focus:border-primary/20 focus:bg-white focus:outline-none font-mono text-sm"
+                            value={item.quantity || ''}
+                            onChange={(e) => updateLineItem(index, "quantity", parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+
+                        <div className="col-span-2 md:col-span-1">
+                          <select
+                            className="w-full bg-transparent border border-transparent rounded px-1 py-1 text-xs text-slate-500 focus:border-primary/20 focus:bg-white focus:outline-none"
+                            value={item.unit}
+                            onChange={(e) => updateLineItem(index, "unit", e.target.value)}
+                          >
+                            <option value="sqft">sqft</option>
+                            <option value="gal">gal</option>
+                            <option value="ea">ea</option>
+                            <option value="hr">hr</option>
+                            <option value="lf">lf</option>
+                          </select>
+                        </div>
+
+                        <div className="hidden md:block md:col-span-1">
+                          <input
+                            type="number"
+                            className="w-full bg-transparent border border-transparent rounded px-2 py-1 text-right text-slate-600 focus:border-primary/20 focus:bg-white focus:outline-none font-mono text-sm"
+                            value={item.rate || ''}
+                            onChange={(e) => updateLineItem(index, "rate", parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+
+                        <div className="col-span-2 text-right font-mono text-sm text-slate-700">
+                          {/* Check for NaN or infinity safety */}
+                          ${((item.quantity || 0) * (item.rate || 0)).toFixed(2)}
+                        </div>
+
+                        <div className="absolute right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-white shadow-sm border rounded-full">
+                          <button onClick={() => removeLineItem(index)} className="p-1.5 text-red-400 hover:text-red-600 transition-colors">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {/* Add Item Row */}
+                <div className="px-8 py-3 border-t border-slate-100 bg-slate-50/30">
+                  <Button variant="ghost" size="sm" onClick={addLineItem} className="text-primary/70 hover:text-primary hover:bg-primary/5">
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Add Line Item
+                  </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-2 pt-2">
-                <Label htmlFor="valid-days" className="text-sm text-muted-foreground">
-                  Valid for
-                </Label>
-                <Input
-                  id="valid-days"
-                  type="number"
-                  value={validDays}
-                  onChange={(e) => setValidDays(e.target.value)}
-                  className="w-20 h-8 font-mono"
-                  data-testid="input-valid-days"
-                />
-                <span className="text-sm text-muted-foreground">days</span>
+            </div>
+
+            {/* Footer / Totals Section */}
+            <div className="bg-slate-50 border-t border-slate-100 px-8 py-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                {/* Notes & Terms */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Notes</Label>
+                    <textarea
+                      className="w-full min-h-[100px] rounded-lg border-slate-200 bg-white p-3 text-sm focus:border-primary focus:ring-primary/20"
+                      placeholder="Add notes for the client..."
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">Valid For (Days)</Label>
+                      <input
+                        type="number"
+                        value={validDays}
+                        onChange={e => setValidDays(e.target.value)}
+                        className="w-16 rounded border-slate-200 text-center text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Totals Calculation */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-500">Subtotal</span>
+                    <span className="font-mono text-lg text-slate-700">${subtotal.toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center py-1 group">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500">Discount</span>
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-white border rounded">
+                        <input
+                          type="number"
+                          value={discount}
+                          onChange={e => setDiscount(parseFloat(e.target.value) || 0)}
+                          className="w-12 h-6 text-xs text-center border-none focus:ring-0"
+                        />
+                        <button
+                          onClick={() => setDiscountType(discountType === 'fixed' ? 'percent' : 'fixed')}
+                          className="px-1 text-xs bg-slate-100 border-l text-slate-500"
+                        >
+                          {discountType === 'fixed' ? '$' : '%'}
+                        </button>
+                      </div>
+                    </div>
+                    <span className="font-mono text-red-500">-${discountAmount.toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center py-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500">Tax</span>
+                      <div className="flex items-center text-xs bg-slate-100 rounded px-1.5 py-0.5">
+                        <input
+                          value={taxRate}
+                          onChange={e => setTaxRate(e.target.value)}
+                          className="w-8 bg-transparent border-none p-0 text-center focus:ring-0"
+                        />
+                        %
+                      </div>
+                    </div>
+                    <span className="font-mono text-slate-700">${tax.toFixed(2)}</span>
+                  </div>
+
+                  <div className="border-t border-slate-200 my-4"></div>
+
+                  <div className="flex justify-between items-end">
+                    <span className="text-xl font-light text-slate-900">Total Estimate</span>
+                    <span className="text-4xl font-light tracking-tight text-primary">
+                      ${total.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Bar (Sticky Bottom) */}
+            <div className="px-8 py-6 bg-white border-t border-slate-100 flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div>
+                {signature && (
+                  <div className="flex items-center gap-3 bg-green-50 text-green-700 px-4 py-2 rounded-full border border-green-100">
+                    <Check className="h-4 w-4" />
+                    <span className="text-sm font-medium">Signed by Client</span>
+                    <button onClick={() => setSignature(null)} className="ml-2 hover:bg-green-100 p-1 rounded-full"><X className="h-3 w-3" /></button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                {showDigitalSign && !signature && (
+                  <Dialog open={isSignatureDialogOpen} onOpenChange={setIsSignatureDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" className="flex-1 md:flex-none border-dashed">
+                        <PenTool className="h-4 w-4 mr-2" />
+                        Sign
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader><DialogTitle>Sign Quote</DialogTitle></DialogHeader>
+                      <SignaturePad onSave={handleSignatureSave} onCancel={() => setIsSignatureDialogOpen(false)} />
+                    </DialogContent>
+                  </Dialog>
+                )}
+
+                <Button variant="outline" onClick={handleEmailPDF} className="flex-1 md:flex-none">
+                  <Mail className="h-4 w-4 mr-2" />
+                  Email PDF
+                </Button>
+
+                <Button variant="outline" onClick={generatePDF} className="flex-1 md:flex-none">
+                  <Download className="h-4 w-4 mr-2" />
+                  Download PDF
+                </Button>
+
+                <Button onClick={saveQuote} disabled={isSaving} className="flex-1 md:flex-none min-w-[140px] shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-primary/90 hover:to-primary">
+                  {isSaving ? (
+                    <>Saving...</>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Quote
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </CardContent>
-          <CardFooter className="flex gap-3">
-            <Button
-              onClick={saveQuote}
-              disabled={createQuote.isPending || updateQuote.isPending}
-              className="flex-1"
-              data-testid="button-save-quote"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {createQuote.isPending || updateQuote.isPending ? "Saving..." : "Save Quote"}
-            </Button>
-
-            {showDigitalSign && (
-              <Dialog open={isSignatureDialogOpen} onOpenChange={setIsSignatureDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className={`flex-1 ${signature ? "border-green-500 text-green-600 hover:text-green-700" : ""}`}>
-                    <PenTool className="h-4 w-4 mr-2" />
-                    {signature ? "Signed" : "Sign Quote"}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Customer Signature</DialogTitle>
-                  </DialogHeader>
-                  <SignaturePad onSave={handleSignatureSave} onCancel={() => setIsSignatureDialogOpen(false)} />
-                </DialogContent>
-              </Dialog>
-            )}
-
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={generatePDF}
-              disabled={!project}
-              data-testid="button-generate-pdf"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Generate PDF
-            </Button>
-          </CardFooter>
         </Card>
-      )}
+      </div>
     </div>
   );
 }
+
