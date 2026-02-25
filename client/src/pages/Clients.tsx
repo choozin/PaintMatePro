@@ -66,6 +66,7 @@ import { CsvImportDialog } from "@/components/CsvImportDialog";
 import { ClientDetailDialog } from "@/components/ClientDetailDialog";
 
 import { useEntitlements } from "@/hooks/useEntitlements";
+import { FeatureLock } from "@/components/FeatureLock";
 
 const Highlight = ({ text, term }: { text: string | undefined | null; term: string }) => {
   if (!text || !term.trim()) return <>{text || ''}</>;
@@ -188,7 +189,9 @@ export default function Clients() {
           <p className="text-muted-foreground mt-1">Manage your customer relationships and lead pipeline.</p>
         </div>
         <div className="flex gap-2">
-          {hasFeature('client.importCSV') && <CsvImportDialog />}
+          <FeatureLock feature="client.importCSV">
+            <CsvImportDialog />
+          </FeatureLock>
           <ClientDialog mode="create">
             <Button>
               <span className="mr-2">+</span> Add Lead

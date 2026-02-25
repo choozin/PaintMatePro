@@ -1,130 +1,192 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Download, MapPin, Calendar } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRoute } from "wouter";
+import { PortalLayout } from "@/components/portal/PortalLayout";
+import { PortalAuth } from "@/components/portal/PortalAuth";
+import { PortalDashboard } from "@/components/portal/PortalDashboard";
+import { portalOperations, projectOperations, clientOperations, roomOperations, Project, Client, Room, PortalToken } from "@/lib/firestore";
+import { Loader2, AlertCircle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function ClientPortal() {
-  const quote = {
-    projectName: "Residential Exterior Paint",
-    clientName: "John Smith",
-    location: "123 Main St, Oakland, CA",
-    date: "January 15, 2025",
-    validUntil: "February 15, 2025",
-    lineItems: [
-      { description: "Exterior wall paint", quantity: 1200, unit: "sq ft", rate: 3.50, amount: 4200 },
-      { description: "Primer application", quantity: 1200, unit: "sq ft", rate: 1.25, amount: 1500 },
-      { description: "Trim and detail work", quantity: 8, unit: "hour", rate: 75, amount: 600 },
-      { description: "Paint materials", quantity: 15, unit: "gallon", rate: 45, amount: 675 },
-    ],
-    subtotal: 6975,
-    tax: 610.31,
-    total: 7585.31,
+  const [match, params] = useRoute("/portal/:token");
+  const token = params?.token;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // State
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [tokenDoc, setTokenDoc] = useState<PortalToken | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [otherProjects, setOtherProjects] = useState<Project[]>([]);
+
+  // 1. Validate Token on Mount
+  useEffect(() => {
+    async function validateToken() {
+      if (!token) {
+        setError("Invalid access link.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const tokenDoc = await portalOperations.getToken(token);
+        if (!tokenDoc) {
+          setError("This link is invalid or has expired.");
+          setLoading(false);
+          return;
+        }
+
+        setTokenDoc(tokenDoc);
+        setProjectId(tokenDoc.projectId);
+
+        const sessionKey = `portal_session_${token}`;
+        const session = localStorage.getItem(sessionKey);
+        if (session) {
+          setIsAuthenticated(true);
+        }
+
+        setLoading(false);
+      } catch (err: any) {
+        console.error("Token validation error", err);
+        setError(`Access Error: ${err.message || "Unknown error occurred"}`);
+        setLoading(false);
+      }
+    }
+
+    validateToken();
+  }, [token]);
+
+
+  // 2. Fetch Project Data Logic
+  useEffect(() => {
+    async function loadData() {
+      if (!isAuthenticated || !projectId) return;
+
+      try {
+        const p = await projectOperations.get(projectId);
+        if (p) {
+          setProject(p);
+
+          // Fetch Client & Rooms
+          const [clientData, roomsData] = await Promise.all([
+            clientOperations.get(p.clientId),
+            roomOperations.getByProject(p.id)
+          ]);
+
+          if (clientData) {
+            setClient(clientData);
+
+            // Securely fetch other projects for this client
+            try {
+              const clientProjects = await projectOperations.getByClient(clientData.id);
+              setOtherProjects(clientProjects);
+            } catch (err) {
+              console.error("Failed to load linked projects", err);
+            }
+          }
+
+          if (roomsData) setRooms(roomsData);
+        }
+      } catch (e: any) {
+        console.error("Failed to load portal data", e);
+        setError(`Failed to load project data: ${e.message}`);
+      }
+    }
+    loadData();
+  }, [isAuthenticated, projectId]);
+
+  // Handle Switching
+  const handleSwitchProject = (newProjectId: string) => {
+    setProjectId(newProjectId);
+    // We don't need to change token unless we want to, 
+    // but keeping the same token active is fine for the session if we validated the user
   };
 
-  return (
-    <div className="min-h-screen bg-muted/30">
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
-        <div className="text-center py-8">
-          <h1 className="text-4xl font-bold mb-2">Demo Painting Co</h1>
-          <p className="text-muted-foreground">Professional Painting Services</p>
-        </div>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
+  // RENDER STATES
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error || !token || !projectId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <Card className="max-w-md w-full border-l-4 border-l-red-500">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-4">
+              <AlertCircle className="h-6 w-6 text-red-500 shrink-0" />
               <div>
-                <CardTitle className="text-2xl mb-2">{quote.projectName}</CardTitle>
-                <div className="space-y-1 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4" />
-                    <span>{quote.location}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>Quote Date: {quote.date}</span>
-                  </div>
-                </div>
-              </div>
-              <Badge variant="secondary" className="font-mono">
-                FREE PLAN
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div>
-                <h3 className="font-semibold mb-4">Quote Details</h3>
-                <div className="border rounded-md overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-muted">
-                      <tr>
-                        <th className="text-left p-3 text-sm font-medium">Description</th>
-                        <th className="text-right p-3 text-sm font-medium">Qty</th>
-                        <th className="text-right p-3 text-sm font-medium">Rate</th>
-                        <th className="text-right p-3 text-sm font-medium">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {quote.lineItems.map((item, index) => (
-                        <tr key={index} className="border-t">
-                          <td className="p-3 text-sm">{item.description}</td>
-                          <td className="p-3 text-sm text-right font-mono">
-                            {item.quantity} {item.unit}
-                          </td>
-                          <td className="p-3 text-sm text-right font-mono">
-                            ${item.rate.toFixed(2)}
-                          </td>
-                          <td className="p-3 text-sm text-right font-mono">
-                            ${item.amount.toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="border-t pt-6">
-                <div className="space-y-2 max-w-sm ml-auto">
-                  <div className="flex justify-between text-base">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-mono font-semibold">${quote.subtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-base">
-                    <span className="text-muted-foreground">Tax (8.75%)</span>
-                    <span className="font-mono font-semibold">${quote.tax.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xl font-bold pt-2 border-t">
-                    <span>Total</span>
-                    <span className="font-mono">${quote.total.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-muted/50 p-4 rounded-md">
-                <p className="text-sm text-muted-foreground">
-                  This quote is valid until <strong>{quote.validUntil}</strong>. 
-                  Please contact us if you have any questions.
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <Button className="flex-1" data-testid="button-accept-quote">
-                  Accept Quote
-                </Button>
-                <Button variant="outline" data-testid="button-download-pdf">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download PDF
-                </Button>
+                <h3 className="font-semibold text-lg text-red-700 mb-1">Access Denied</h3>
+                <p className="text-muted-foreground">{error || "Unable to access portal."}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-
-        <div className="text-center text-sm text-muted-foreground py-6">
-          <p>Powered by PaintPro • Professional Painting Business Management</p>
-        </div>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <PortalLayout
+      orgName="PaintMate Pro"
+      clientName={client?.name}
+      projects={otherProjects}
+      currentProjectId={projectId}
+      onSwitchProject={handleSwitchProject}
+      onLogout={() => {
+        localStorage.removeItem(`portal_session_${token}`);
+        setIsAuthenticated(false);
+      }}
+    >
+      {!isAuthenticated ? (
+        token && projectId && tokenDoc ? (
+          <PortalAuth
+            token={token}
+            projectId={projectId}
+            tokenDoc={tokenDoc}
+            onAuthenticated={() => setIsAuthenticated(true)}
+          />
+        ) : null
+      ) : (
+        project ? (
+          <PortalDashboard
+            project={project}
+            client={client}
+            rooms={rooms}
+            onApproveQuote={async () => {
+              if (!project || !token) return;
+              try {
+                // 1. Update Project Status
+                await projectOperations.update(project.id, { status: 'booked' });
+
+                // 2. Create Submission Notification
+                await portalOperations.submitActivity(project.id, {
+                  type: 'note',
+                  content: 'Quote Approved via Client Portal',
+                  submittedBy: 'client'
+                });
+
+                // 3. Update Local State (Optimistic)
+                setProject({ ...project, status: 'booked' });
+              } catch (e) {
+                console.error("Failed to approve quote", e);
+              }
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        )
+      )}
+    </PortalLayout>
   );
 }

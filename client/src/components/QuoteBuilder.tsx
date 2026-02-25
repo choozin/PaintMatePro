@@ -28,6 +28,7 @@ import { useRef } from "react";
 import { QuoteConfiguration, DEFAULT_QUOTE_CONFIG } from "@/types/quote-config";
 import { generateQuoteLinesV2, flattenQuoteLines } from "@/lib/quote-generator-v2";
 import { QuoteConfigWizard } from "./QuoteConfiguration/QuoteConfigWizard";
+import { FeatureLock } from "@/components/FeatureLock";
 
 const loadImage = (url: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
@@ -335,19 +336,70 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
   };
 
   const removeLineItem = (index: number) => {
-    setLineItems(lineItems.filter((_, i) => i !== index));
+    const newItems = lineItems.filter((_, i) => i !== index);
+    setLineItems(recalculateHeaders(newItems));
+  };
+
+  // Helper to recalculate header totals
+  const recalculateHeaders = (items: LineItem[]) => {
+    let currentHeaderIndex = -1;
+    let currentHeaderTotal = 0;
+    const newItems = [...items];
+
+    // First pass: identify headers and reset their amounts
+    // Second pass: sum up
+    // Actually single pass is tricky if we want to modify in place or copy
+    // Let's iterate and keep track
+
+    for (let i = 0; i < newItems.length; i++) {
+      if (newItems[i].isHeader) {
+        // If we were processing a previous header, update it now? 
+        // No, simpler: When we hit a header, we set the *previous* header's total? 
+        // Or better: Just sum accumulated total to the currentHeaderIndex
+
+        if (currentHeaderIndex !== -1) {
+          newItems[currentHeaderIndex] = { ...newItems[currentHeaderIndex], amount: currentHeaderTotal };
+        }
+
+        // Start new section
+        currentHeaderIndex = i;
+        currentHeaderTotal = 0;
+      } else {
+        // Add to total
+        const qty = newItems[i].quantity || 0;
+        const rate = newItems[i].rate || 0;
+        currentHeaderTotal += (qty * rate);
+      }
+    }
+
+    // Update last header
+    if (currentHeaderIndex !== -1) {
+      newItems[currentHeaderIndex] = { ...newItems[currentHeaderIndex], amount: currentHeaderTotal };
+    }
+
+    return newItems;
   };
 
   const updateLineItem = (index: number, field: keyof LineItem, value: string | number) => {
-    setLineItems(
-      lineItems.map((item, i) => {
-        if (i === index) {
-          return { ...item, [field]: value };
-        }
-        return item;
-      })
-    );
+    const updatedItems = lineItems.map((item, i) => {
+      if (i === index) {
+        return { ...item, [field]: value };
+      }
+      return item;
+    });
+
+    // Only recalculate if we changed quantity or rate, or if it's a structural change?
+    // Rate/Quantity changes affect totals.
+    if (field === 'quantity' || field === 'rate' || field === 'amount') {
+      setLineItems(recalculateHeaders(updatedItems));
+    } else {
+      setLineItems(updatedItems);
+    }
   };
+
+  // ... existing code ...
+
+
 
   const generateFromRooms = (isAuto = false) => {
     if (rooms.length === 0) {
@@ -548,29 +600,34 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
           r: parseInt(result[1], 16),
           g: parseInt(result[2], 16),
           b: parseInt(result[3], 16)
-        } : { r: 0, g: 0, b: 0 };
+        } : { r: 59, g: 130, b: 246 }; // Default to blue-500 if invalid
       };
 
       const primaryRgb = hexToRgb(primaryColor);
       const secondaryRgb = hexToRgb(secondaryColor);
 
-      const addLogo = async (x: number, y: number, maxWidth: number, align: 'left' | 'right' | 'center' = 'left') => {
+      const addLogo = async (x: number, y: number, maxHeight: number, align: 'left' | 'right' | 'center' = 'left') => {
         const logoSource = branding.logoBase64 || branding.logoUrl;
         if (!logoSource) return 0;
         try {
           const img = await loadImage(logoSource);
-          const ratio = img.height / img.width;
-          const width = Math.min(maxWidth, 40);
-          const height = width * ratio;
+          const ratio = img.width / img.height;
+          // Scale based on height to maintain header proportions
+          const height = Math.min(img.height, maxHeight);
+          const width = height * ratio;
+
+          // Limit width so it doesn't span the whole page if it's super wide
+          const finalWidth = Math.min(width, 60);
+          const finalHeight = finalWidth / ratio;
 
           let finalX = x;
-          if (align === 'right') finalX = x - width;
-          if (align === 'center') finalX = x - (width / 2);
+          if (align === 'right') finalX = x - finalWidth;
+          if (align === 'center') finalX = x - (finalWidth / 2);
 
-          doc.addImage(img, 'PNG', finalX, y, width, height);
-          return height;
+          doc.addImage(img, 'PNG', finalX, y, finalWidth, finalHeight);
+          return finalHeight;
         } catch (e) {
-          console.warn('Failed to load logo', e);
+          console.warn('Failed to load logo formatting', e);
           return 0;
         }
       };
@@ -578,24 +635,87 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
       let finalY = 0;
 
       if (layout === 'modern') {
-        const logoHeight = await addLogo(20, 20, 50, 'left');
+        // --- MODERN HEADER ---
+        doc.setFillColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
+        doc.rect(0, 0, pageWidth, 5, 'F'); // Top accent bar
+
+        let currentY = 25;
+
+        // Fetch Logo (Left Aligned)
+        const logoHeight = await addLogo(20, 15, 25, 'left');
+
+        doc.setTextColor(0, 0, 0);
+
+        // Right Aligned Company Info
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text(branding.companyName || 'Painting Quote', pageWidth - 20, currentY, { align: 'right' });
+
+        currentY += 6;
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
-        let yPos = 25;
+
+        if (branding.companyPhone) {
+          doc.text(branding.companyPhone, pageWidth - 20, currentY, { align: 'right' });
+          currentY += 5;
+        }
+        if (branding.companyEmail) {
+          doc.text(branding.companyEmail, pageWidth - 20, currentY, { align: 'right' });
+          currentY += 5;
+        }
+        if (branding.website) {
+          doc.text(branding.website, pageWidth - 20, currentY, { align: 'right' });
+          currentY += 5;
+        }
+        if (branding.companyAddress) {
+          doc.text(branding.companyAddress.replace('\n', ', '), pageWidth - 20, currentY, { align: 'right' });
+          currentY += 5;
+        }
+
+        // Determine the starting point for the content based on the tallest header element
+        let headerBottomY = Math.max(currentY, (logoHeight > 0 ? 15 + logoHeight : 25)) + 12;
+
+        // Divider Line
+        doc.setDrawColor(220, 220, 220); // Soft gray
+        doc.setLineWidth(0.5);
+        doc.line(20, headerBottomY, pageWidth - 20, headerBottomY);
+
+        headerBottomY += 15;
+
+        // --- CLIENT & PROJECT INFO SECTION ---
+        // We don't need this old line drawing since we did it above
+
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(14);
+        doc.setFontSize(10);
+        doc.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
+        doc.text('Prepared For:', 20, headerBottomY);
+
+        doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
-        doc.text(branding.companyName || '', pageWidth - 20, yPos, { align: 'right' });
-        yPos += 7;
+        doc.setFontSize(12);
+        doc.text(client?.name || 'Valued Client', 20, headerBottomY + 6);
+
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
+        doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
-        if (branding.companyEmail) { doc.text(branding.companyEmail, pageWidth - 20, yPos, { align: 'right' }); yPos += 5; }
-        if (branding.companyPhone) { doc.text(branding.companyPhone, pageWidth - 20, yPos, { align: 'right' }); yPos += 5; }
-        if (branding.website) { doc.text(branding.website, pageWidth - 20, yPos, { align: 'right' }); yPos += 5; }
-        yPos = Math.max(yPos, logoHeight + 30) + 10;
-        doc.setDrawColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
-        doc.setLineWidth(1);
+        if (client?.email) doc.text(client.email, 20, headerBottomY + 11);
+        if (client?.phone) doc.text(client.phone, 20, headerBottomY + 16);
+        if (client?.address) doc.text(client.address, 20, headerBottomY + 21);
+
+        // Project Details (Right Side)
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
+        doc.text('Quote Details:', pageWidth - 20, headerBottomY, { align: 'right' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Project Name: ${project.name}`, pageWidth - 20, headerBottomY + 6, { align: 'right' });
+        doc.text(`Date Prepared: ${new Date().toLocaleDateString()}`, pageWidth - 20, headerBottomY + 11, { align: 'right' });
+        doc.text(`Quote ID: ${selectedQuoteId?.slice(0, 8) || 'DRAFT'}`, pageWidth - 20, headerBottomY + 16, { align: 'right' });
+
+        let yPos = headerBottomY + 35; // Start of table generator
         doc.line(20, yPos, pageWidth - 20, yPos);
         yPos += 15;
         doc.setFontSize(24);
@@ -692,113 +812,143 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         });
 
       } else {
-        doc.setFillColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
-        doc.rect(0, 0, pageWidth, 30, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(24);
+        // --- STANDARD LAYOUT ---
+        let currentY = 20;
+
+        const logoHeight = await addLogo(pageWidth / 2, currentY, 40, 'center');
+        currentY = logoHeight > 0 ? currentY + logoHeight + 10 : 25;
+
         doc.setFont('helvetica', 'bold');
-        doc.text(branding.companyName || 'Quote', 20, 20);
-        await addLogo(pageWidth - 20, 5, 20, 'right');
+        doc.setFontSize(22);
+        doc.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
+        doc.text(branding.companyName || 'QUOTE', pageWidth / 2, currentY, { align: 'center' });
+
+        currentY += 8;
+
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.setFont('helvetica', 'normal');
+        if (branding.companyEmail) { doc.text(branding.companyEmail, pageWidth / 2, currentY, { align: 'center' }); currentY += 5; }
+        if (branding.companyPhone) { doc.text(branding.companyPhone, pageWidth / 2, currentY, { align: 'center' }); currentY += 5; }
+        if (branding.website) { doc.text(branding.website, pageWidth / 2, currentY, { align: 'center' }); currentY += 5; }
+        if (branding.companyAddress) { doc.text(branding.companyAddress.replace('\n', ', '), pageWidth / 2, currentY, { align: 'center' }); currentY += 5; }
+
+        currentY += 5;
+        doc.setDrawColor(200, 200, 200);
+        doc.line(20, currentY, pageWidth - 20, currentY);
+        currentY += 15;
+
+        doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
-        doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
-        doc.text('QUOTE', 20, 45);
+        doc.text(`Prepared for: ${client?.name || 'Valued Client'}`, 20, currentY);
+        currentY += 6;
+
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        const validUntil = new Date();
-        validUntil.setDate(validUntil.getDate() + parseInt(validDays));
-        doc.text(`Project: ${project.name}`, 20, 55);
-        if (client) doc.text(`Client: ${client.name}`, 20, 62);
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 69);
-        doc.text(`Valid Until: ${validUntil.toLocaleDateString()}`, 20, 76);
-        if (branding.companyEmail || branding.companyPhone || branding.companyAddress) {
-          doc.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
-          let yPos = 45;
-          if (branding.companyEmail) { doc.text(branding.companyEmail, pageWidth - 20, yPos, { align: 'right' }); yPos += 7; }
-          if (branding.companyPhone) { doc.text(branding.companyPhone, pageWidth - 20, yPos, { align: 'right' }); yPos += 7; }
-          if (branding.companyAddress) {
-            const addressLines = branding.companyAddress.split('\n');
-            addressLines.forEach(line => {
-              doc.text(line, pageWidth - 20, yPos, { align: 'right' });
-              yPos += 7;
-            });
-          }
+        doc.text(`Project Name: ${project.name}`, 20, currentY); currentY += 5;
+        if (client?.email) { doc.text(client.email, 20, currentY); currentY += 5; }
+        if (client?.address) {
+          const splitAddress = doc.splitTextToSize(`Address: ${client.address}`, pageWidth / 2 - 20);
+          doc.text(splitAddress, 20, currentY);
+          currentY += splitAddress.length * 5;
         }
+
+        currentY += 5;
+
+        const tableColumn = ["Description", "Quantity", "Rate", "Total"];
+        const tableRows: any[] = [];
+
+        lineItems.forEach(item => {
+          let desc = item.description;
+          // Assuming 'internalDescription' might be a field, or just using description
+          // if (item.internalDescription) {
+          //   desc += `\n${item.internalDescription}`;
+          // }
+          tableRows.push([
+            desc,
+            `${item.quantity.toFixed(2)} ${item.unit}`,
+            `$${item.rate.toFixed(2)}`,
+            `$${(item.quantity * item.rate).toFixed(2)}`
+          ]);
+        });
+
         autoTable(doc, {
-          startY: 90,
-          head: [['Description', 'Quantity', 'Unit', 'Rate', 'Amount']],
-          body: lineItems.map(item => {
-            if ((item as any).isHeader) {
-              const amt = (item as any).amount;
-              return [
-                item.description,
-                '',
-                '',
-                '',
-                amt ? `$${Number(amt).toFixed(2)}` : ''
-              ];
-            }
-            return [
-              item.description,
-              item.quantity.toFixed(2),
-              item.unit,
-              `$${item.rate.toFixed(2)}`,
-              `$${(item.quantity * item.rate).toFixed(2)}`
-            ];
-          }),
-          theme: 'striped',
-          headStyles: {
-            fillColor: [primaryRgb.r, primaryRgb.g, primaryRgb.b],
-            textColor: [255, 255, 255],
-            fontStyle: 'bold'
-          },
-          styles: { fontSize: 10 },
+          startY: currentY,
+          head: [tableColumn],
+          body: tableRows,
+          theme: 'grid',
+          headStyles: { fillColor: [primaryRgb.r, primaryRgb.g, primaryRgb.b], textColor: 255, fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 5 },
           columnStyles: {
-            0: { cellWidth: 80 },
-            1: { cellWidth: 25, halign: 'right' },
-            2: { cellWidth: 25 },
-            3: { cellWidth: 25, halign: 'right' },
-            4: { cellWidth: 30, halign: 'right' }
+            0: { cellWidth: 'auto' },
+            1: { cellWidth: 30, halign: 'center' },
+            2: { cellWidth: 30, halign: 'right' },
+            3: { cellWidth: 30, halign: 'right' },
           }
         });
-      }
 
-      finalY = (doc as any).lastAutoTable.finalY + 10;
-      const requiredSpace = 70;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
-      if (finalY + requiredSpace > pageHeight - 20) {
-        doc.addPage();
-        finalY = 20;
-      }
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Subtotal:`, pageWidth - 60, finalY);
+        doc.text(`$${subtotal.toFixed(2)}`, pageWidth - 20, finalY, { align: 'right' });
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      doc.setTextColor(0, 0, 0);
-      doc.text('Subtotal:', pageWidth - 70, finalY);
-      doc.text(`$${subtotal.toFixed(2)}`, pageWidth - 20, finalY, { align: 'right' });
+        doc.text(`Tax (${taxRate}%):`, pageWidth - 60, finalY + 6);
+        doc.text(`$${tax.toFixed(2)}`, pageWidth - 20, finalY + 6, { align: 'right' });
 
-      if (discount > 0) {
-        doc.setTextColor(200, 0, 0);
-        doc.text('Discount:', pageWidth - 70, finalY + 7);
-        doc.text(`-$${discountAmount.toFixed(2)}`, pageWidth - 20, finalY + 7, { align: 'right' });
+        doc.setDrawColor(200, 200, 200);
+        doc.line(pageWidth - 60, finalY + 10, pageWidth - 20, finalY + 10);
+
         doc.setTextColor(0, 0, 0);
-        finalY += 7;
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Total:`, pageWidth - 60, finalY + 18);
+        doc.text(`$${total.toFixed(2)}`, pageWidth - 20, finalY + 18, { align: 'right' });
       }
 
-      doc.text(`Tax (${taxRate}%):`, pageWidth - 70, finalY + 7);
-      doc.text(`$${tax.toFixed(2)}`, pageWidth - 20, finalY + 7, { align: 'right' });
+      finalY = (doc as any).lastAutoTable.finalY + 15;
+
+      // --- MODERN TOTALS SECTION ---
+      doc.setFillColor(249, 250, 251); // Gray-50 background for totals
+      doc.rect(pageWidth - 90, finalY - 5, 70, 45, 'F');
+      doc.setDrawColor(220, 220, 220);
+      doc.rect(pageWidth - 90, finalY - 5, 70, 45, 'S');
+
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Subtotal:', pageWidth - 85, finalY + 5);
+      doc.text(`$${subtotal.toFixed(2)}`, pageWidth - 25, finalY + 5, { align: 'right' });
+
+      doc.text(`Tax (${taxRate}%):`, pageWidth - 85, finalY + 15);
+      doc.text(`$${tax.toFixed(2)}`, pageWidth - 25, finalY + 15, { align: 'right' });
+
+      doc.setDrawColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
+      doc.setLineWidth(0.5);
+      doc.line(pageWidth - 85, finalY + 22, pageWidth - 25, finalY + 22);
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(14);
-      doc.text('Total:', pageWidth - 70, finalY + 17);
-      doc.text(`$${total.toFixed(2)}`, pageWidth - 20, finalY + 17, { align: 'right' });
+      doc.setTextColor(0, 0, 0);
+      doc.text('Total:', pageWidth - 85, finalY + 32);
+      doc.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
+      doc.text(`$${total.toFixed(2)}`, pageWidth - 25, finalY + 32, { align: 'right' });
+
+      // --- COMMON FOOTER (TERMS, NOTES, SIGNATURE) ---
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+
+      let nextY = finalY + 45; // Start below the totals
 
       if (signature) {
-        let signatureY = finalY + 25;
+        let signatureY = nextY;
         doc.setFontSize(10);
         doc.text('Customer Signature:', 20, signatureY);
         doc.addImage(signature, 'PNG', 20, signatureY + 5, 60, 20);
         doc.text(`Signed At: ${signedAt ? new Date(signedAt.seconds * 1000).toLocaleString() : 'N/A'}`, 20, signatureY + 30);
+        nextY = signatureY + 40;
       }
 
       if (notes) {
@@ -842,7 +992,9 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
         }
       }
 
-      const fileName = `Quote_${project.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const safeProjectName = project.name.replace(/[^a-zA-Z0-9-]/g, '_');
+      const fileName = `Quote_${safeProjectName}_${new Date().toISOString().split('T')[0]}.pdf`;
+
       doc.save(fileName);
 
       toast({
@@ -952,9 +1104,11 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
                         {opt.name}
                       </button>
                     ))}
-                    <button onClick={addOption} className="px-3 py-2 text-slate-400 hover:text-primary transition-colors">
-                      <Plus className="h-4 w-4" />
-                    </button>
+                    <FeatureLock feature="quote.tiers">
+                      <button onClick={addOption} className="px-3 py-2 text-slate-400 hover:text-primary transition-colors">
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </FeatureLock>
                   </div>
                 )}
               </div>
@@ -963,14 +1117,14 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
             {/* Line Items Table */}
             <div className="mt-4">
               {/* Table Header */}
-              <div className="grid grid-cols-12 gap-4 px-8 py-3 bg-slate-50/50 border-y border-slate-100 text-xs font-semibold uppercase tracking-widest text-slate-500">
-                <div className="col-span-8 md:col-span-6">Description</div>
-                <div className="col-span-2 text-right">Quantity</div>
-                <div className="col-span-2 md:col-span-1">Unit</div>
-                <div className="hidden md:block md:col-span-1 text-right">Rate</div>
+              <div className="grid grid-cols-12 gap-2 md:gap-4 px-4 md:px-8 py-3 bg-slate-50/50 border-y border-slate-100 text-xs font-semibold uppercase tracking-widest text-slate-500">
+                <div className="col-span-4 md:col-span-4">Description</div>
+                <div className="col-span-2 text-right">Qty</div>
+                <div className="col-span-2 md:col-span-2">Unit</div>
+                <div className="col-span-2 md:col-span-2 text-right">Rate</div>
                 <div className="col-span-2 text-right">Amount</div>
                 {/* Action Col Placeholder */}
-                <div className="w-8"></div>
+                <div className="hidden md:block w-8"></div>
               </div>
 
               {/* Items */}
@@ -986,43 +1140,42 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
                     if (isHeader) {
                       return (
-                        <div key={index} className="grid grid-cols-12 gap-4 px-8 py-4 bg-slate-50/80 mt-2 first:mt-0 group transition-colors hover:bg-slate-100/50">
-                          <div className="col-span-8 md:col-span-6 font-bold text-slate-700 flex items-center tracking-tight">
+                        <div key={index} className="grid grid-cols-12 gap-2 md:gap-4 px-4 md:px-8 py-4 bg-slate-50/80 mt-2 first:mt-0 group transition-colors hover:bg-slate-100/50">
+                          <div className="col-span-8 md:col-span-8 font-bold text-slate-700 flex items-center tracking-tight">
                             {item.description}
                           </div>
-                          <div className="col-span-6 md:col-span-6 text-right font-semibold text-slate-900">
+                          <div className="col-span-4 md:col-span-4 text-right font-semibold text-slate-900">
+                            {/* Header Total */}
                             ${(item.amount || 0).toFixed(2)}
                           </div>
-                          <div className="w-8 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                            {/* Headers typically not deletable in this view or need care */}
-                          </div>
+
                         </div>
                       );
                     }
 
                     return (
-                      <div key={index} className="grid grid-cols-12 gap-4 px-8 py-2 items-center group transition-colors hover:bg-blue-50/30">
-                        <div className="col-span-8 md:col-span-6">
+                      <div key={index} className="grid grid-cols-12 gap-2 md:gap-4 px-4 md:px-8 py-2 items-center group transition-colors hover:bg-blue-50/30">
+                        <div className="col-span-4 md:col-span-4">
                           <input
-                            className="w-full bg-transparent border border-transparent rounded px-2 py-1 text-slate-700 placeholder:text-slate-300 focus:border-primary/20 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                            className="w-full bg-transparent border border-transparent rounded px-2 py-1 text-slate-700 placeholder:text-slate-300 focus:border-primary/20 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                             value={item.description}
                             onChange={(e) => updateLineItem(index, "description", e.target.value)}
-                            placeholder="Item description"
+                            placeholder="Desc"
                           />
                         </div>
 
                         <div className="col-span-2">
                           <input
                             type="number"
-                            className="w-full bg-transparent border border-transparent rounded px-2 py-1 text-right text-slate-600 focus:border-primary/20 focus:bg-white focus:outline-none font-mono text-sm"
+                            className="w-full bg-transparent border border-transparent rounded px-1 py-1 text-right text-slate-600 focus:border-primary/20 focus:bg-white focus:outline-none font-mono text-sm"
                             value={item.quantity || ''}
                             onChange={(e) => updateLineItem(index, "quantity", parseFloat(e.target.value) || 0)}
                           />
                         </div>
 
-                        <div className="col-span-2 md:col-span-1">
+                        <div className="col-span-2 md:col-span-2">
                           <select
-                            className="w-full bg-transparent border border-transparent rounded px-1 py-1 text-xs text-slate-500 focus:border-primary/20 focus:bg-white focus:outline-none"
+                            className="w-full bg-transparent border border-transparent rounded px-0 py-1 text-xs text-slate-500 focus:border-primary/20 focus:bg-white focus:outline-none"
                             value={item.unit}
                             onChange={(e) => updateLineItem(index, "unit", e.target.value)}
                           >
@@ -1031,24 +1184,25 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
                             <option value="ea">ea</option>
                             <option value="hr">hr</option>
                             <option value="lf">lf</option>
+                            <option value="set">set</option>
                           </select>
                         </div>
 
-                        <div className="hidden md:block md:col-span-1">
+                        <div className="col-span-2 md:col-span-2">
                           <input
                             type="number"
-                            className="w-full bg-transparent border border-transparent rounded px-2 py-1 text-right text-slate-600 focus:border-primary/20 focus:bg-white focus:outline-none font-mono text-sm"
+                            className="w-full bg-transparent border border-transparent rounded px-1 py-1 text-right text-slate-600 focus:border-primary/20 focus:bg-white focus:outline-none font-mono text-sm"
                             value={item.rate || ''}
                             onChange={(e) => updateLineItem(index, "rate", parseFloat(e.target.value) || 0)}
                           />
                         </div>
 
                         <div className="col-span-2 text-right font-mono text-sm text-slate-700">
-                          {/* Check for NaN or infinity safety */}
                           ${((item.quantity || 0) * (item.rate || 0)).toFixed(2)}
                         </div>
 
-                        <div className="absolute right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-white shadow-sm border rounded-full">
+                        <div className="hidden md:absolute right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-white shadow-sm border rounded-full">
+                          {/* Only show delete on desktop hover or handle differently mobile */}
                           <button onClick={() => removeLineItem(index)} className="p-1.5 text-red-400 hover:text-red-600 transition-colors">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -1097,6 +1251,19 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
 
                 {/* Totals Calculation */}
                 <div className="space-y-4">
+                  <FeatureLock feature="quote.profitMargin">
+                    <div className="flex justify-between items-center py-2 px-3 bg-indigo-50/50 border border-indigo-100 rounded-lg group">
+                      <div className="flex items-center gap-2">
+                        <Wand2 className="h-4 w-4 text-indigo-500" />
+                        <span className="text-sm text-indigo-900 font-medium">AI Margin Optimizer</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-indigo-400">Target</span>
+                        <input className="w-14 h-6 text-xs text-right border-indigo-200 rounded focus:ring-indigo-500 bg-white" placeholder="45%" defaultValue="45%" />
+                      </div>
+                    </div>
+                  </FeatureLock>
+
                   <div className="flex justify-between items-center py-1">
                     <span className="text-slate-500">Subtotal</span>
                     <span className="font-mono text-lg text-slate-700">${subtotal.toFixed(2)}</span>
@@ -1162,21 +1329,37 @@ export function QuoteBuilder({ projectId }: QuoteBuilderProps) {
                 )}
               </div>
 
-              <div className="flex items-center gap-3 w-full md:w-auto">
-                {showDigitalSign && !signature && (
-                  <Dialog open={isSignatureDialogOpen} onOpenChange={setIsSignatureDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" className="flex-1 md:flex-none border-dashed">
-                        <PenTool className="h-4 w-4 mr-2" />
-                        Sign
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader><DialogTitle>Sign Quote</DialogTitle></DialogHeader>
-                      <SignaturePad onSave={handleSignatureSave} onCancel={() => setIsSignatureDialogOpen(false)} />
-                    </DialogContent>
-                  </Dialog>
+              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                <FeatureLock feature="pdf.watermark">
+                  <div className="flex items-center gap-2 px-2">
+                    <Switch id="watermark" />
+                    <Label htmlFor="watermark" className="text-xs text-muted-foreground cursor-pointer">Remove branding</Label>
+                  </div>
+                </FeatureLock>
+
+                {(!signature) && (
+                  <FeatureLock feature="eSign">
+                    <Dialog open={isSignatureDialogOpen} onOpenChange={setIsSignatureDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" className="flex-1 md:flex-none border-dashed bg-blue-50/50 text-blue-700 border-blue-200 hover:bg-blue-100/50 hover:text-blue-800">
+                          <PenTool className="h-4 w-4 mr-2" />
+                          Request e-Signature
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader><DialogTitle>Sign Quote</DialogTitle></DialogHeader>
+                        <SignaturePad onSave={handleSignatureSave} onCancel={() => setIsSignatureDialogOpen(false)} />
+                      </DialogContent>
+                    </Dialog>
+                  </FeatureLock>
                 )}
+
+                <FeatureLock feature="quote.visualScope">
+                  <Button variant="outline" className="flex-1 md:flex-none">
+                    <Eye className="h-4 w-4 mr-2" />
+                    Visual Scope
+                  </Button>
+                </FeatureLock>
 
                 <Button variant="outline" onClick={handleEmailPDF} className="flex-1 md:flex-none">
                   <Mail className="h-4 w-4 mr-2" />

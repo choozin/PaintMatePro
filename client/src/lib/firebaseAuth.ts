@@ -4,6 +4,7 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
   updateProfile, // Added for profile updates
+  signInAnonymously as firebaseSignInAnonymously,
   User,
   UserCredential,
 } from 'firebase/auth';
@@ -33,6 +34,20 @@ export async function signIn(email: string, password: string): Promise<UserCrede
   } catch (error: any) {
     console.error('Sign in error:', error);
     throw new Error(error.message || 'Failed to sign in');
+  }
+}
+
+
+/**
+ * Sign in anonymously for the Client Portal
+ */
+export async function signInAnonymously(): Promise<UserCredential> {
+  try {
+    const userCredential = await firebaseSignInAnonymously(auth);
+    return userCredential;
+  } catch (error: any) {
+    console.error('Anonymous sign in error:', error);
+    throw new Error(error.message || 'Failed to sign in anonymously');
   }
 }
 

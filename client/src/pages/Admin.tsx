@@ -226,7 +226,7 @@ function OrganizationsTab() {
                       <Button variant="outline" size="sm">{t('admin_page.orgs.users')}</Button>
                     </OrgUsersDialog>
                     <OrgEntitlementsDialog orgId={org.id} orgName={org.name}>
-                      <Button variant="outline" size="sm">{t('admin_page.orgs.manage')}</Button>
+                      <Button variant="outline" size="sm">Entitlements</Button>
                     </OrgEntitlementsDialog>
                     <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => handleDeleteOrg(org.id, org.name)}>
                       <ShieldAlert className="h-4 w-4" />

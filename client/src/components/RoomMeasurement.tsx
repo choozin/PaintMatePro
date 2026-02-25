@@ -16,6 +16,7 @@ import type { Room, MiscMeasurement } from "@/lib/firestore";
 import { isIOS } from "@/lib/deviceDetection";
 import { ARRoomScanner, type ARScanData, type ARMode } from "./ARRoomScanner";
 import { useEntitlements } from "@/hooks/useEntitlements";
+import { FeatureLock } from "@/components/FeatureLock";
 
 const ALL_AR_MODES: ARMode[] = ['hit-test', 'plane-detection', 'pose-based'];
 
@@ -421,9 +422,9 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
           </CardContent>
         </Card>
 
-        {hasFeature('capture.ar') && (
+        <FeatureLock feature="capture.ar">
           <Card>
-            <CardHeader><CardTitle className="text-lg">Camera-Assisted Measurement</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-lg">Camera-Assisted Measurements</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
                 <Label className="text-sm font-semibold">Measurement Precision</Label>
@@ -450,7 +451,7 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
               </div>
             </CardContent>
           </Card>
-        )}
+        </FeatureLock>
 
         <div ref={manualEntryRef} className="scroll-mt-4 space-y-8">
           {/* Interior Section */}
@@ -647,6 +648,26 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Reference Photos Placeholder */}
+          <div className="space-y-4 pt-4">
+            <FeatureLock feature="capture.reference">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-xl font-semibold">
+                    <CameraIcon className="h-5 w-5" />
+                    Premium Reference Photos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="outline" className="w-full h-24 border-dashed text-muted-foreground hover:text-foreground">
+                    <Plus className="h-6 w-6 mr-2" />
+                    Upload High-Resolution Photos or Blueprints
+                  </Button>
+                </CardContent>
+              </Card>
+            </FeatureLock>
           </div>
         </div>
 

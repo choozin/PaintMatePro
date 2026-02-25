@@ -42,6 +42,7 @@ export function CreateClientDialog({ open, onOpenChange, onSuccess, initialName 
                 email,
                 phone,
                 address,
+                leadStatus: 'new', // Explicitly set status
             });
 
             toast({

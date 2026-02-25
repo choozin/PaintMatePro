@@ -33,6 +33,32 @@ export function useEntitlements(targetOrgId?: string) {
       current = current[key];
     }
 
+    // 1. Direct boolean mapping (most common)
+    if (typeof current === 'boolean') {
+      return current;
+    }
+
+    // 2. Complex Object Mapping (Trials, Usage Limits)
+    // e.g., { enabled: true, expiresAt: 1735689600 }
+    if (typeof current === 'object' && current !== null) {
+      if (current.enabled === false) return false;
+
+      // Handle Time-bound trials
+      if (current.expiresAt) {
+        const now = Date.now();
+        // Handle both seconds and milliseconds UNIX timestamps safely
+        const expTimeMs = current.expiresAt < 10000000000 ? current.expiresAt * 1000 : current.expiresAt;
+        if (now > expTimeMs) {
+          return false; // Trial has expired
+        }
+      }
+
+      // If it has a limit, we just confirm it's enabled here. 
+      // The specific component would use `getFeatureValue` to read the actual `limit` integer if needed.
+      return Boolean(current.enabled);
+    }
+
+    // 3. Truthy fallback (e.g. if the value is a number like a limit, treat it as "has feature")
     return Boolean(current);
   };
 

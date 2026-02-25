@@ -28,9 +28,10 @@ interface ProjectHeaderProps {
     clientMobilePhone?: string;
     clientEmail?: string;
     className?: string;
+    extraActions?: React.ReactNode;
 }
 
-export function ProjectHeader({ project, client, clientName, clientPhone, clientMobilePhone, clientEmail, className }: ProjectHeaderProps) {
+export function ProjectHeader({ project, client, clientName, clientPhone, clientMobilePhone, clientEmail, className, extraActions }: ProjectHeaderProps) {
     const [, setLocation] = useLocation();
     const { t } = useTranslation();
     const updateProject = useUpdateProject();
@@ -149,6 +150,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
                     Back
                 </Button>
                 <div className="flex gap-2">
+                    {extraActions}
                     {/* Complete Project Toggle */}
                     <Button
                         size="sm"

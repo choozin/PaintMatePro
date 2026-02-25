@@ -34,7 +34,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
   const [open, setOpen] = useState(defaultOpen || false);
   const [name, setName] = useState("");
   const [clientId, setClientId] = useState(defaultClientId || "");
-  const [location, setLocation] = useState("");
+  const [address, setAddress] = useState("");
   const [startDate, setStartDate] = useState(defaultStartDate || "");
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
   const [status, setStatus] = useState<ProjectStatus>(project?.status || "new");
@@ -153,8 +153,16 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
       if (p.assignedCrewId !== crewId) return false;
       if (!p.startDate) return false;
 
-      const pStart = p.startDate.toDate().getTime();
-      const pEnd = p.estimatedCompletion ? p.estimatedCompletion.toDate().getTime() : pStart + (3 * 86400000);
+      const startDateVal = p.startDate instanceof Timestamp ? p.startDate.toDate() : new Date(p.startDate);
+      const pStart = startDateVal.getTime();
+
+      let pEnd: number;
+      if (p.estimatedCompletion) {
+        const endDateVal = p.estimatedCompletion instanceof Timestamp ? p.estimatedCompletion.toDate() : new Date(p.estimatedCompletion);
+        pEnd = endDateVal.getTime();
+      } else {
+        pEnd = pStart + (3 * 86400000);
+      }
 
       return (pStart <= eTime && pEnd >= sTime);
     });
@@ -170,17 +178,25 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
     if (project && mode === "edit") {
       setName(project.name);
       setClientId(project.clientId);
-      setLocation(project.location);
-      setStartDate(project.startDate ? new Date(project.startDate.seconds * 1000).toISOString().split('T')[0] : "");
-      setEstimatedCompletion(project.estimatedCompletion ? new Date(project.estimatedCompletion.seconds * 1000).toISOString().split('T')[0] : "");
+      setAddress(project.address);
+
+      const fmtDate = (d: Timestamp | string | undefined | null) => {
+        if (!d) return "";
+        const date = d instanceof Timestamp ? d.toDate() : new Date(d);
+        return date.toISOString().split('T')[0];
+      };
+
+      setStartDate(fmtDate(project.startDate));
+      setEstimatedCompletion(fmtDate(project.estimatedCompletion));
+
       setCrewId(project.assignedCrewId || "");
     } else if (mode === "create" && defaultClientId && clients.length > 0) {
       // Pre-fill for new project if defaultClientId is provided
       // Only if we haven't selected a different client (or it's unset) AND location is empty
-      if ((!clientId || clientId === defaultClientId) && !location) {
+      if ((!clientId || clientId === defaultClientId) && !address) {
         setClientId(defaultClientId);
         const client = clients.find(c => c.id === defaultClientId);
-        if (client?.address) setLocation(client.address);
+        if (client?.address) setAddress(client.address);
       }
     }
   }, [project, mode, defaultClientId, clients, clientId]);
@@ -190,7 +206,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
     if (mode === "create") {
       const client = clients.find(c => c.id === newClientId);
       if (client?.address) {
-        setLocation(client.address);
+        setAddress(client.address);
       }
     }
   };
@@ -205,7 +221,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
     // Validation: Start Date only required if we are editing an active project manually (though UI prevents status change now)
     const requiresStartDate = ['booked', 'in-progress', 'completed', 'paused'].includes(statusToSave);
 
-    if (!name || !clientId || !location || (requiresStartDate && !startDate)) {
+    if (!name || !clientId || !address || (requiresStartDate && !startDate)) {
       toast({
         variant: "destructive",
         title: t('common.error'),
@@ -228,7 +244,7 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
         name,
         clientId,
         status: statusToSave,
-        location,
+        address, // Corrected from location
         assignedCrewId: crewId || undefined,
         startDate: startDateObj ? Timestamp.fromDate(startDateObj) : null, // Save as Noon UTC or null
         timeline: mode === "create" ? [{
@@ -314,16 +330,24 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
       setName("");
       setClientId(defaultClientId || "");
       const defaultClient = clients.find(c => c.id === defaultClientId);
-      setLocation(defaultClient?.address || "");
+      setAddress(defaultClient?.address || "");
       setStartDate("");
       setEstimatedCompletion("");
       setCrewId("");
     } else if (project) {
       setName(project.name);
       setClientId(project.clientId);
-      setLocation(project.location);
-      setStartDate(project.startDate ? new Date(project.startDate.seconds * 1000).toISOString().split('T')[0] : "");
-      setEstimatedCompletion(project.estimatedCompletion ? new Date(project.estimatedCompletion.seconds * 1000).toISOString().split('T')[0] : "");
+      setAddress(project.address);
+
+      const fmtDate = (d: Timestamp | string | undefined | null) => {
+        if (!d) return "";
+        const date = d instanceof Timestamp ? d.toDate() : new Date(d);
+        return date.toISOString().split('T')[0];
+      };
+
+      setStartDate(fmtDate(project.startDate));
+      setEstimatedCompletion(fmtDate(project.estimatedCompletion));
+
       setStatus(project.status);
       setCrewId(project.assignedCrewId || "");
     }
@@ -382,11 +406,11 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="location">{t('projects.dialog.location')} *</Label>
+            <Label htmlFor="address">{t('projects.dialog.location')} *</Label>
             <Input
-              id="location"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              id="address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
               placeholder="e.g., 123 Main St, Cityville"
               required
               data-testid="input-project-location"

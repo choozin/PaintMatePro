@@ -337,7 +337,7 @@ export interface Project {
   clientId: string;
   name: string;
   address: string;
-  status: 'lead' | 'new' | 'active' | 'completed' | 'cancelled' | 'quote_created' | 'quote_sent' | 'pending' | 'booked' | 'in-progress' | 'paused' | 'on-hold' | 'invoiced' | 'paid' | 'overdue';
+  status: 'lead' | 'new' | 'active' | 'completed' | 'cancelled' | 'quoted' | 'quote_created' | 'quote_sent' | 'pending' | 'booked' | 'in-progress' | 'paused' | 'on-hold' | 'invoiced' | 'paid' | 'overdue';
 
   // Unified Schedule Fields
   type?: 'project' | 'task' | 'appointment' | 'event';
@@ -406,6 +406,8 @@ export interface Quote {
     unit: string;
     rate: number;
     unitCost?: number; // Contractor cost for margin calc
+    isHeader?: boolean;
+    amount?: number; // Header total
   }>;
   subtotal: number;
   tax: number;
@@ -436,8 +438,120 @@ export interface PortalToken {
   projectId: string;
   token: string;
   expiresAt: Timestamp;
+  clientEmail?: string;
   createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
+
+export interface ClientSubmission {
+  id: string; // uuid
+  projectId: string;
+  roomId?: string; // Optional context
+  type: 'note' | 'photo' | 'selection' | 'question';
+  content: string; // Text content or File URL
+  fileMetadata?: {
+    name: string;
+    size: number;
+    type: string;
+  };
+  submittedBy: 'client' // For now always client
+  createdAt: Timestamp;
+  isRead: boolean;
+}
+
+export const portalOperations = {
+  // 1. Get Token Info (Publicly accessible if we have security rules right, or via Function)
+  // For now we assume we can read this collection if we have the ID, or we make it public read?
+  // Actually, Firestore Rules should likely allow reading 'portal_tokens' where token == resource.data.token?
+  // Easier: Use a Cloud Function for "verify". 
+  // MVP: Allow read of portal_tokens by anyone (low risk if token is high entropy UUID).
+  getToken: async (token: string) => {
+    const q = query(getCollection<PortalToken>('portal_tokens'), where('token', '==', token));
+    const snap = await getDocsFromFirestore(q);
+    if (snap.empty) return null;
+    return { id: snap.docs[0].id, ...snap.docs[0].data() } as PortalToken & { id: string };
+  },
+
+  getActiveToken: async (projectId: string) => {
+    // Find a token for this project that hasn't expired
+    // OPTIMIZATION: Query by projectId only (supported by default index) and filter date in JS
+    // This avoids needing a custom composite index deployment.
+    const q = query(
+      getCollection<PortalToken>('portal_tokens'),
+      where('projectId', '==', projectId)
+    );
+    const snap = await getDocsFromFirestore(q);
+
+    if (snap.empty) return null;
+
+    const now = new Date();
+    const activeToken = snap.docs
+      .map(doc => doc.data())
+      .find(data => data.expiresAt.toDate() > now);
+
+    return activeToken ? activeToken.token : null;
+  },
+
+  createToken: async (projectId: string, clientEmail?: string, invalidateOld = false) => {
+    // 0. Invalidate old tokens if requested
+    if (invalidateOld) {
+      // Query all tokens for project and filter in code to find active ones
+      const q = query(
+        getCollection<PortalToken>('portal_tokens'),
+        where('projectId', '==', projectId)
+      );
+      const snap = await getDocsFromFirestore(q);
+
+      const now = new Date();
+      const activeDocs = snap.docs.filter(doc => doc.data().expiresAt.toDate() > now);
+
+      await Promise.all(activeDocs.map(doc =>
+        updateDocument('portal_tokens', doc.id, { expiresAt: Timestamp.now() })
+      ));
+    }
+
+    // 1. Generate Token
+    const token = crypto.randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days valid
+
+    // 2. Save
+    await addDocument<PortalToken>('portal_tokens', {
+      projectId,
+      clientEmail: clientEmail || '',
+      token,
+      expiresAt: Timestamp.fromDate(expiresAt),
+      createdAt: Timestamp.now()
+    });
+
+    return token;
+  },
+
+  // 2. Validate Email NO LONGER NEEDED (Done in PortalAuth via Token Data)
+  validateClient: async (projectId: string, email: string) => {
+    // Deprecated in favor of PortalAuth check against tokenDoc.clientEmail
+    return true;
+  },
+
+  // 3. Activity Feed / Submissions
+  submitActivity: async (projectId: string, data: Omit<ClientSubmission, 'id' | 'projectId' | 'createdAt' | 'isRead'>) => {
+    // We add this to a specific subcollection or root collection
+    // Let's use a root collection 'client_submissions' for easier querying by Admins later?
+    // Or subcollection to keep Project tidy. 
+    // User requirement: "Update project doc ... or clientSubmissions sub-collection"
+    // Let's go with Root collection with projectId field for easier Indexing.
+    return addDocument('client_submissions', {
+      ...data,
+      projectId,
+      submittedBy: 'client',
+      isRead: false,
+      createdAt: Timestamp.now()
+    });
+  },
+
+  getProjectSubmissions: (projectId: string) =>
+    getDocs<ClientSubmission>('client_submissions', [where('projectId', '==', projectId), orderBy('createdAt', 'desc')])
+};
 
 export interface TimeEntry {
   id: string;
@@ -572,6 +686,7 @@ export const projectOperations = {
   create: (data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => addDocument<Omit<Project, 'id' | 'createdAt' | 'updatedAt'>>('projects', data),
   get: (id: string) => getDocById<Project>('projects', id),
   getByOrg: (orgId: string) => getDocs<Project>('projects', [where('orgId', '==', orgId)]), // Removed orderBy to fix potential index issue
+  getByClient: (clientId: string) => getDocs<Project>('projects', [where('clientId', '==', clientId)]),
   getByLinkedProject: (projectId: string) => getDocs<Project>('projects', [where('linkedProjectId', '==', projectId)]),
   update: (id: string, data: Partial<Project>) => updateDocument<Project>('projects', id, data),
   delete: (id: string) => deleteDocument('projects', id),
@@ -580,7 +695,7 @@ export const projectOperations = {
 export const clientOperations = {
   create: (data: Omit<Client, 'id' | 'createdAt'>) => addDocument<Omit<Client, 'id' | 'createdAt'>>('clients', data),
   get: (id: string) => getDocById<Client>('clients', id),
-  getByOrg: (orgId: string) => getDocs<Client>('clients', [where('orgId', '==', orgId), orderBy('createdAt', 'desc')]),
+  getByOrg: (orgId: string) => getDocs<Client>('clients', [where('orgId', '==', orgId)]), // Removed orderBy to rely on client-side sorting & avoid index issues
   update: (id: string, data: Partial<Client>) => updateDocument<Client>('clients', id, data),
   delete: (id: string) => deleteDocument('clients', id),
 };

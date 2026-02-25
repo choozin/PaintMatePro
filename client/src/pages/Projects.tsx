@@ -97,12 +97,23 @@ export default function Projects() {
           <h1 className="text-4xl font-bold">{t('projects.title')}</h1>
           <p className="text-muted-foreground mt-2">{t('projects.subtitle')}</p>
         </div>
-        <QuickAddDialog
-          open={createParam === 'true'}
-          onOpenChange={(isOpen) => !isOpen && setLocation('/projects')}
-          defaultDate={startParam || undefined}
-          onSuccess={() => setLocation('/projects')}
-        />
+        <div className="flex items-center gap-2">
+          <ProjectDialog
+            mode="create"
+            trigger={
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                {t('projects.create_new')}
+              </Button>
+            }
+          />
+          <QuickAddDialog
+            open={createParam === 'true'}
+            onOpenChange={(isOpen) => !isOpen && setLocation('/projects')}
+            defaultDate={startParam || undefined}
+            onSuccess={() => setLocation('/projects')}
+          />
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4">
@@ -185,23 +196,25 @@ export default function Projects() {
 
       </div>
 
-      {isLoading ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">{t('dashboard.loading_projects')}</p>
-        </div>
-      ) : filteredProjects.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">
-            {searchQuery ? t('projects.no_results') : t('dashboard.no_projects')}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProjects.map((project) => (
-            <ProjectCardWithClient key={project.id} project={project} crews={crews} />
-          ))}
-        </div>
-      )}
-    </div>
+      {
+        isLoading ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">{t('dashboard.loading_projects')}</p>
+          </div>
+        ) : filteredProjects.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">
+              {searchQuery ? t('projects.no_results') : t('dashboard.no_projects')}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProjects.map((project) => (
+              <ProjectCardWithClient key={project.id} project={project} crews={crews} />
+            ))}
+          </div>
+        )
+      }
+    </div >
   );
 }

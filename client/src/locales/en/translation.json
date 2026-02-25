@@ -151,36 +151,36 @@
         },
         "features": {
             "capture": {
-                "ar": "AR Measurement",
-                "reference": "Reference Photos",
+                "ar": "AR Room Capture",
+                "reference": "Upload Premium Reference Photos",
                 "weeklyLimit": "Weekly Capture Limit"
             },
             "visual": {
-                "recolor": "Visualizer (Recolor)",
-                "sheenSimulator": "Sheen Simulator"
+                "recolor": "AI Room Recolor Tool",
+                "sheenSimulator": "Interactive Sheen Simulator"
             },
             "portal": {
-                "fullView": "Client Portal (Full View)",
-                "advancedActionsLocked": "Lock Advanced Actions"
+                "fullView": "Full Detailed Client View",
+                "advancedActionsLocked": "Lock Advanced Client Actions"
             },
             "analytics": {
-                "lite": "Basic Analytics",
-                "drilldowns": "Advanced Drilldowns"
+                "lite": "Basic Revenue Analytics",
+                "drilldowns": "Advanced Margin Drilldowns"
             },
             "pdf": {
-                "watermark": "PDF Watermark"
+                "watermark": "Remove PaintMatePro Watermark"
             },
             "quote": {
                 "tiers": "Quote Tiers (Good/Better/Best)",
-                "profitMargin": "Profit Margin Analysis",
-                "visualScope": "Visual Scope of Work"
+                "profitMargin": "AI Profit Margin Optimizer",
+                "visualScope": "Visual Scope of Work Diagrams"
             },
             "client": {
-                "importCSV": "Import Clients (CSV)"
+                "importCSV": "Bulk Import Clients via CSV"
             },
             "eSign": "Digital Signatures",
-            "payments": "Online Payments",
-            "scheduler": "Scheduler / Calendar"
+            "payments": "Online Invoicing & Payments",
+            "scheduler": "Advanced Crew Scheduler"
         },
         "access_denied": {
             "title": "Access Denied",

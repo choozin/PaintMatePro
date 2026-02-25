@@ -61,7 +61,7 @@
     "firebase": "^12.5.0",
     "firebase-admin": "^13.5.0",
     "firebase-functions": "^6.6.0",
-    "framer-motion": "^11.13.1",
+    "framer-motion": "^11.18.2",
     "i18next": "^25.6.3",
     "i18next-browser-languagedetector": "^8.2.0",
     "input-otp": "^1.4.2",

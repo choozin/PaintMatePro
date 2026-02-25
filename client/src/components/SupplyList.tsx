@@ -127,7 +127,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
 
     // Editing State
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
-    const [editingValues, setEditingValues] = useState<{ name: string; price: number; roomId: string; billingType?: 'billable' | 'expense' | 'checklist' }>({ name: '', price: 0, roomId: 'general', billingType: 'expense' });
+    const [editingValues, setEditingValues] = useState<{ name: string; qty: number; price: number; roomId: string; billingType?: 'billable' | 'expense' | 'checklist' }>({ name: '', qty: 1, price: 0, roomId: 'general', billingType: 'expense' });
 
     // Load supplies with migration logic
     useEffect(() => {
@@ -229,6 +229,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
         setEditingItemId(item.id);
         setEditingValues({
             name: item.name,
+            qty: item.qty || 1,
             price: item.unitPrice || 0,
             roomId: item.roomId || 'general',
             billingType: item.billingType || 'expense'
@@ -237,7 +238,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
 
     const cancelEditing = () => {
         setEditingItemId(null);
-        setEditingValues({ name: '', price: 0, roomId: 'general', billingType: 'expense' });
+        setEditingValues({ name: '', qty: 1, price: 0, roomId: 'general', billingType: 'expense' });
     };
 
     const saveEditing = () => {
@@ -248,6 +249,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                 return {
                     ...item,
                     name: editingValues.name,
+                    qty: editingValues.qty,
                     unitPrice: editingValues.price,
                     roomId: editingValues.roomId === 'general' ? undefined : editingValues.roomId,
                     billingType: editingValues.billingType
@@ -667,129 +669,132 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                                 <div className="grid gap-3 sm:grid-cols-1">
                                     {supplyItems.map((item, idx) => (
                                         <div key={item.id || idx} className="flex items-center justify-between p-3 rounded-md border bg-muted/30 group hover:bg-muted/50 transition-colors">
-                                            {editingItemId === item.id ? (
-                                                <div className="flex items-center gap-2 flex-1 mr-2">
-                                                    <div className="flex-1 grid grid-cols-12 gap-2">
-                                                        <Input
-                                                            value={editingValues.name}
-                                                            onChange={(e) => setEditingValues(prev => ({ ...prev, name: e.target.value }))}
-                                                            placeholder="Item Name"
-                                                            className="h-8 col-span-4"
-                                                        />
-                                                        <div className="relative col-span-2">
-                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                                                            <Input
-                                                                type="number"
-                                                                value={editingValues.price}
-                                                                onChange={(e) => setEditingValues(prev => ({ ...prev, price: parseFloat(e.target.value) }))}
-                                                                placeholder="0.00"
-                                                                className="h-8 pl-6"
-                                                            />
-                                                        </div>
-                                                        <div className="col-span-3">
-                                                            <Select value={editingValues.roomId} onValueChange={(val) => setEditingValues(prev => ({ ...prev, roomId: val }))}>
-                                                                <SelectTrigger className="h-8">
-                                                                    <SelectValue placeholder="Room" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="general">General</SelectItem>
-                                                                    {rooms?.map(room => (
-                                                                        <SelectItem key={room.name} value={room.id || room.name}>{room.name}</SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                        <div className="col-span-3">
-                                                            <Select value={editingValues.billingType || 'expense'} onValueChange={(val: 'billable' | 'expense' | 'checklist') => setEditingValues(prev => ({ ...prev, billingType: val }))}>
-                                                                <SelectTrigger className="h-8">
-                                                                    <SelectValue placeholder="Type" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="checklist">In Inventory</SelectItem>
-                                                                    <SelectItem value="expense">Expense</SelectItem>
-                                                                    <SelectItem value="billable">Billable</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
+                                            <div className="flex items-center gap-3 w-full">
+                                                <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                                                    {item.qty}
+                                                </div>
+                                                <div className="flex-1 min-w-0 grid grid-cols-12 gap-2 items-center">
+                                                    <div className="col-span-5 flex flex-col justify-center">
+                                                        <div className="font-medium truncate" title={item.name}>{item.name}</div>
+                                                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                                            {item.unitPrice ? `$${item.unitPrice.toFixed(2)}` : '-'}
+                                                            <span>&bull;</span>
+                                                            <span>{item.unit || 'ea'}</span>
                                                         </div>
                                                     </div>
-                                                    <div className="flex gap-1">
-                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:bg-green-100" onClick={saveEditing}>
-                                                            <Check className="h-4 w-4" />
+
+                                                    {/* Room Badge */}
+                                                    <div className="col-span-3 flex items-center">
+                                                        <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 cursor-pointer max-w-full truncate block" onClick={() => startEditing(item)}>
+                                                            {item.roomId ? (rooms?.find(r => r.id === item.roomId || r.name === item.roomId)?.name || "Specific Room") : "General"}
+                                                        </Badge>
+                                                    </div>
+
+                                                    {/* Type Badge */}
+                                                    <div className="col-span-2 flex items-center">
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Badge
+                                                                        variant={item.billingType === 'billable' ? 'default' : 'outline'}
+                                                                        className={`text-[10px] cursor-pointer ${item.billingType === 'checklist'
+                                                                            ? 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                                                            : item.billingType === 'expense'
+                                                                                ? 'bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-200'
+                                                                                : ''
+                                                                            }`}
+                                                                        onClick={() => startEditing(item)}
+                                                                    >
+                                                                        {item.billingType === 'billable' ? 'Billable' : item.billingType === 'checklist' ? 'In Inventory' : 'Expense'}
+                                                                    </Badge>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p className="max-w-[200px] text-xs">
+                                                                        {item.billingType === 'billable' && "Billed to customer on quote."}
+                                                                        {item.billingType === 'checklist' && "Already owned/in inventory. Not charged."}
+                                                                        {item.billingType === 'expense' && "Internal business cost. Reduces profit."}
+                                                                    </p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    </div>
+
+                                                    {/* Actions */}
+                                                    <div className="col-span-2 flex items-center justify-end gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditing(item)}>
+                                                            <Pencil className="h-3 w-3" />
                                                         </Button>
-                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500 hover:bg-red-100" onClick={() => setEditingItemId(null)}>
-                                                            <X className="h-4 w-4" />
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeSupplyItem(item.id)}>
+                                                            <Trash2 className="h-3 w-3" />
                                                         </Button>
                                                     </div>
                                                 </div>
-                                            ) : (
-                                                <div className="flex items-center gap-3 w-full">
-                                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                                                        {item.qty}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0 grid grid-cols-12 gap-2 items-center">
-                                                        <div className="col-span-5 flex flex-col justify-center">
-                                                            <div className="font-medium truncate" title={item.name}>{item.name}</div>
-                                                            <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                                                {item.unitPrice ? `$${item.unitPrice.toFixed(2)}` : '-'}
-                                                                <span>&bull;</span>
-                                                                <span>{item.unit || 'ea'}</span>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Room Badge */}
-                                                        <div className="col-span-3 flex items-center">
-                                                            <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 cursor-pointer max-w-full truncate block" onClick={() => startEditing(item)}>
-                                                                {item.roomId ? (rooms?.find(r => r.id === item.roomId || r.name === item.roomId)?.name || "Specific Room") : "General"}
-                                                            </Badge>
-                                                        </div>
-
-                                                        {/* Type Badge */}
-                                                        <div className="col-span-2 flex items-center">
-                                                            <TooltipProvider>
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        <Badge
-                                                                            variant={item.billingType === 'billable' ? 'default' : 'outline'}
-                                                                            className={`text-[10px] cursor-pointer ${item.billingType === 'checklist'
-                                                                                ? 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                                                                                : item.billingType === 'expense'
-                                                                                    ? 'bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-200'
-                                                                                    : ''
-                                                                                }`}
-                                                                            onClick={() => startEditing(item)}
-                                                                        >
-                                                                            {item.billingType === 'billable' ? 'Billable' : item.billingType === 'checklist' ? 'In Inventory' : 'Expense'}
-                                                                        </Badge>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>
-                                                                        <p className="max-w-[200px] text-xs">
-                                                                            {item.billingType === 'billable' && "Billed to customer on quote."}
-                                                                            {item.billingType === 'checklist' && "Already owned/in inventory. Not charged."}
-                                                                            {item.billingType === 'expense' && "Internal business cost. Reduces profit."}
-                                                                        </p>
-                                                                    </TooltipContent>
-                                                                </Tooltip>
-                                                            </TooltipProvider>
-                                                        </div>
-
-                                                        {/* Actions */}
-                                                        <div className="col-span-2 flex items-center justify-end gap-1">
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditing(item)}>
-                                                                <Pencil className="h-3 w-3" />
-                                                            </Button>
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeSupplyItem(item.id)}>
-                                                                <Trash2 className="h-3 w-3" />
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
                         </CardContent>
                     </Card>
+
+                    {/* Edit Supply Item Modal */}
+                    <Dialog open={!!editingItemId} onOpenChange={(open) => { if (!open) cancelEditing(); }}>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Edit Supply Item</DialogTitle>
+                                <DialogDescription>Update the details and pricing for this material.</DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="edit-name" className="text-right">Item Name</Label>
+                                    <Input id="edit-name" value={editingValues.name} onChange={(e) => setEditingValues(prev => ({ ...prev, name: e.target.value }))} className="col-span-3" />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="edit-qty" className="text-right">Quantity</Label>
+                                    <Input id="edit-qty" type="number" min={1} value={editingValues.qty} onChange={(e) => setEditingValues(prev => ({ ...prev, qty: parseInt(e.target.value) || 1 }))} className="col-span-3" />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="edit-price" className="text-right">Unit Price</Label>
+                                    <Input id="edit-price" type="number" value={editingValues.price === 0 ? '' : editingValues.price} onChange={(e) => setEditingValues(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))} className="col-span-3" placeholder="0.00" />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="edit-room" className="text-right">Room</Label>
+                                    <div className="col-span-3">
+                                        <Select value={editingValues.roomId} onValueChange={(val) => setEditingValues(prev => ({ ...prev, roomId: val }))}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="General (All Rooms)" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="general">General (All Rooms)</SelectItem>
+                                                {rooms?.map(room => (
+                                                    <SelectItem key={room.name} value={room.id || room.name}>{room.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="edit-type" className="text-right">Type</Label>
+                                    <div className="col-span-3">
+                                        <Select value={editingValues.billingType || 'expense'} onValueChange={(val: 'billable' | 'expense' | 'checklist') => setEditingValues(prev => ({ ...prev, billingType: val }))}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Billing Type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="checklist">In Inventory</SelectItem>
+                                                <SelectItem value="expense">Expense (Internal Cost)</SelectItem>
+                                                <SelectItem value="billable">Billable (On Quote)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                <Button variant="outline" onClick={cancelEditing}>Cancel</Button>
+                                <Button onClick={saveEditing} disabled={!editingValues.name.trim()}>Save Changes</Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
                 </div>
 
                 {/* Estimates (Right Column) */}
