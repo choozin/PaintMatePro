@@ -12,7 +12,8 @@ import {
   SlidersHorizontal,
   Clock,
   DollarSign,
-  NotebookPen
+  NotebookPen,
+  CreditCard
 } from "lucide-react";
 import {
   Sidebar,
@@ -93,11 +94,18 @@ export function AppSidebar() {
       featureLock: "manage_catalog", // This should be updated to a real UI entitlement if possible, but keep for now. Actually, wait, Org Entitlements are only the 16 boolean features. manage_catalog is a Role Permission. Let me leave manage_catalog lock to demonstrate, or remove it. The user said ONLY org entitlements get locked. Let's remove the manage_catalog lock and just use it as a normal link.
     },
     {
+      title: "Invoices & Payments",
+      url: "/invoices",
+      icon: CreditCard,
+      testId: "invoices",
+      featureLock: "payments"
+    },
+    {
       title: "Time & Pay",
       url: "/time-tracking",
       icon: Clock,
       testId: "time-tracking",
-      featureLock: "payments"
+      featureLock: "timeTracking"
     },
     {
       title: "Payroll",

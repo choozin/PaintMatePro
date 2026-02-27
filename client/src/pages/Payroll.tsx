@@ -9,6 +9,7 @@ import { format, startOfWeek, endOfWeek, subWeeks, addDays, isWithinInterval } f
 import { Download, CheckCircle, AlertCircle, Calendar as CalendarIcon, DollarSign, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 import { RoleGuard } from "@/components/RoleGuard";
+import { useToast } from "@/hooks/use-toast";
 
 interface EmployeePayrollSummary {
     employee: Employee;
@@ -23,6 +24,7 @@ interface EmployeePayrollSummary {
 export default function Payroll() {
     const { org } = useAuth();
     const queryClient = useQueryClient();
+    const { toast } = useToast();
 
     // Default to last week
     const [dateRange, setDateRange] = useState({
@@ -65,7 +67,7 @@ export default function Payroll() {
             }
         });
 
-        const rate = emp.hourlyRate || 0;
+        const rate = (emp as any).hourlyRate || 0;
         // Simple OT = 1.5x
         const grossPay = (regularHours * rate) + (overtimeHours * rate * 1.5);
 
@@ -107,6 +109,17 @@ export default function Payroll() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+            toast({
+                title: "Timesheets Approved",
+                description: "The selected timesheets have been approved for payroll.",
+            });
+        },
+        onError: () => {
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Failed to approve timesheets. Please try again.",
+            });
         }
     });
 
@@ -117,7 +130,7 @@ export default function Payroll() {
 
         payrollData.forEach(p => {
             p.entries.forEach(e => {
-                const rate = p.employee.hourlyRate || 0;
+                const rate = (p.employee as any).hourlyRate || 0;
                 const multiplier = e.workType === 'overtime' ? 1.5 : e.workType === 'double_time' ? 2.0 : 1.0;
                 const pay = e.totalHours * rate * multiplier;
 

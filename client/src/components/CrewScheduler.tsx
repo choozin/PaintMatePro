@@ -17,6 +17,7 @@ import { hasPermission } from "@/lib/permissions";
 
 import { Users } from "lucide-react";
 import { CREW_PALETTES, PAUSE_STYLE } from "@/lib/crew-palettes";
+import { format } from "date-fns";
 
 type ViewMode = 'week' | 'month' | 'day';
 
@@ -415,8 +416,19 @@ export function CrewScheduler() {
     const allDayItems = items.filter(p => {
       const pStart = toDate(p.startDate);
       const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : pStart;
-      // Logic: It's all day if it spans > 24h OR has no specific time (00:00)
-      return (pEnd.getTime() - pStart.getTime()) >= 86400000 || (pStart.getHours() === 0 && pStart.getMinutes() === 0);
+
+      const isStartDay = pStart.toDateString() === currentDate.toDateString();
+      const hasSpecificTime = pStart.getHours() !== 0 || pStart.getMinutes() !== 0;
+
+      // If it doesn't have a specific time, it's always all-day.
+      if (!hasSpecificTime) return true;
+
+      // If it HAS a specific time, but it's a multi-day task,
+      // and we are NOT on the start day, show it as all-day. It spans multiple days.
+      if (!isStartDay) return true;
+
+      // If we ARE on the start day, and it has a specific time, show in hourly grid.
+      return false;
     });
 
     const timedItems = items.filter(p => !allDayItems.includes(p));
@@ -448,45 +460,174 @@ export function CrewScheduler() {
               </div>
             )}
 
-            {/* Hourly Grid */}
-            <div className="flex-1 relative overflow-y-auto">
-              {hours.map(hour => (
-                <div
-                  key={hour}
-                  onClick={() => handleTimeSlotClick(currentDate, hour)}
-                  className={cn(
-                    "flex border-b min-h-[60px] group transition-colors",
-                    canManageSchedule ? "cursor-pointer hover:bg-muted/5" : ""
-                  )}
-                  title={canManageSchedule ? "Click to add item" : ""}
-                >
-                  <div className="w-16 flex-shrink-0 text-right pr-4 py-2 text-xs text-muted-foreground border-r bg-muted/10 font-medium">
-                    {hour > 12 ? `${hour - 12} PM` : hour === 12 ? `12 PM` : `${hour} AM`}
+            {/* Hourly Grid (6am to 7pm = 13 hours total) */}
+            <div className="flex-1 flex overflow-y-auto">
+              {/* Time Labels Sidebar */}
+              <div className="w-16 flex-shrink-0 border-r bg-muted/5">
+                {hours.map(hour => (
+                  <div key={hour} className="h-[60px] text-right pr-4 py-2 text-xs text-muted-foreground font-medium relative">
+                    <span className="absolute right-3 -translate-y-1/2 bg-muted/5 px-1 rounded-sm">
+                      {hour > 12 ? `${hour - 12} PM` : hour === 12 ? `12 PM` : `${hour} AM`}
+                    </span>
                   </div>
-                  <div className="flex-1 relative p-1">
-                    {/* Render events starting in this hour */}
-                    {timedItems.filter(p => toDate(p.startDate).getHours() === hour && toDate(p.startDate).toDateString() === currentDate.toDateString()).map(p => (
+                ))}
+              </div>
+
+              {/* Day Track (Relative Container) */}
+              <div className="flex-1 relative min-h-[780px]"> {/* 13 hours * 60px */}
+
+                {/* Horizontal Grid Lines */}
+                {hours.map((hour, idx) => (
+                  <div
+                    key={hour}
+                    className="absolute w-full border-t border-muted/50 pointer-events-none"
+                    style={{ top: `${(idx / 13) * 100}%` }}
+                    onClick={() => handleTimeSlotClick(currentDate, hour)}
+                  />
+                ))}
+
+                {/* Clickable Background for Empty Slots */}
+                <div
+                  className="absolute inset-0 z-0 grid"
+                  style={{ gridTemplateRows: 'repeat(13, 1fr)' }}
+                >
+                  {hours.map(hour => (
+                    <div
+                      key={hour}
+                      className={cn("w-full transition-colors", canManageSchedule ? "cursor-pointer hover:bg-muted/10" : "")}
+                      onClick={() => handleTimeSlotClick(currentDate, hour)}
+                      title={canManageSchedule ? "Click to add item" : ""}
+                    />
+                  ))}
+                </div>
+
+                {/* Render Events */}
+                {(() => {
+                  // 1. Filter and compute actual render bounds
+                  const renderableItems = timedItems.map(p => {
+                    const pStart = toDate(p.startDate);
+                    const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : new Date(pStart.getTime() + 60 * 60 * 1000);
+
+                    const renderStart = new Date(currentDate);
+                    renderStart.setHours(6, 0, 0, 0);
+                    const renderEnd = new Date(currentDate);
+                    renderEnd.setHours(19, 0, 0, 0);
+
+                    let actualStart = pStart < renderStart ? renderStart : pStart;
+                    let actualEnd = pEnd > renderEnd ? renderEnd : pEnd;
+
+                    return { p, actualStart, actualEnd };
+                  }).filter(item => !(item.actualEnd <= item.actualStart)); // Filter out things outside the window
+
+                  // 2. Sort by start time, then by end time (longest first)
+                  renderableItems.sort((a, b) => {
+                    const diff = a.actualStart.getTime() - b.actualStart.getTime();
+                    if (diff !== 0) return diff;
+                    return b.actualEnd.getTime() - a.actualEnd.getTime();
+                  });
+
+                  // 3. Calculate Layout Columns (Google Calendar style)
+                  type RenderableItem = typeof renderableItems[0];
+                  type LayoutItem = RenderableItem & { column?: number; totalColumns?: number };
+
+                  const layoutItems: LayoutItem[] = [];
+                  let columns: LayoutItem[][] = [];
+                  let lastEventEnding: Date | null = null;
+
+                  for (let i = 0; i < renderableItems.length; i++) {
+                    const ev = renderableItems[i] as LayoutItem;
+
+                    // If this event starts after ALL previous events in the group have ended, start a new group
+                    if (lastEventEnding !== null && ev.actualStart >= lastEventEnding) {
+                      // Apply totalColumns to previous group
+                      columns.forEach(col => col.forEach(e => e.totalColumns = columns.length));
+                      columns = [];
+                      lastEventEnding = null;
+                    }
+
+                    // Find first available column
+                    let placed = false;
+                    for (let c = 0; c < columns.length; c++) {
+                      const lastColEvent = columns[c][columns[c].length - 1];
+                      if (ev.actualStart >= lastColEvent.actualEnd) {
+                        columns[c].push(ev);
+                        ev.column = c;
+                        placed = true;
+                        break;
+                      }
+                    }
+
+                    // If no column available, create a new one
+                    if (!placed) {
+                      columns.push([ev]);
+                      ev.column = columns.length - 1;
+                    }
+
+                    if (lastEventEnding === null || ev.actualEnd > lastEventEnding) {
+                      lastEventEnding = ev.actualEnd;
+                    }
+
+                    layoutItems.push(ev);
+                  }
+                  // Apply totalColumns to final group
+                  columns.forEach(col => col.forEach(e => e.totalColumns = columns.length));
+
+                  // 4. Render
+                  return layoutItems.map(({ p, actualStart, actualEnd, column = 0, totalColumns = 1 }) => {
+                    const startHourOffset = actualStart.getHours() + (actualStart.getMinutes() / 60) - 6;
+                    const topPercent = (startHourOffset / 13) * 100;
+
+                    const durationHours = (actualEnd.getTime() - actualStart.getTime()) / (1000 * 60 * 60);
+                    const heightPercent = (durationHours / 13) * 100;
+
+                    // Width & Left based on columns
+                    const widthPercent = (100 / totalColumns) * 0.95; // 95% to leave a tiny gap
+                    const leftPercentOffset = (column / totalColumns) * 100;
+
+                    return (
                       <div
                         key={p.id}
                         onClick={(e) => handleItemClick(e, p)}
-                        className={cn("absolute left-2 right-2 top-1 bottom-1 rounded p-2 text-xs border cursor-pointer hover:scale-[1.01] transition-all shadow-sm z-10", statusColors[getStatusForDate(p, currentDate)])}
+                        className={cn(
+                          "absolute rounded p-2 text-xs border cursor-pointer hover:scale-[1.01] hover:z-20 transition-all shadow-sm z-10 flex flex-col overflow-hidden",
+                          (p.assignedCrewId && crews.find(c => c.id === p.assignedCrewId)?.paletteId)
+                            ? CREW_PALETTES.find(palette => palette.id === crews.find(c => c.id === p.assignedCrewId)?.paletteId)?.class
+                            : statusColors[getStatusForDate(p, currentDate)]
+                        )}
+                        style={{
+                          top: `${topPercent}%`,
+                          height: `${heightPercent}%`,
+                          minHeight: '24px',
+                          left: `calc(${leftPercentOffset}% + 8px)`,
+                          width: `calc(${widthPercent}% - 16px)`
+                        }}
                       >
-                        <div className="font-bold flex items-center gap-2">
-                          <span className="opacity-75">{toDate(p.startDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-                          <span>{p.name}</span>
+                        <div className="font-bold flex items-center gap-2 truncate">
+                          <span className="opacity-75 shrink-0 block sm:hidden md:block">
+                            {(() => {
+                              const pStart = toDate(p.startDate);
+                              const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : pStart;
+                              const fStart = pStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                              const isSameDay = pStart.toDateString() === pEnd.toDateString();
+                              const hasDuration = pEnd.getTime() > pStart.getTime();
+
+                              if (!hasDuration) return fStart;
+
+                              if (isSameDay) {
+                                return `${fStart} - ${pEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                              } else {
+                                return `${fStart} - ${pEnd.toLocaleDateString([], { weekday: 'short' })} ${pEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                              }
+                            })()}
+                          </span>
+                          <span className="truncate">{p.name}</span>
                         </div>
-                        {p.assignedCrewId && <div className="mt-1 text-[10px] opacity-80">{crews.find(c => c.id === p.assignedCrewId)?.name}</div>}
+                        {p.assignedCrewId && <div className="mt-1 text-[10px] opacity-80 truncate">{crews.find(c => c.id === p.assignedCrewId)?.name}</div>}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {/* Empty State for Times */}
-              {timedItems.length === 0 && allDayItems.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/40 font-medium pointer-events-none">
-                  No events scheduled for this day
-                </div>
-              )}
+                    );
+                  });
+                })()}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -703,7 +844,7 @@ export function CrewScheduler() {
                             {/* --- SINGLE DAY RENDERER --- */}
                             {item.isSingleDay ? (
                               <div className={cn(
-                                "flex items-center h-full px-2 gap-2 overflow-hidden",
+                                "flex items-center h-full px-2 gap-2 overflow-hidden pointer-events-auto",
                                 // Helper to get color class - reuse logic
                                 (() => {
                                   const status = getStatusForDate(item.project, projectDaysInWeek[0]);
@@ -723,7 +864,14 @@ export function CrewScheduler() {
                                     {item.startTimeDisplay}
                                   </span>
                                 )}
-                                <span className="font-semibold truncate">{item.project.name}</span>
+                                <span className="font-semibold truncate pr-1">{item.project.name}</span>
+                                {/* Single Day Assignment Count */}
+                                {item.project.assignments && item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")] && (
+                                  <div title={`${item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")].length} assigned`} className="flex items-center gap-0.5 text-[9px] bg-white/60 px-1 rounded-sm backdrop-blur-sm self-center leading-none py-0.5 shrink-0 ml-auto mr-1 shadow-sm">
+                                    <Users className="w-2.5 h-2.5" />
+                                    {item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")].length}
+                                  </div>
+                                )}
                               </div>
                             ) : (
                               /* --- MULTI DAY RENDERER (Ribbon segments) --- */
@@ -745,23 +893,33 @@ export function CrewScheduler() {
                                   return (
                                     <div
                                       key={i}
+                                      onClick={(e) => handleItemClick(e, item.project)}
                                       className={cn(
-                                        "flex-1 h-full border-y border-r first:border-l relative group/segment flex items-center px-1",
+                                        "flex-1 h-full border-y border-r first:border-l relative group/segment flex items-center px-1 pointer-events-auto cursor-pointer",
                                         colorClass,
                                         "border-r-black/5"
                                       )}
                                     >
-                                      {/* Label logic: Only on First segment OR Start of Project */}
-                                      {(i === 0 && item.isStart) && (
-                                        <div className="flex items-center gap-1.5 pl-1 overflow-hidden whitespace-nowrap">
-                                          {item.startTimeDisplay && (
-                                            <span className="text-[10px] bg-white/30 backdrop-blur-[1px] px-1 rounded-sm">
+                                      {/* Content only on the first day of this specific ribbon segment */}
+                                      {i === 0 && (
+                                        <div className="flex items-center gap-2 overflow-hidden w-full whitespace-nowrap">
+                                          {item.startTimeDisplay && item.isStart && (
+                                            <span className="font-mono font-bold opacity-80 shrink-0 text-[10px]">
                                               {item.startTimeDisplay}
                                             </span>
                                           )}
-                                          <span className="font-bold truncate text-[11px] drop-shadow-sm">
+                                          <span className="font-semibold truncate pr-1">
+                                            {!item.isStart && <span className="text-[10px] opacity-75 mr-1 font-normal italic">(Cont.)</span>}
                                             {item.project.name}
                                           </span>
+                                        </div>
+                                      )}
+
+                                      {/* Multi Day Assignment Count for this day segment */}
+                                      {item.project.assignments && item.project.assignments[format(dayDate, "yyyy-MM-dd")] && (
+                                        <div title={`${item.project.assignments[format(dayDate, "yyyy-MM-dd")].length} assigned`} className={`flex items-center gap-0.5 text-[9px] bg-white/40 px-1 rounded-sm backdrop-blur-sm self-center leading-none py-0.5 ml-auto mr-1 shadow-sm shrink-0 ${(i === 0 && item.isStart) ? '' : 'absolute right-0'}`}>
+                                          <Users className="w-2.5 h-2.5" />
+                                          {item.project.assignments[format(dayDate, "yyyy-MM-dd")].length}
                                         </div>
                                       )}
                                     </div>

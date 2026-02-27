@@ -12,6 +12,7 @@ import { Timestamp } from "firebase/firestore";
 import { Plus, Trash2, Clock, AlertCircle, Lock } from "lucide-react";
 import { format, isAfter, startOfDay, isBefore } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
 
 interface TimeEntryDialogProps {
     employee: Employee;
@@ -25,6 +26,7 @@ interface TimeEntryDialogProps {
 export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEntries, crews }: TimeEntryDialogProps) {
     const { org } = useAuth();
     const queryClient = useQueryClient();
+    const { toast } = useToast();
     const [entries, setEntries] = useState<Partial<TimeEntry>[]>([]);
 
     // Validation States
@@ -45,7 +47,7 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
                 setEntries(existingEntries.map(e => ({ ...e })));
             } else {
                 // Find default project based on crew assignment
-                const employeeCrew = crews.find(c => c.memberIds.includes(employee.id));
+                const employeeCrew = crews.find(c => (c.memberIds || []).includes(employee.id));
                 // Find an active project assigned to this crew
                 const defaultProject = projects.find(p =>
                     p.assignedCrewId === employeeCrew?.id &&
@@ -66,7 +68,7 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
 
     const addEntry = () => {
         // smart default for new split entries too
-        const employeeCrew = crews.find(c => c.memberIds.includes(employee.id));
+        const employeeCrew = crews.find(c => (c.memberIds || []).includes(employee.id));
         const defaultProject = projects.find(p =>
             p.assignedCrewId === employeeCrew?.id &&
             ['in-progress', 'started', 'scheduled'].includes(p.status)
@@ -133,6 +135,17 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
             onOpenChange(false);
+            toast({
+                title: "Time Log Saved",
+                description: "Your time entry has been successfully recorded.",
+            });
+        },
+        onError: () => {
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Failed to save time entry. Please try again.",
+            });
         }
     });
 

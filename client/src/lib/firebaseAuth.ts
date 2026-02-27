@@ -119,20 +119,21 @@ export async function registerUser(email: string, password: string, orgName?: st
           orgId: orgId,
           name: email.split('@')[0], // Default name
           email: email,
-          role: 'org_owner'
-        });
+          role: 'admin'
+        } as any);
         console.log('[DEBUG] Employee Record Created');
 
         // Create/Set User Doc with Org/Role
         // Use 'set' to ensure document creation if it doesn't exist
         console.log('[DEBUG] Updating User Doc with Permissions...');
         await userOperations.set(user.uid, {
+          id: user.uid,
           email: email,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
           orgIds: [orgId],
-          roles: { [orgId]: 'org_owner' },
-          globalRole: 'org_owner'
+          roles: { [orgId]: 'admin' as any },
+          globalRole: 'admin' as any
         });
         console.log('[DEBUG] User Doc Updated - Flow Complete');
 

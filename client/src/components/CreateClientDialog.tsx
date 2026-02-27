@@ -43,7 +43,7 @@ export function CreateClientDialog({ open, onOpenChange, onSuccess, initialName 
                 phone,
                 address,
                 leadStatus: 'new', // Explicitly set status
-            });
+            } as any);
 
             toast({
                 title: "Success",

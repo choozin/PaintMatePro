@@ -139,7 +139,7 @@ export function QuickAddDialog({ open, onOpenChange, defaultDate, onSuccess, ini
                 estimatedCompletion: Timestamp.fromDate(end),
                 assignedCrewId: (!assigneeId || assigneeId === '_unassigned') ? null : assigneeId,
                 visibilityRoles: visibility.length > 0 ? visibility : null,
-                notes: description,
+                description: description,
                 // Linked Data
                 linkedProjectId: linkedProjectId || null,
             };
@@ -303,7 +303,7 @@ export function QuickAddDialog({ open, onOpenChange, defaultDate, onSuccess, ini
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Notes</Label>
+                            <Label>Details</Label>
                             <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Add details..." />
                         </div>
 

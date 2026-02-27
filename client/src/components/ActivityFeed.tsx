@@ -71,7 +71,6 @@ export function ActivityFeed({ projects }: ActivityFeedProps) {
                             </div>
                             <p className="text-xs text-muted-foreground">
                                 <span className="font-medium text-foreground/80">{event.projectName}</span>
-                                {event.createdBy && <span> • by {event.createdBy}</span>}
                             </p>
                         </div>
                     </div>

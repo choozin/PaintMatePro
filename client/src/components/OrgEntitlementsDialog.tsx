@@ -50,6 +50,7 @@ export function OrgEntitlementsDialog({ orgId, orgName, children }: OrgEntitleme
           'pdf.watermark': true,
           eSign: false,
           payments: false,
+          timeTracking: false,
           scheduler: false,
           'quote.tiers': false,
           'quote.profitMargin': false,

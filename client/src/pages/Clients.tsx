@@ -192,11 +192,11 @@ export default function Clients() {
           <FeatureLock feature="client.importCSV">
             <CsvImportDialog />
           </FeatureLock>
-          <ClientDialog mode="create">
+          <ClientDialog mode="create" trigger={
             <Button>
               <span className="mr-2">+</span> Add Lead
             </Button>
-          </ClientDialog>
+          } />
         </div>
       </div>
 
@@ -294,9 +294,9 @@ export default function Clients() {
                         {status.label}
                       </Badge>
                       {/* Show Tags if any */}
-                      {client.tags && client.tags.length > 0 && (
+                      {(client as any).tags && (client as any).tags.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
-                          {client.tags.map(tag => (
+                          {(client as any).tags.map((tag: string) => (
                             <Badge key={tag} variant="secondary" className="text-[10px] h-4 px-1">{tag}</Badge>
                           ))}
                         </div>
@@ -346,11 +346,11 @@ export default function Clients() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <ClientDialog mode="edit" client={client}>
+                          <ClientDialog mode="edit" client={client} trigger={
                             <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                               Quick Edit
                             </DropdownMenuItem>
-                          </ClientDialog>
+                          } />
                           <DropdownMenuItem onSelect={() => setSelectedClient(client)}>
                             View Full Details
                           </DropdownMenuItem>

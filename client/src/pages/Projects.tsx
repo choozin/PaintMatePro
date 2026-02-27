@@ -33,7 +33,7 @@ function ProjectCardWithClient({ project, crews }: { project: Project & { id: st
       clientName={client?.name || 'Loading...'}
       status={project.status}
       timeline={project.timeline}
-      location={project.location}
+      location={(project as any).location}
       startDate={formatDate(project.startDate)}
       estimatedCompletion={project.estimatedCompletion ? formatDate(project.estimatedCompletion) : undefined}
       onClick={() => setLocation(`/projects/${project.id}`)}
@@ -65,7 +65,7 @@ export default function Projects() {
   // Fetch Crews for Filter
   const { data: crews = [] } = useQuery({
     queryKey: ['crews', currentOrgId],
-    queryFn: () => crewOperations.getByOrg(currentOrgId),
+    queryFn: () => crewOperations.getByOrg(currentOrgId!),
     enabled: !!currentOrgId
   });
 
@@ -81,8 +81,8 @@ export default function Projects() {
     if (sortBy === 'name') return a.name.localeCompare(b.name);
     if (sortBy === 'status') return a.status.localeCompare(b.status);
     // Default Date (Newest first)
-    const dateA = a.startDate?.seconds || 0;
-    const dateB = b.startDate?.seconds || 0;
+    const dateA = a.startDate && typeof a.startDate !== 'string' ? a.startDate.seconds : 0;
+    const dateB = b.startDate && typeof b.startDate !== 'string' ? b.startDate.seconds : 0;
     return dateB - dateA;
   });
 

@@ -238,7 +238,7 @@ export function SupplyRulesEditor({ rules, onChange, disabled }: SupplyRulesEdit
                                             <Button variant="ghost" size="icon" onClick={() => handleEdit(rule)} disabled={disabled}>
                                                 <Edit2 className="h-4 w-4" />
                                             </Button>
-                                            <Button variant="ghost" size="icon" onClick={() => handleDelete(rule.id)} disabled={disabled}>
+                                            <Button variant="ghost" size="icon" onClick={() => handleDelete(rule.id!)} disabled={disabled}>
                                                 <Trash2 className="h-4 w-4 text-destructive" />
                                             </Button>
                                         </div>

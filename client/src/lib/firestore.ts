@@ -138,6 +138,16 @@ export interface Org {
     logoBase64?: string; // Base64 string for PDF generation (bypasses CORS)
   };
 
+  // Team & Crew Settings
+  teamSettings?: {
+    crewTerm?: string; // e.g. "Crew", "Team", "Squad"
+    crewLeadTerm?: string; // e.g. "Crew Lead", "Foreman"
+    crewLeadVisibility?: {
+      payroll?: boolean; // Can crew leads see payroll details of members?
+      personalBio?: boolean; // Can crew leads see personal bio details?
+    }
+  };
+
   quoteSettings?: {
     defaultTerms?: string;
     defaultExpirationDays?: number;
@@ -163,12 +173,13 @@ export interface QuoteTemplate {
 
 export interface SupplyRule {
   id?: string;
-  conditionField: 'surfaceType' | 'roomName' | 'sqft';
-  conditionOperator: 'equals' | 'contains' | 'greaterThan';
-  conditionValue: string | number;
-  action: 'addScaleItem' | 'addFixedItem';
-  actionItemId: string; // From Catalog
-  actionQuantity: number; // Multiplier if scale, fixed number if fixed
+  name: string;
+  category: string;
+  unit: string;
+  unitPrice: number;
+  condition: 'always' | 'if_ceiling' | 'if_trim' | 'if_primer' | 'if_floor_area';
+  quantityType: 'fixed' | 'per_sqft_wall' | 'per_sqft_floor' | 'per_gallon_total' | 'per_gallon_primer' | 'per_linear_ft_perimeter';
+  quantityBase: number;
 }
 
 export interface ProjectSupplyConfig {
@@ -265,6 +276,7 @@ export interface ProjectLaborConfig {
   productionRate: number; // e.g. 150 sqft/hr
   difficultyFactor: number; // 0.8 to 1.5
   laborPricePerSqFt: number; // Derived or Manual? (e.g. 1.50)
+  totalCost?: number; // Added to fix type error
 }
 
 // --- MEASUREMENTS & PREP ---
@@ -329,6 +341,18 @@ export interface Client {
   address: string;
   mobilePhone?: string; // Added field
   createdAt: Timestamp;
+  // Extended fields
+  clientType?: string;
+  leadStatus?: string;
+  source?: string;
+  preferences?: string;
+  notes?: string;
+  secondaryContact?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+  };
 }
 
 export interface Project {
@@ -353,6 +377,7 @@ export interface Project {
 
   // Data
   assignedCrewId?: string;
+  assignments?: Record<string, string[]>; // Map of Date (YYYY-MM-DD) -> Array of Employee IDs
   rooms: Room[]; // Now sources of truth for room items
 
   // Global Configs
@@ -365,6 +390,7 @@ export interface Project {
   globalMiscItems?: MiscMeasurement[];
 
   notes?: string;
+  description?: string;
   timeline?: ProjectEvent[];
   quoteTemplateId?: string;
 
@@ -723,7 +749,13 @@ export interface Employee {
   orgId: string;
   name: string;
   email?: string;
+  phone?: string;
   role?: 'admin' | 'manager' | 'painter';
+
+  // Compensation
+  payType?: 'hourly' | 'salary';
+  payRate?: number; // Hourly rate or annual salary
+
   createdAt: Timestamp;
 }
 
@@ -734,6 +766,8 @@ export interface Crew {
   color?: string;
   paletteId?: string;
   memberIds?: string[];
+  leaderIds?: string[]; // IDs of employees who are Crew Leads
+  specs?: Record<string, string>; // Optional specs for the crew
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -808,6 +842,7 @@ export const ALL_BOOLEAN_FEATURES = [
   'pdf.watermark',
   'eSign',
   'payments',
+  'timeTracking',
   'scheduler',
   'quote.tiers',
   'quote.profitMargin',

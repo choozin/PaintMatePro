@@ -30,6 +30,8 @@ interface AuthContextType {
   currentOrgId: string | null;
   currentOrgRole: OrgRole | string | null;
   currentPermissions: Permission[]; // New: The actual permission set
+  isOwner: boolean;
+  isAdmin: boolean;
   org: OrgWithId | null;
   entitlements: Entitlement | null;
   loading: boolean;
@@ -257,6 +259,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     currentOrgId,
     currentOrgRole,
     currentPermissions, // EXPOSED
+    isOwner: claims?.globalRole === 'owner' || claims?.role === 'owner' || claims?.role === 'platform_owner',
+    isAdmin: claims?.globalRole === 'admin' || claims?.globalRole === 'owner' || claims?.role === 'admin' || claims?.role === 'owner' || claims?.role === 'platform_owner',
     org,
     entitlements,
     loading,

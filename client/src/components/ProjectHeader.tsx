@@ -19,6 +19,7 @@ import { getDerivedStatus } from "@/lib/project-status";
 import { useQuery } from "@tanstack/react-query";
 import { crewOperations, projectOperations } from "@/lib/firestore";
 import { useUpdateProject } from "@/hooks/useProjects";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProjectHeaderProps {
     project: Project & { id: string };
@@ -35,6 +36,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
     const [, setLocation] = useLocation();
     const { t } = useTranslation();
     const updateProject = useUpdateProject();
+    const { toast } = useToast();
 
     const displayStatus = getDerivedStatus(project.timeline, project.status, project.startDate, project.estimatedCompletion);
 
@@ -119,24 +121,51 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
 
     const handleToggleComplete = async () => {
         const isCompleted = ['completed', 'invoiced', 'paid'].includes(project.status);
-        if (isCompleted) {
-            // Revert to in-progress? Or just un-complete?
-            // Simplest is to set back to 'in-progress' and clear completedAt
-            await updateProject.mutateAsync({
-                id: project.id,
-                data: {
-                    status: 'in-progress',
-                    completedAt: null as any // Hack to clear field if needed, or undefined
+        try {
+            if (isCompleted) {
+                // Revert to the last valid status prior to completion
+                // Filter out completed/invoiced/paid from events to find what it was right before
+                const previousEvents = timelineEvents.filter(e => e.status === 'completed' && e.type && !['finished', 'invoice_issued', 'payment_received'].includes(e.type as string));
+                const lastEvent = previousEvents.length > 0 ? previousEvents[previousEvents.length - 1] : null;
+
+                // Determine previous status. Default to in-progress if unknown.
+                let prevStatus = 'in-progress';
+                if (lastEvent) {
+                    if (lastEvent.type === 'paused') prevStatus = 'paused';
+                    else if (lastEvent.type === 'quote_accepted' || lastEvent.type === 'scheduled') prevStatus = 'booked';
+                    else if (lastEvent.type === 'started' || lastEvent.type === 'resumed') prevStatus = 'in-progress';
                 }
-            });
-        } else {
-            // Mark complete
-            await updateProject.mutateAsync({
-                id: project.id,
-                data: {
-                    status: 'completed',
-                    completedAt: Timestamp.now()
-                }
+
+                await updateProject.mutateAsync({
+                    id: project.id,
+                    data: {
+                        status: prevStatus as any,
+                        completedAt: null as any
+                    }
+                });
+                toast({
+                    title: "Project Reopened",
+                    description: "Status changed back to in-progress.",
+                });
+            } else {
+                // Mark complete
+                await updateProject.mutateAsync({
+                    id: project.id,
+                    data: {
+                        status: 'completed',
+                        completedAt: Timestamp.now()
+                    }
+                });
+                toast({
+                    title: "Project Completed",
+                    description: "Great job! Project marked as completed.",
+                });
+            }
+        } catch (error) {
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Failed to update project status.",
             });
         }
     };
@@ -327,7 +356,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
                                     <p className="text-xs text-muted-foreground">Current Step</p>
                                     <p className="font-medium text-sm">{currentStep.label}</p>
                                     <p className="text-xs text-muted-foreground">
-                                        {currentStep.date ? format(currentStep.date instanceof Date ? currentStep.date : currentStep.date.toDate(), "MMM d, yyyy") : "Completed"}
+                                        {currentStep.date ? format(currentStep.date instanceof Date ? currentStep.date : (currentStep.date as any).toDate ? (currentStep.date as any).toDate() : new Date(currentStep.date), "MMM d, yyyy") : "Completed"}
                                     </p>
                                 </div>
                             )}
@@ -340,7 +369,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
                                     <p className="font-medium text-sm">{nextStep.label}</p>
                                     <div className="flex items-center gap-2">
                                         <p className="text-xs text-muted-foreground">
-                                            {nextStep.date ? format(nextStep.date instanceof Date ? nextStep.date : nextStep.date.toDate(), "MMM d, yyyy") : "Pending"}
+                                            {nextStep.date ? format(nextStep.date instanceof Date ? nextStep.date : (nextStep.date as any).toDate ? (nextStep.date as any).toDate() : new Date(nextStep.date), "MMM d, yyyy") : "Pending"}
                                         </p>
                                         {nextStep.action && (
                                             <Button variant="ghost" className="h-auto p-0 text-xs text-primary underline-offset-4 hover:underline" onClick={nextStep.action.onClick} disabled={nextStep.action.disabled}>

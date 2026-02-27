@@ -6,6 +6,11 @@ export function getDerivedStatus(
     startDate?: string | Timestamp | Date | null,
     endDate?: string | Timestamp | Date | null
 ): ProjectStatus {
+    // Terminal statuses should not be overridden by timeline/date calculations
+    if (['completed', 'invoiced', 'paid'].includes(defaultStatus)) {
+        return defaultStatus;
+    }
+
     const now = new Date();
 
     // Normalize dates helper

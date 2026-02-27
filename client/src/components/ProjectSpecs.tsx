@@ -771,7 +771,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
     useEffect(() => {
         if (project && isInitialLoad.current) {
             // Priority: Project Config > Org Defaults > Hardcoded
-            const orgDefaults = org?.estimatingSettings || {};
+            const orgDefaults = (org?.estimatingSettings as any) || {};
 
             // 1. Merge Paint/Supply Config
             const mergedConfig: PaintConfig = {

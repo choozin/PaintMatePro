@@ -16,15 +16,15 @@ export function ProjectLifecycleBar({ project, className }: ProjectLifecycleBarP
         // Start with existing timeline
         const allEvents = [...(project.timeline || [])].map(e => ({
             ...e,
-            dateObj: e.date?.toDate ? e.date.toDate() : new Date()
+            dateObj: (e.date as any)?.toDate ? (e.date as any).toDate() : new Date(e.date as any)
         }));
 
         // Add implicit Start if missing
         if (!allEvents.some(e => e.type === 'started') && project.startDate) {
             allEvents.push({
                 id: 'imp-start', type: 'started', label: 'Started',
-                date: project.startDate,
-                dateObj: project.startDate.toDate(),
+                date: project.startDate as any,
+                dateObj: (project.startDate as any).toDate ? (project.startDate as any).toDate() : new Date(project.startDate as any),
                 notes: ''
             });
         }
@@ -33,8 +33,8 @@ export function ProjectLifecycleBar({ project, className }: ProjectLifecycleBarP
         if (!allEvents.some(e => e.type === 'scheduled') && project.estimatedCompletion) {
             allEvents.push({
                 id: 'imp-due', type: 'scheduled', label: 'Due',
-                date: project.estimatedCompletion,
-                dateObj: project.estimatedCompletion.toDate(),
+                date: project.estimatedCompletion as any,
+                dateObj: (project.estimatedCompletion as any).toDate ? (project.estimatedCompletion as any).toDate() : new Date(project.estimatedCompletion as any),
                 notes: ''
             });
         }

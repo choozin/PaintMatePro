@@ -35,7 +35,7 @@ export function FeatureLock({
             </div>
 
             {/* Centered expanding pill overlay on hover/tap */}
-            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md text-slate-900 dark:text-slate-100 p-2.5 rounded-full shadow-lg border border-slate-200/60 dark:border-slate-800/60 flex items-center transition-all duration-300 opacity-80 group-hover:opacity-100 group-hover:scale-105">
                     <Lock className="h-4 w-4 text-slate-500 dark:text-slate-400 transition-all duration-300 group-hover:mr-2 group-hover:text-slate-800 dark:group-hover:text-slate-200" />
                     <span className="font-medium text-sm max-w-0 overflow-hidden opacity-0 group-hover:max-w-xs group-hover:opacity-100 transition-all duration-500 whitespace-nowrap">

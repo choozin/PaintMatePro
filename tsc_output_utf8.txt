@@ -1,0 +1,120 @@
+﻿
+> paint-mate-pro@1.0.0 check
+> tsc
+
+client/src/components/ActivityFeed.tsx(74,40): error TS2339: Property 'createdBy' does not exist on type '{ projectName: string; projectId: string; clientName: string; id: string; type: string; label: string; date: Timestamp; notes?: string | undefined; }'.
+client/src/components/ActivityFeed.tsx(74,72): error TS2339: Property 'createdBy' does not exist on type '{ projectName: string; projectId: string; clientName: string; id: string; type: string; label: string; date: Timestamp; notes?: string | undefined; }'.
+client/src/components/ClientDetailDialog.tsx(44,78): error TS2322: Type '"clientType"' is not assignable to type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(44,92): error TS2322: Type '"leadStatus"' is not assignable to type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(44,106): error TS2322: Type '"source"' is not assignable to type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(44,131): error TS2322: Type '"preferences"' is not assignable to type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(44,146): error TS2322: Type '"notes"' is not assignable to type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(48,34): error TS2339: Property 'secondaryContact' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(49,34): error TS2339: Property 'secondaryContact' does not exist on type 'Client & { id: string; }'.
+client/src/components/ClientDetailDialog.tsx(63,17): error TS2353: Object literal may only specify known properties, and 'secondaryContact' does not exist in type 'SetStateAction<Partial<Client>>'.
+client/src/components/ClientDetailDialog.tsx(63,42): error TS2339: Property 'secondaryContact' does not exist on type 'Client & { id: string; }'.
+client/src/components/ClientDetailDialog.tsx(71,80): error TS2339: Property 'totalCost' does not exist on type 'ProjectLaborConfig'.
+client/src/components/ClientDetailDialog.tsx(89,41): error TS2339: Property 'secondaryContact' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(106,70): error TS2339: Property 'leadStatus' does not exist on type 'Client & { id: string; }'.
+client/src/components/ClientDetailDialog.tsx(107,45): error TS2339: Property 'clientType' does not exist on type 'Client & { id: string; }'.
+client/src/components/ClientDetailDialog.tsx(107,117): error TS2339: Property 'clientType' does not exist on type 'Client & { id: string; }'.
+client/src/components/ClientDetailDialog.tsx(227,69): error TS2339: Property 'clientType' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(227,118): error TS2345: Argument of type '"clientType"' is not assignable to parameter of type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(238,104): error TS2339: Property 'source' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(238,148): error TS2345: Argument of type '"source"' is not assignable to parameter of type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(242,69): error TS2339: Property 'leadStatus' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(242,118): error TS2345: Argument of type '"leadStatus"' is not assignable to parameter of type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(265,68): error TS2339: Property 'secondaryContact' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(269,104): error TS2339: Property 'secondaryContact' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(273,68): error TS2339: Property 'secondaryContact' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(277,68): error TS2339: Property 'secondaryContact' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(294,57): error TS2339: Property 'preferences' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(295,71): error TS2345: Argument of type '"preferences"' is not assignable to parameter of type 'keyof Client'.
+client/src/components/ClientDetailDialog.tsx(309,57): error TS2339: Property 'notes' does not exist on type 'Partial<Client>'.
+client/src/components/ClientDetailDialog.tsx(310,71): error TS2345: Argument of type '"notes"' is not assignable to parameter of type 'keyof Client'.
+client/src/components/ClientDialog.tsx(63,28): error TS2339: Property 'leadStatus' does not exist on type 'Client & { id: string; }'.
+client/src/components/ClientDialog.tsx(113,28): error TS2339: Property 'leadStatus' does not exist on type 'Client & { id: string; }'.
+client/src/components/CreateClientDialog.tsx(45,17): error TS2353: Object literal may only specify known properties, and 'leadStatus' does not exist in type 'Omit<Client, "id" | "createdAt" | "updatedAt" | "orgId">'.
+client/src/components/CrewsSettings.tsx(128,18): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'SetStateAction<string>'.
+  Type 'undefined' is not assignable to type 'SetStateAction<string>'.
+client/src/components/CsvImportDialog.tsx(190,33): error TS2322: Type '"link"' is not assignable to type '"default" | "destructive" | "outline" | "secondary" | "ghost" | null | undefined'.
+client/src/components/OrgSelection.tsx(93,25): error TS2322: Type '"link"' is not assignable to type '"default" | "destructive" | "outline" | "secondary" | "ghost" | null | undefined'.
+client/src/components/ProjectHeader.tsx(128,156): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+client/src/components/ProjectHeader.tsx(359,139): error TS2339: Property 'toDate' does not exist on type 'never'.
+client/src/components/ProjectHeader.tsx(372,131): error TS2339: Property 'toDate' does not exist on type 'never'.
+client/src/components/ProjectLifecycleBar.tsx(26,17): error TS2322: Type 'string | Timestamp' is not assignable to type 'Timestamp'.
+  Type 'string' is not assignable to type 'Timestamp'.
+client/src/components/ProjectLifecycleBar.tsx(27,44): error TS2339: Property 'toDate' does not exist on type 'string | Timestamp'.
+  Property 'toDate' does not exist on type 'string'.
+client/src/components/ProjectLifecycleBar.tsx(36,17): error TS2322: Type 'string | Timestamp' is not assignable to type 'Timestamp'.
+  Type 'string' is not assignable to type 'Timestamp'.
+client/src/components/ProjectLifecycleBar.tsx(37,54): error TS2339: Property 'toDate' does not exist on type 'string | Timestamp'.
+  Property 'toDate' does not exist on type 'string'.
+client/src/components/ProjectSpecs.tsx(780,48): error TS2339: Property 'defaultCoverage' does not exist on type '{}'.
+client/src/components/ProjectSpecs.tsx(781,40): error TS2339: Property 'defaultWallCoats' does not exist on type '{}'.
+client/src/components/ProjectSpecs.tsx(782,43): error TS2339: Property 'defaultCeilingCoats' does not exist on type '{}'.
+client/src/components/ProjectSpecs.tsx(783,40): error TS2339: Property 'defaultTrimCoats' does not exist on type '{}'.
+client/src/components/ProjectSpecs.tsx(784,45): error TS2339: Property 'defaultPricePerGallon' does not exist on type '{}'.
+client/src/components/ProjectSpecs.tsx(793,41): error TS2339: Property 'defaultLaborRate' does not exist on type '{}'.
+client/src/components/ProjectSpecs.tsx(794,45): error TS2339: Property 'defaultProductionRate' does not exist on type '{}'.
+client/src/components/SupplyRulesEditor.tsx(29,59): error TS2339: Property 'condition' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(30,65): error TS2339: Property 'quantityType' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(57,22): error TS2339: Property 'name' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(58,26): error TS2339: Property 'category' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(59,22): error TS2339: Property 'unit' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(60,27): error TS2339: Property 'unitPrice' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(61,27): error TS2339: Property 'condition' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(62,30): error TS2339: Property 'quantityType' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(63,30): error TS2339: Property 'quantityBase' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(74,13): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(227,76): error TS2339: Property 'name' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(228,94): error TS2339: Property 'category' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(228,113): error TS2339: Property 'unitPrice' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(228,130): error TS2339: Property 'unit' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(230,77): error TS2339: Property 'condition' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(232,47): error TS2339: Property 'quantityType' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(233,55): error TS2339: Property 'quantityBase' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(234,61): error TS2339: Property 'quantityBase' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(234,82): error TS2339: Property 'quantityType' does not exist on type 'SupplyRule'.
+client/src/components/SupplyRulesEditor.tsx(241,109): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+client/src/components/TimeEntryDialog.tsx(50,54): error TS18048: 'c.memberIds' is possibly 'undefined'.
+client/src/components/TimeEntryDialog.tsx(71,46): error TS18048: 'c.memberIds' is possibly 'undefined'.
+client/src/hooks/useQuotes.tsx(16,54): error TS2554: Expected 1 arguments, but got 2.
+client/src/lib/defaultRules.ts(6,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(16,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(26,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(36,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(46,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(56,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(66,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(76,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(86,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(96,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/defaultRules.ts(106,9): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'SupplyRule'.
+client/src/lib/firebaseAuth.ts(122,11): error TS2322: Type '"org_owner"' is not assignable to type '"admin" | "manager" | "painter" | undefined'.
+client/src/lib/firebaseAuth.ts(129,44): error TS2345: Argument of type '{ email: string; createdAt: Timestamp; updatedAt: Timestamp; orgIds: string[]; roles: { [x: string]: string; }; globalRole: "org_owner"; }' is not assignable to parameter of type 'UserProfile'.
+  Property 'id' is missing in type '{ email: string; createdAt: Timestamp; updatedAt: Timestamp; orgIds: string[]; roles: { [x: string]: string; }; globalRole: "org_owner"; }' but required in type 'UserProfile'.
+client/src/lib/quote-generator-v2.ts(733,58): error TS18048: 'wallLine.quantity' is possibly 'undefined'.
+client/src/lib/timelineUtils.ts(122,17): error TS2345: Argument of type '{ id: string; label: string; date: Date | null; status: "completed" | "pending" | "future"; }' is not assignable to parameter of type 'TimelineEvent'.
+  Property 'order' is missing in type '{ id: string; label: string; date: Date | null; status: "completed" | "pending" | "future"; }' but required in type 'TimelineEvent'.
+client/src/pages/Clients.tsx(40,14): error TS2339: Property 'leadStatus' does not exist on type 'Client & { id: string; }'.
+client/src/pages/Clients.tsx(43,14): error TS2339: Property 'leadStatus' does not exist on type 'Client & { id: string; }'.
+client/src/pages/Clients.tsx(195,12): error TS2322: Type '{ children: Element; mode: "create"; }' is not assignable to type 'IntrinsicAttributes & ClientDialogProps'.
+  Property 'children' does not exist on type 'IntrinsicAttributes & ClientDialogProps'.
+client/src/pages/Clients.tsx(297,31): error TS2339: Property 'tags' does not exist on type '{ score: number; id: string; orgId: string; name: string; email: string; phone: string; address: string; mobilePhone?: string | undefined; createdAt: Timestamp; }'.
+client/src/pages/Clients.tsx(297,46): error TS2339: Property 'tags' does not exist on type '{ score: number; id: string; orgId: string; name: string; email: string; phone: string; address: string; mobilePhone?: string | undefined; createdAt: Timestamp; }'.
+client/src/pages/Clients.tsx(299,35): error TS2339: Property 'tags' does not exist on type '{ score: number; id: string; orgId: string; name: string; email: string; phone: string; address: string; mobilePhone?: string | undefined; createdAt: Timestamp; }'.
+client/src/pages/Clients.tsx(299,44): error TS7006: Parameter 'tag' implicitly has an 'any' type.
+client/src/pages/Clients.tsx(349,28): error TS2322: Type '{ children: Element; mode: "edit"; client: { score: number; id: string; orgId: string; name: string; email: string; phone: string; address: string; mobilePhone?: string | undefined; createdAt: Timestamp; }; }' is not assignable to type 'IntrinsicAttributes & ClientDialogProps'.
+  Property 'children' does not exist on type 'IntrinsicAttributes & ClientDialogProps'.
+client/src/pages/Payroll.tsx(70,26): error TS2339: Property 'hourlyRate' does not exist on type 'Employee & { id: string; }'.
+client/src/pages/Payroll.tsx(133,41): error TS2339: Property 'hourlyRate' does not exist on type 'Employee'.
+client/src/pages/Projects.tsx(36,25): error TS2339: Property 'location' does not exist on type 'Project & { id: string; }'.
+client/src/pages/Projects.tsx(68,44): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+  Type 'null' is not assignable to type 'string'.
+client/src/pages/Projects.tsx(84,32): error TS2339: Property 'seconds' does not exist on type 'string | Timestamp'.
+  Property 'seconds' does not exist on type 'string'.
+client/src/pages/Projects.tsx(85,32): error TS2339: Property 'seconds' does not exist on type 'string | Timestamp'.
+  Property 'seconds' does not exist on type 'string'.

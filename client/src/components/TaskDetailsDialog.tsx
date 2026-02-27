@@ -5,7 +5,7 @@ import { Project, crewOperations, projectOperations, deleteProject } from "@/lib
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
-import { Trash2, Edit2, MapPin, Users, Calendar as CalendarIcon, Link as LinkIcon } from "lucide-react";
+import { Trash2, Edit2, MapPin, Users, Calendar as CalendarIcon, Link as LinkIcon, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { QuickAddDialog } from "./QuickAddDialog";
@@ -13,8 +13,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProjects } from "@/hooks/useProjects";
 import { hasPermission } from "@/lib/permissions";
-import { Input } from "@/components/ui/input"; // Just in case, though mostly selecting
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { employeeOperations } from "@/lib/firestore";
+import { Switch } from "@/components/ui/switch";
+import { addDays, differenceInDays } from "date-fns";
 
 interface TaskDetailsDialogProps {
     open: boolean;
@@ -23,7 +26,7 @@ interface TaskDetailsDialogProps {
 }
 
 export function TaskDetailsDialog({ open, onOpenChange, task }: TaskDetailsDialogProps) {
-    const { currentOrgId, claims, currentPermissions } = useAuth();
+    const { currentOrgId, claims, currentPermissions, user } = useAuth();
     const queryClient = useQueryClient();
     const { toast } = useToast();
     const [isEditing, setIsEditing] = useState(false);
@@ -41,12 +44,16 @@ export function TaskDetailsDialog({ open, onOpenChange, task }: TaskDetailsDialo
     const [editCategory, setEditCategory] = useState<string>('');
     const [editLinkedProjectId, setEditLinkedProjectId] = useState<string>('_none');
     const [editNotes, setEditNotes] = useState('');
+    const [editDescription, setEditDescription] = useState('');
+    const [editAssignments, setEditAssignments] = useState<Record<string, string[]>>({});
 
     // Initialize edit state when opening edit mode
     const startEditing = () => {
         setEditCategory(task?.eventCategory || task?.type === 'appointment' ? 'appointment' : 'task'); // Default fallback
         setEditLinkedProjectId(task?.linkedProjectId || '_none');
         setEditNotes(task?.notes || '');
+        setEditDescription(task?.description || '');
+        setEditAssignments(task?.assignments || {});
         setIsEditing(true);
     };
 
@@ -56,15 +63,16 @@ export function TaskDetailsDialog({ open, onOpenChange, task }: TaskDetailsDialo
             eventCategory: editCategory as any,
             // If category matches legacy type, sync it? Or just rely on eventCategory?
             // Let's ensure type is 'event' if we are setting an event category, unless strict legacy compat needed.
-            // Ideally we migrate to type='event' on save if it wasn't already.
             type: 'event',
             linkedProjectId: editLinkedProjectId === '_none' ? null : editLinkedProjectId,
-            notes: editNotes
+            notes: editNotes,
+            description: editDescription,
+            assignments: editAssignments,
         } as any);
     };
 
     // Permissions: 'manage_schedule' to edit/delete
-    const canManage = hasPermission(currentPermissions, 'manage_schedule');
+    const canManageSchedule = hasPermission(currentPermissions, 'manage_schedule');
 
     const handleDelete = async () => {
         if (!task || !confirm("Are you sure you want to delete this task?")) return;
@@ -92,23 +100,57 @@ export function TaskDetailsDialog({ open, onOpenChange, task }: TaskDetailsDialo
         enabled: !!currentOrgId
     });
 
-    const assigneeName = crews.find(c => c.id === task?.assignedCrewId)?.name || "Unassigned";
+    const { data: employees = [] } = useQuery({
+        queryKey: ['employees', currentOrgId],
+        queryFn: () => currentOrgId ? employeeOperations.getByOrg(currentOrgId) : Promise.resolve([]),
+        enabled: !!currentOrgId
+    });
+
+    const assignedCrew = crews.find(c => c.id === task?.assignedCrewId);
+    const assigneeName = assignedCrew?.name || "Unassigned";
 
     if (!task) return null;
+
+    const myEmployeeRecord = employees.find(e => e.email === user?.email);
+    const isCrewLeader = assignedCrew?.leaderIds?.includes(myEmployeeRecord?.id || '');
+
+    // Permissions: 'manage_schedule' to edit/delete, OR they are the crew leader
+    const canManage = canManageSchedule || claims?.globalRole === 'platform_owner' || claims?.globalRole === 'admin' || claims?.globalRole === 'owner';
+    const canEditAssignments = canManage || isCrewLeader;
+
+    // Helper to generate days text
+    const getTaskDays = () => {
+        if (!task.startDate) return [];
+        const start = (task.startDate as any).toDate ? (task.startDate as any).toDate() : new Date(task.startDate as string);
+        const end = task.estimatedCompletion ? ((task.estimatedCompletion as any).toDate ? (task.estimatedCompletion as any).toDate() : new Date(task.estimatedCompletion as string)) : start;
+        const daysCount = differenceInDays(end, start) + 1;
+        return Array.from({ length: Math.max(1, daysCount) }, (_, i) => addDays(start, i));
+    };
+
+    const taskDays = getTaskDays();
+    const crewMembers = employees.filter(e => assignedCrew?.memberIds?.includes(e.id));
 
     // Resolve Display Type
     const displayCategory = task.eventCategory || (task.type === 'appointment' ? 'appointment' : 'task');
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 capitalize">
                         {displayCategory === 'appointment' ? <CalendarIcon className="h-5 w-5 text-blue-500" /> : <ClipboardListIcon className="h-5 w-5 text-green-500" />}
                         {task.name}
                     </DialogTitle>
-                    <DialogDescription className="capitalize">
-                        {displayCategory} Details
+                    <DialogDescription>
+                        {isEditing ? (
+                            <span className="capitalize">{displayCategory} Details</span>
+                        ) : (
+                            task.description ? (
+                                <span className="whitespace-pre-wrap text-foreground normal-case mt-2 block">{task.description}</span>
+                            ) : (
+                                <span className="capitalize">{displayCategory} Details</span>
+                            )
+                        )}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -148,11 +190,75 @@ export function TaskDetailsDialog({ open, onOpenChange, task }: TaskDetailsDialo
                                 </Select>
                             </div>
 
+                            {/* Details/Description */}
+                            <div className="space-y-2">
+                                <Label>Details</Label>
+                                <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} />
+                            </div>
+
                             {/* Notes */}
                             <div className="space-y-2">
-                                <Label>Notes</Label>
+                                <Label>Internal Notes / Crew Instructions</Label>
                                 <Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} />
                             </div>
+
+                            {/* Granular Assignments grid */}
+                            {assignedCrew && crewMembers.length > 0 && (
+                                <div className="space-y-3 pt-4 border-t">
+                                    <Label className="text-sm font-semibold">Daily Assignments ({assignedCrew.name})</Label>
+                                    <div className="border rounded-md overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-muted/50 border-b">
+                                                <tr>
+                                                    <th className="p-2 font-medium">Team Member</th>
+                                                    {taskDays.map((date, idx) => (
+                                                        <th key={idx} className="p-2 font-medium text-center whitespace-nowrap">
+                                                            {format(date, "MMM d")}
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {crewMembers.map(member => (
+                                                    <tr key={member.id} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
+                                                        <td className="p-2 font-medium">{member.name}</td>
+                                                        {taskDays.map((date, idx) => {
+                                                            const dateKey = format(date, "yyyy-MM-dd");
+                                                            // Default behavior (if undefined): All crew members assigned
+                                                            const isAssigned = editAssignments[dateKey] ? editAssignments[dateKey].includes(member.id) : true;
+                                                            return (
+                                                                <td key={idx} className="p-2 text-center">
+                                                                    <Switch
+                                                                        checked={isAssigned}
+                                                                        onCheckedChange={(checked) => {
+                                                                            setEditAssignments(prev => {
+                                                                                const newAssignments = { ...prev };
+                                                                                // If it doesn't exist yet, seed it with everyone EXCEPT the one being unchecked (if unchecking)
+                                                                                if (!newAssignments[dateKey]) {
+                                                                                    newAssignments[dateKey] = crewMembers.map(m => m.id);
+                                                                                }
+
+                                                                                if (checked) {
+                                                                                    if (!newAssignments[dateKey].includes(member.id)) {
+                                                                                        newAssignments[dateKey] = [...newAssignments[dateKey], member.id];
+                                                                                    }
+                                                                                } else {
+                                                                                    newAssignments[dateKey] = newAssignments[dateKey].filter(id => id !== member.id);
+                                                                                }
+                                                                                return newAssignments;
+                                                                            });
+                                                                        }}
+                                                                    />
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         // View Mode
@@ -187,9 +293,58 @@ export function TaskDetailsDialog({ open, onOpenChange, task }: TaskDetailsDialo
                                 </div>
                             )}
 
+
                             {task.notes && (
-                                <div className="bg-muted/50 p-3 rounded-md text-sm">
-                                    {task.notes}
+                                <div className="space-y-1 mt-4">
+                                    <h4 className="text-sm font-semibold text-muted-foreground">Notes</h4>
+                                    <div className="bg-muted/30 p-3 rounded-md text-sm border">
+                                        {task.notes}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Read-Only Assignment Summary */}
+                            {assignedCrew && task.assignments && Object.keys(task.assignments).length > 0 && (
+                                <div className="space-y-2 mt-4 border-t pt-4">
+                                    <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                                        <Users className="h-4 w-4" />
+                                        Daily Assignments ({assignedCrew.name})
+                                    </h4>
+                                    <div className="border rounded-md overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-muted/50 border-b">
+                                                <tr>
+                                                    <th className="p-2 font-medium">Team Member</th>
+                                                    {taskDays.map((date, idx) => (
+                                                        <th key={idx} className="p-2 font-medium text-center whitespace-nowrap text-xs">
+                                                            {format(date, "MMM d")}
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {crewMembers.map(member => (
+                                                    <tr key={member.id} className="border-b last:border-0">
+                                                        <td className="p-2 font-medium text-xs">{member.name}</td>
+                                                        {taskDays.map((date, idx) => {
+                                                            const dateKey = format(date, "yyyy-MM-dd");
+                                                            const isAssigned = task.assignments?.[dateKey]
+                                                                ? task.assignments[dateKey].includes(member.id)
+                                                                : true; // Default: everyone assigned
+                                                            return (
+                                                                <td key={idx} className="p-2 text-center">
+                                                                    {isAssigned
+                                                                        ? <Check className="h-4 w-4 text-green-600 mx-auto" />
+                                                                        : <span className="text-muted-foreground/30">—</span>
+                                                                    }
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             )}
                         </>
@@ -203,13 +358,15 @@ export function TaskDetailsDialog({ open, onOpenChange, task }: TaskDetailsDialo
                             <Button onClick={handleSave}>Save Changes</Button>
                         </>
                     ) : (
-                        canManage && (
+                        canEditAssignments && (
                             <>
-                                <Button variant="destructive" size="sm" onClick={handleDelete}>
-                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
-                                </Button>
+                                {canManage && (
+                                    <Button variant="destructive" size="sm" onClick={handleDelete} className="mr-auto">
+                                        <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                    </Button>
+                                )}
                                 <Button variant="outline" size="sm" onClick={startEditing}>
-                                    <Edit2 className="h-4 w-4 mr-2" /> Edit
+                                    <Edit2 className="h-4 w-4 mr-2" /> {canManage ? 'Edit' : 'Manage Crew'}
                                 </Button>
                             </>
                         )

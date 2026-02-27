@@ -16,7 +16,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Edit2, User, MoreHorizontal, Mail, Phone, Briefcase } from 'lucide-react';
+import { Plus, Trash2, Edit2, User, MoreHorizontal, Mail, Phone, Briefcase, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
     DropdownMenu,
@@ -39,7 +39,7 @@ const ALL_ROLES: OrgRole[] = [
 ];
 
 export function EmployeesSettings() {
-    const { org: currentOrg, loading: authLoading, currentOrgRole, user } = useAuth();
+    const { org: currentOrg, loading: authLoading, currentOrgRole, user, isOwner, isAdmin } = useAuth();
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -50,6 +50,8 @@ export function EmployeesSettings() {
     const [role, setRole] = useState<string>('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
+    const [payType, setPayType] = useState<'hourly' | 'salary'>('hourly');
+    const [payRate, setPayRate] = useState<number | ''>('');
 
     const { data: employees, isLoading: queryLoading } = useQuery({
         queryKey: ['employees', currentOrg?.id],
@@ -65,6 +67,7 @@ export function EmployeesSettings() {
     );
 
     const canEditRole = !editingEmployee || (editingEmployee.email !== user?.email);
+    const canManagePayroll = isOwner || isAdmin || currentOrgRole === 'org_owner' || currentOrgRole === 'org_admin';
 
     const createMutation = useMutation({
         mutationFn: (data: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>) => employeeOperations.create(data),
@@ -100,14 +103,18 @@ export function EmployeesSettings() {
         setRole('');
         setEmail('');
         setPhone('');
+        setPayType('hourly');
+        setPayRate('');
     };
 
     const handleEdit = (employee: Employee) => {
         setEditingEmployee(employee);
         setName(employee.name);
-        setRole(normalizeRole(employee.role) as string);
-        setEmail(employee.email || '');
-        setPhone(employee.phone || '');
+        setRole(employee.role ? (normalizeRole(employee.role) as string) : '');
+        setEmail(employee.email ?? '');
+        setPhone(employee.phone ?? '');
+        setPayType(employee.payType || 'hourly');
+        setPayRate(employee.payRate || '');
         setIsDialogOpen(true);
     };
 
@@ -116,19 +123,21 @@ export function EmployeesSettings() {
 
         if (!currentOrg) return;
 
-        const employeeData = {
+        const employeeData: Partial<Employee> = {
             orgId: currentOrg.id,
             name,
-            role,
+            role: role as any,
             email,
             phone,
+            payType,
+            payRate: payRate === '' ? undefined : Number(payRate),
         };
 
         try {
             if (editingEmployee) {
                 await updateMutation.mutateAsync({ id: editingEmployee.id, data: employeeData });
             } else {
-                await createMutation.mutateAsync(employeeData);
+                await createMutation.mutateAsync(employeeData as any);
             }
         } catch (error) {
             console.error("Failed to save employee:", error);
@@ -156,8 +165,8 @@ export function EmployeesSettings() {
                     <CardTitle>Employees</CardTitle>
                     <CardDescription>Manage your staff members.</CardDescription>
                 </div>
-                {/* Only users who can assign at least one role can add employees (roughly) */}
-                {availableRoles.length > 0 && (
+                {/* Only users who can assign at least one role can add employees (roughly) - plus system admins */}
+                {(availableRoles.length > 0 || isOwner || isAdmin) && (
                     <Dialog open={isDialogOpen} onOpenChange={(open) => {
                         setIsDialogOpen(open);
                         if (!open) resetForm();
@@ -208,6 +217,37 @@ export function EmployeesSettings() {
                                     </div>
                                 </div>
 
+                                {canManagePayroll && (
+                                    <div className="grid grid-cols-2 gap-4 border-t pt-4 mt-4">
+                                        <div className="space-y-2">
+                                            <Label>Pay Type</Label>
+                                            <Select
+                                                value={payType}
+                                                onValueChange={(v: 'hourly' | 'salary') => setPayType(v)}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select type" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="hourly">Hourly</SelectItem>
+                                                    <SelectItem value="salary">Salary</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Pay Rate ($)</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={payRate}
+                                                onChange={e => setPayRate(e.target.value === '' ? '' : Number(e.target.value))}
+                                                placeholder={payType === 'hourly' ? "e.g. 25.00" : "e.g. 60000"}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
                                 <DialogFooter>
                                     <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
                                         {editingEmployee ? 'Save Changes' : 'Add Employee'}
@@ -240,12 +280,18 @@ export function EmployeesSettings() {
                                         <h3 className="font-semibold">{employee.name}</h3>
                                         <div className="flex items-center gap-2 mt-1">
                                             <Badge variant="outline" className="capitalize">
-                                                {normalizeRole(employee.role).toString().replace('org_', '').replace('_', ' ')}
+                                                {employee.role ? normalizeRole(employee.role).toString().replace('org_', '').replace('_', ' ') : 'N/A'}
                                             </Badge>
                                         </div>
                                         <div className="flex items-center text-sm text-muted-foreground gap-3 mt-1">
                                             {employee.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {employee.email}</span>}
                                             {employee.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {employee.phone}</span>}
+                                            {canManagePayroll && employee.payRate && (
+                                                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                                                    <DollarSign className="h-3 w-3" />
+                                                    {employee.payType === 'hourly' ? `${employee.payRate}/hr` : `${employee.payRate}/yr`}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

@@ -14,6 +14,7 @@ export interface TimelineEvent {
     };
     description?: string;
     icon?: any; // Lucide icon
+    type?: string; // e.g. 'completed', 'invoice_issued', 'payment_received'
 }
 
 // Helper to safely get Date object
@@ -122,7 +123,8 @@ export const getProjectTimelineEvents = (
         id: 'project_started',
         label: 'Project Started',
         date: startDate,
-        status: isStarted ? 'completed' : (startDate && startDate < now ? 'pending' : 'future')
+        status: isStarted ? 'completed' : (startDate && startDate < now ? 'pending' : 'future'),
+        order: 5
     });
 
     // 6. Project Due

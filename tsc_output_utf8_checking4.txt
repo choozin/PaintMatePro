@@ -1,0 +1,6 @@
+﻿
+> paint-mate-pro@1.0.0 check
+> tsc
+
+client/src/pages/Projects.tsx(68,44): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+  Type 'null' is not assignable to type 'string'.

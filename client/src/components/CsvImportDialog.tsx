@@ -187,7 +187,7 @@ export function CsvImportDialog({ trigger }: { trigger?: React.ReactNode }) {
                     <DialogTitle>Import Leads from CSV</DialogTitle>
                     <DialogDescription>
                         Upload a CSV file to bulk add leads.
-                        <Button variant="link" className="h-auto p-0 ml-1 text-primary" onClick={downloadTemplate}>
+                        <Button variant="ghost" className="h-auto p-0 ml-1 text-primary" onClick={downloadTemplate}>
                             Click here to download a template.
                         </Button>
                     </DialogDescription>

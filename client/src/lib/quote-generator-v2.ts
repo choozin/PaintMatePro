@@ -728,8 +728,7 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
                 subItems: []
             };
 
-            // If combined, update the effective rate
-            if (primerCost > 0) {
+            if (primerCost > 0 && wallLine.quantity) {
                 wallLine.rate = (wallLine.amount || 0) / wallLine.quantity;
                 wallLine.description += " (Incl. Primer)";
             }

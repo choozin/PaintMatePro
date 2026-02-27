@@ -60,7 +60,7 @@ export function ClientDialog({ client, trigger, mode = "create", onSuccess }: Cl
         phone: client.phone,
         mobilePhone: client.mobilePhone || "",
         address: client.address,
-        leadStatus: client.leadStatus || "new",
+        leadStatus: (client as any).leadStatus || "new",
       });
     }
   }, [client, mode, form]);
@@ -110,7 +110,7 @@ export function ClientDialog({ client, trigger, mode = "create", onSuccess }: Cl
         phone: client.phone,
         mobilePhone: client.mobilePhone || "",
         address: client.address,
-        leadStatus: client.leadStatus || "new",
+        leadStatus: (client as any).leadStatus || "new",
       });
     }
   };

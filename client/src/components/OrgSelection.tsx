@@ -90,7 +90,7 @@ export function OrgSelection() {
                 </CardContent>
                 <div className="p-4 bg-muted/20 border-t flex justify-center">
                     <Button
-                        variant="link"
+                        variant="ghost"
                         className="text-muted-foreground"
                         onClick={() => import('@/lib/firebaseAuth').then(m => m.signOut().then(() => window.location.reload()))}
                     >

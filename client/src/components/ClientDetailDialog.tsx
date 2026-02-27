@@ -60,7 +60,7 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
         if (client) {
             setFormData({
                 ...client,
-                secondaryContact: client.secondaryContact || { name: "", phone: "", email: "", role: "" }
+                secondaryContact: client.secondaryContact ? { ...client.secondaryContact } : { name: "", phone: "", email: "", role: "" }
             });
         }
     }, [client, open]);
@@ -86,7 +86,7 @@ export function ClientDetailDialog({ client, open, onOpenChange }: ClientDetailD
     const handleSecondaryChange = (field: string, value: string) => {
         setFormData(prev => ({
             ...prev,
-            secondaryContact: { ...prev.secondaryContact!, [field]: value }
+            secondaryContact: { ...(prev.secondaryContact || {}), [field]: value }
         }));
     };
 

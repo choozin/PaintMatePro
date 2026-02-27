@@ -19,6 +19,7 @@ import { TaskDetailsDialog } from "./TaskDetailsDialog";
 import { v4 as uuidv4 } from "uuid";
 import { cn } from "@/lib/utils";
 import { ProjectDialog } from "@/components/ProjectDialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProjectTimelineProps {
     project: Project & { id: string };
@@ -48,6 +49,7 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
     const [customLabel, setCustomLabel] = useState("");
     const [notes, setNotes] = useState("");
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const { toast } = useToast();
 
     // New additions
     const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -172,17 +174,28 @@ export function ProjectTimeline({ project }: ProjectTimelineProps) {
         // Auto-update status mapping using time-aware logic
         const newStatus = getDerivedStatus(newTimeline, project.status, project.startDate, project.estimatedCompletion);
 
-        await updateProject.mutateAsync({
-            id: project.id,
-            data: {
-                timeline: newTimeline,
-                status: newStatus
-            }
-        });
-
-        setIsOpen(false);
-        setNotes("");
-        setCustomLabel("");
+        try {
+            await updateProject.mutateAsync({
+                id: project.id,
+                data: {
+                    timeline: newTimeline,
+                    status: newStatus
+                }
+            });
+            toast({
+                title: "Timeline Updated",
+                description: "Note added successfully.",
+            });
+            setIsOpen(false);
+            setNotes("");
+            setCustomLabel("");
+        } catch (error) {
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Failed to add timeline note.",
+            });
+        }
     };
 
     // Helper to format date safely
