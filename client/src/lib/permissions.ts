@@ -13,7 +13,8 @@ export type Permission =
     // 2. Financials & Payroll
     | 'view_financials'     // View dashboards, revenue, profit margins
     | 'view_payroll'        // View employee timesheets and pay
-    | 'manage_payroll'      // Approve timesheets, export payroll
+    | 'manage_payroll'      // Export payroll, configure pay periods
+    | 'approve_timesheets'  // Approve/reject submitted timesheets
     | 'view_labor_rates'    // See specific hourly cost of employees
 
     // 3. Projects
@@ -144,7 +145,8 @@ export const PERMISSION_GROUPS = [
         permissions: [
             { id: 'view_financials' as Permission, label: 'View Financials', description: 'View revenue dashboards and profit margins.' },
             { id: 'view_payroll' as Permission, label: 'View Payroll', description: 'View employee timesheets and calculated pay.' },
-            { id: 'manage_payroll' as Permission, label: 'Manage Payroll', description: 'Approve timesheets and export payroll data.' },
+            { id: 'manage_payroll' as Permission, label: 'Manage Payroll', description: 'Export payroll data and configure pay periods.' },
+            { id: 'approve_timesheets' as Permission, label: 'Approve Timesheets', description: 'Approve or reject submitted employee timesheets.' },
             { id: 'view_labor_rates' as Permission, label: 'View Labor Rates', description: 'See sensitive hourly cost of employees.' },
         ]
     },

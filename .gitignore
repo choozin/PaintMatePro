@@ -33,3 +33,8 @@ node_modules/
 
 # Firebase Service Account Key
 serviceAccountKey.json
+
+# Temp / Debug output
+tsc_output*.txt
+*.log
+npm-debug.log*

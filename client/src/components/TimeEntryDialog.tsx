@@ -1,16 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectOperations, timeEntryOperations, Employee, TimeEntry, Project, Crew } from "@/lib/firestore";
 import { useAuth } from "@/contexts/AuthContext";
 import { Timestamp } from "firebase/firestore";
-import { Plus, Trash2, Clock, AlertCircle, Lock } from "lucide-react";
-import { format, isAfter, startOfDay, isBefore } from "date-fns";
+import { Plus, Trash2, Clock, AlertCircle, Lock, Send, RotateCcw } from "lucide-react";
+import { format, isAfter, startOfDay, isBefore, isSameDay } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 
@@ -23,38 +24,82 @@ interface TimeEntryDialogProps {
     crews: Crew[];
 }
 
+// Custom project ID prefix for freeform entries
+const CUSTOM_PROJECT_PREFIX = '_custom_';
+
 export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEntries, crews }: TimeEntryDialogProps) {
-    const { org } = useAuth();
+    const { org, user } = useAuth();
     const queryClient = useQueryClient();
     const { toast } = useToast();
-    const [entries, setEntries] = useState<Partial<TimeEntry>[]>([]);
+    const [entries, setEntries] = useState<Partial<TimeEntry & { customProjectName?: string }>[]>([]);
+    const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
     // Validation States
     const isFuture = isAfter(startOfDay(date), startOfDay(new Date()));
-    const isLocked = existingEntries.some(e => e.status === 'approved' || e.status === 'processed');
-    const canEdit = !isFuture && !isLocked;
+    const isApproved = existingEntries.some(e => e.status === 'approved' || e.status === 'processed');
+    const isRejected = existingEntries.some(e => e.status === 'rejected');
+    const isSubmitted = existingEntries.some(e => e.status === 'submitted');
 
-    // Fetch Projects
-    const { data: projects = [] } = useQuery({
+    // Rejected entries CAN be edited (and resubmitted), approved/processed cannot
+    const canEdit = !isFuture && !isApproved && !isSubmitted;
+
+    // Fetch all Projects
+    const { data: allProjects = [] } = useQuery({
         queryKey: ['projects', org?.id],
         queryFn: () => projectOperations.getByOrg(org!.id),
         enabled: !!org,
     });
 
+    // Helper: convert Timestamp or string to Date
+    const toDate = (input: any): Date | null => {
+        if (!input) return null;
+        if (input instanceof Timestamp) return input.toDate();
+        if (typeof input === 'string') return new Date(input);
+        if (input?.toDate) return input.toDate();
+        return null;
+    };
+
+    // Filter projects to show only those scheduled for this date
+    const scheduledProjects = useMemo(() => {
+        return allProjects.filter(p => {
+            // Always include active projects without dates (general jobs)
+            if (!p.startDate) return ['in-progress', 'started', 'active', 'scheduled', 'booked'].includes(p.status);
+
+            const start = toDate(p.startDate);
+            const end = toDate(p.estimatedCompletion) || toDate(p.startDate); // If no end date, treat as same-day
+
+            if (!start) return false;
+
+            // Check if the target date falls within the project's scheduled range
+            const targetDate = startOfDay(date);
+            const startDay = startOfDay(start);
+            const endDay = end ? startOfDay(end) : startDay;
+
+            return targetDate >= startDay && targetDate <= endDay;
+        });
+    }, [allProjects, date]);
+
     useEffect(() => {
         if (open) {
+            setValidationErrors([]);
             if (existingEntries.length > 0) {
-                setEntries(existingEntries.map(e => ({ ...e })));
+                setEntries(existingEntries.map(e => {
+                    // Detect custom project entries and parse out the name
+                    if (e.projectId?.startsWith(CUSTOM_PROJECT_PREFIX)) {
+                        return {
+                            ...e,
+                            customProjectName: e.projectId.replace(CUSTOM_PROJECT_PREFIX, ''),
+                            projectId: CUSTOM_PROJECT_PREFIX
+                        };
+                    }
+                    return { ...e };
+                }));
             } else {
-                // Find default project based on crew assignment
                 const employeeCrew = crews.find(c => (c.memberIds || []).includes(employee.id));
-                // Find an active project assigned to this crew
-                const defaultProject = projects.find(p =>
-                    p.assignedCrewId === employeeCrew?.id &&
-                    ['in-progress', 'started', 'scheduled'].includes(p.status)
+                const defaultProject = scheduledProjects.find(p =>
+                    p.assignedCrewId === employeeCrew?.id
                 );
 
-                // Initialize with default
                 setEntries([{
                     projectId: defaultProject?.id || '',
                     startTime: undefined,
@@ -64,14 +109,12 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
                 }]);
             }
         }
-    }, [open, existingEntries, crews, employee.id, projects]); // Note: projects dependency might cause reset if it loads late, but typically cached
+    }, [open, existingEntries, crews, employee.id, scheduledProjects]);
 
     const addEntry = () => {
-        // smart default for new split entries too
         const employeeCrew = crews.find(c => (c.memberIds || []).includes(employee.id));
-        const defaultProject = projects.find(p =>
-            p.assignedCrewId === employeeCrew?.id &&
-            ['in-progress', 'started', 'scheduled'].includes(p.status)
+        const defaultProject = scheduledProjects.find(p =>
+            p.assignedCrewId === employeeCrew?.id
         );
 
         setEntries([...entries, {
@@ -87,57 +130,88 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
         setEntries(newEntries);
     };
 
-    const updateEntry = (index: number, field: keyof TimeEntry, value: any) => {
+    const updateEntry = (index: number, field: string, value: any) => {
         const newEntries = [...entries];
         newEntries[index] = { ...newEntries[index], [field]: value };
         setEntries(newEntries);
+        setValidationErrors([]); // Clear errors on edit
+    };
+
+    // Validation
+    const validate = (): boolean => {
+        const errors: string[] = [];
+        entries.forEach((entry, i) => {
+            const hasProject = entry.projectId && entry.projectId !== '';
+            const hasCustomName = entry.projectId === CUSTOM_PROJECT_PREFIX && entry.customProjectName?.trim();
+            if (!hasProject && !hasCustomName) {
+                errors.push(`Entry ${i + 1}: Please select a project or enter a custom job name.`);
+            }
+            if (!entry.totalHours || entry.totalHours <= 0) {
+                errors.push(`Entry ${i + 1}: Hours must be greater than 0.`);
+            }
+        });
+        setValidationErrors(errors);
+        return errors.length === 0;
     };
 
     const saveMutation = useMutation({
-        mutationFn: async () => {
+        mutationFn: async (submitAfterSave?: boolean) => {
             const existingIds = existingEntries.map(e => e.id);
             const currentIds = entries.filter(e => e.id).map(e => e.id!);
 
             const toDelete = existingIds.filter(id => !currentIds.includes(id));
 
-            // DB Ops
-            const promises = [];
+            const promises: Promise<any>[] = [];
 
-            // Delete
+            // Delete removed entries
             for (const id of toDelete) {
                 promises.push(timeEntryOperations.delete(id));
             }
 
-            // Upsert
+            // Upsert entries
             for (const entry of entries) {
-                // Skip invalid entries
-                if (!entry.projectId || !entry.totalHours) continue;
+                // Skip entries with no project AND no custom name AND no hours
+                const projectId = entry.projectId === CUSTOM_PROJECT_PREFIX
+                    ? `${CUSTOM_PROJECT_PREFIX}${entry.customProjectName?.trim() || 'Other'}`
+                    : entry.projectId;
+
+                if (!projectId || !entry.totalHours || entry.totalHours <= 0) continue;
+
+                const newStatus = submitAfterSave ? 'submitted' : (entry.status === 'rejected' ? 'draft' : (entry.status || 'draft'));
 
                 const data = {
                     ...entry,
                     orgId: org!.id,
                     employeeId: employee.id,
+                    projectId,
                     date: Timestamp.fromDate(date),
-                    updatedAt: Timestamp.now()
+                    status: newStatus,
+                    updatedAt: Timestamp.now(),
+                    ...(submitAfterSave ? { rejectedBy: null, rejectionNotes: null } : {})
                 } as any;
+
+                // Remove the custom field before saving
+                delete data.customProjectName;
 
                 if (entry.id) {
                     promises.push(timeEntryOperations.update(entry.id, data));
                 } else {
                     data.createdAt = Timestamp.now();
-                    data.status = 'draft'; // Always starts as draft
+                    data.status = submitAfterSave ? 'submitted' : 'draft';
                     promises.push(timeEntryOperations.create(data));
                 }
             }
 
             await Promise.all(promises);
         },
-        onSuccess: () => {
+        onSuccess: (_data, submitAfterSave) => {
             queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
             onOpenChange(false);
             toast({
-                title: "Time Log Saved",
-                description: "Your time entry has been successfully recorded.",
+                title: submitAfterSave ? "Submitted for Approval" : "Time Log Saved",
+                description: submitAfterSave
+                    ? "Your timesheet has been submitted and is awaiting approval."
+                    : "Your time entry has been saved as a draft.",
             });
         },
         onError: () => {
@@ -149,12 +223,32 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
         }
     });
 
+    const handleSave = (submit: boolean) => {
+        if (!validate()) return;
+        saveMutation.mutate(submit);
+    };
+
+    // Get rejection notes if any
+    const rejectionNotes = existingEntries.find(e => e.rejectionNotes)?.rejectionNotes;
+
+    const totalHours = entries.reduce((sum, e) => sum + (e.totalHours || 0), 0);
+
+    // Helper to get project name from ID (for display)
+    const getProjectName = (projectId?: string) => {
+        if (!projectId) return '';
+        if (projectId.startsWith(CUSTOM_PROJECT_PREFIX)) return projectId.replace(CUSTOM_PROJECT_PREFIX, '');
+        return allProjects.find(p => p.id === projectId)?.name || projectId;
+    };
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle>
+                    <DialogTitle className="flex items-center gap-2">
                         Log Time: {employee.name}
+                        {isSubmitted && <Badge className="bg-blue-100 text-blue-700 border-blue-200">Submitted</Badge>}
+                        {isApproved && <Badge className="bg-green-100 text-green-700 border-green-200">Approved</Badge>}
+                        {isRejected && <Badge className="bg-red-100 text-red-700 border-red-200">Rejected</Badge>}
                     </DialogTitle>
                     <DialogDescription>
                         {format(date, "EEEE, MMMM do, yyyy")}
@@ -170,7 +264,7 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
                     </Alert>
                 )}
 
-                {isLocked && !isFuture && (
+                {isApproved && !isFuture && (
                     <Alert className="bg-blue-50 text-blue-800 border-blue-200">
                         <Lock className="h-4 w-4" />
                         <AlertTitle>Approved</AlertTitle>
@@ -178,26 +272,83 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
                     </Alert>
                 )}
 
+                {isSubmitted && !isFuture && (
+                    <Alert className="bg-blue-50 text-blue-800 border-blue-200">
+                        <Send className="h-4 w-4" />
+                        <AlertTitle>Submitted</AlertTitle>
+                        <AlertDescription>This timesheet has been submitted for approval. It cannot be edited until it is approved or rejected.</AlertDescription>
+                    </Alert>
+                )}
+
+                {isRejected && (
+                    <Alert variant="destructive" className="bg-red-50 border-red-200">
+                        <RotateCcw className="h-4 w-4" />
+                        <AlertTitle>Rejected — Please Revise</AlertTitle>
+                        <AlertDescription>
+                            {rejectionNotes || 'This timesheet was rejected. Please make corrections and resubmit.'}
+                        </AlertDescription>
+                    </Alert>
+                )}
+
+                {/* Validation errors */}
+                {validationErrors.length > 0 && (
+                    <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>Please fix the following</AlertTitle>
+                        <AlertDescription>
+                            <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                                {validationErrors.map((err, i) => <li key={i}>{err}</li>)}
+                            </ul>
+                        </AlertDescription>
+                    </Alert>
+                )}
+
                 <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
                     {entries.map((entry, index) => (
-                        <div key={index} className="grid grid-cols-12 gap-3 items-end border p-3 rounded-lg bg-muted/10 relative">
+                        <div key={index} className={`grid grid-cols-12 gap-3 items-end border p-3 rounded-lg relative ${entry.status === 'rejected' ? 'bg-red-50/50 border-red-200' : 'bg-muted/10'
+                            }`}>
                             {/* Project Select */}
                             <div className="col-span-12 sm:col-span-5 space-y-1">
                                 <Label className="text-xs">Project / Job</Label>
                                 <Select
-                                    value={entry.projectId}
+                                    value={entry.projectId || ''}
                                     onValueChange={(val) => updateEntry(index, 'projectId', val)}
                                     disabled={!canEdit}
                                 >
-                                    <SelectTrigger>
+                                    <SelectTrigger className={!entry.projectId ? 'border-red-300' : ''}>
                                         <SelectValue placeholder="Select Project" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {projects.map(p => (
-                                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                        ))}
+                                        {scheduledProjects.length > 0 && (
+                                            <>
+                                                {scheduledProjects.map(p => (
+                                                    <SelectItem key={p.id} value={p.id}>
+                                                        {p.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </>
+                                        )}
+                                        {/* Show the currently selected project if it's not in scheduled list (e.g. existing entry from another date) */}
+                                        {entry.projectId && !entry.projectId.startsWith(CUSTOM_PROJECT_PREFIX) && !scheduledProjects.find(p => p.id === entry.projectId) && (
+                                            <SelectItem value={entry.projectId}>
+                                                {getProjectName(entry.projectId)} (not scheduled today)
+                                            </SelectItem>
+                                        )}
+                                        <SelectItem value={CUSTOM_PROJECT_PREFIX}>
+                                            ✏️ Custom / Other...
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
+                                {/* Custom job name input */}
+                                {entry.projectId === CUSTOM_PROJECT_PREFIX && (
+                                    <Input
+                                        placeholder="Enter custom job name..."
+                                        value={entry.customProjectName || ''}
+                                        onChange={(e) => updateEntry(index, 'customProjectName', e.target.value)}
+                                        className="mt-1"
+                                        disabled={!canEdit}
+                                    />
+                                )}
                             </div>
 
                             {/* Work Type */}
@@ -228,9 +379,9 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
                                     <Input
                                         type="number"
                                         step="0.5"
-                                        className="pl-8"
+                                        className={`pl-8 ${(!entry.totalHours || entry.totalHours <= 0) ? 'border-red-300' : ''}`}
                                         value={entry.totalHours || ''}
-                                        onChange={(e) => updateEntry(index, 'totalHours', parseFloat(e.target.value))}
+                                        onChange={(e) => updateEntry(index, 'totalHours', parseFloat(e.target.value) || 0)}
                                         disabled={!canEdit}
                                     />
                                 </div>
@@ -258,16 +409,30 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
                 <DialogFooter>
                     <div className="flex-1 flex justify-between items-center text-sm font-medium">
                         <span className="text-muted-foreground">
-                            Total: {entries.reduce((sum, e) => sum + (e.totalHours || 0), 0).toFixed(1)} hrs
+                            Total: {totalHours.toFixed(1)} hrs
                         </span>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={() => onOpenChange(false)}>
                                 {canEdit ? 'Cancel' : 'Close'}
                             </Button>
                             {canEdit && (
-                                <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-                                    Save Time Log
-                                </Button>
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => handleSave(false)}
+                                        disabled={saveMutation.isPending}
+                                    >
+                                        Save Draft
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleSave(true)}
+                                        disabled={saveMutation.isPending}
+                                        className="bg-blue-600 hover:bg-blue-700"
+                                    >
+                                        <Send className="h-4 w-4 mr-2" />
+                                        {isRejected ? 'Resubmit' : 'Submit'}
+                                    </Button>
+                                </>
                             )}
                         </div>
                     </div>

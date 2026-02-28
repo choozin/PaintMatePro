@@ -157,6 +157,26 @@ export interface Org {
 
   quoteTemplates?: QuoteTemplate[]; // New: List of saved configurations
   defaultQuoteTemplateId?: string; // New: Default to use
+
+  // Payroll & Time Settings
+  payrollSettings?: {
+    payPeriodType?: 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
+    payPeriodStartDay?: number; // 0=Sunday, 1=Monday, etc. (for weekly/bi-weekly)
+    overtimeRules?: {
+      dailyOvertimeThreshold?: number;      // Hours per day before OT (e.g., 8)
+      weeklyOvertimeThreshold?: number;     // Hours per week before OT (e.g., 40)
+      dailyDoubleTimeThreshold?: number;    // Hours per day before double time (e.g., 12)
+      overtimeMultiplier?: number;          // e.g., 1.5
+      doubleTimeMultiplier?: number;        // e.g., 2.0
+    };
+    breakCompliance?: {
+      enabled?: boolean;
+      requiredBreakMinutes?: number;        // e.g., 30
+      afterHours?: number;                  // e.g., 6 (break required after 6 hrs)
+    };
+    requireGpsClockIn?: boolean;            // Require GPS coordinates on clock-in
+    allowMileageTracking?: boolean;         // Enable mileage field on time entries
+  };
 }
 
 export type OrgWithId = Org & { id: string };
@@ -596,10 +616,20 @@ export interface TimeEntry {
   workType: 'regular' | 'overtime' | 'double_time' | 'travel';
   notes?: string;
 
+  // GPS & Location
+  clockInLocation?: { lat: number; lng: number; accuracy?: number };
+  clockOutLocation?: { lat: number; lng: number; accuracy?: number };
+
+  // Mileage / Travel
+  mileage?: number;
+  mileageNotes?: string;
+
   // Approval Workflow
-  status: 'draft' | 'submitted' | 'approved' | 'processed';
+  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'processed';
   approvedBy?: string;
   approvedAt?: Timestamp;
+  rejectedBy?: string;
+  rejectionNotes?: string;
 
   createdAt: Timestamp;
   updatedAt: Timestamp;
