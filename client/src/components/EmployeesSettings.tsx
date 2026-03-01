@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeeOperations, Employee } from '@/lib/firestore';
+import { employeeOperations, Employee, orgRoleOperations } from '@/lib/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,17 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { OrgRole, canHaveRole, normalizeRole } from '@/lib/permissions';
 
-const ALL_ROLES: OrgRole[] = [
-    'org_owner',
-    'org_admin',
-    'manager',
-    'estimator',
-    'foreman',
-    'painter',
-    'subcontractor'
-];
 
 export function EmployeesSettings() {
     const { org: currentOrg, loading: authLoading, currentOrgRole, user, isOwner, isAdmin } = useAuth();
@@ -59,12 +49,16 @@ export function EmployeesSettings() {
         enabled: !!currentOrg,
     });
 
+    const { data: orgRoles = [] } = useQuery({
+        queryKey: ['orgRoles', currentOrg?.id],
+        queryFn: () => orgRoleOperations.getByOrg(currentOrg!.id),
+        enabled: !!currentOrg,
+    });
+
     const isLoading = authLoading || queryLoading;
 
-    // Filter roles based on permissions
-    const availableRoles = ALL_ROLES.filter(r =>
-        canHaveRole(currentOrgRole as OrgRole, r)
-    );
+    // Derive available roles from the org's Roles collection
+    const availableRoles = orgRoles.map(r => ({ id: r.id, name: r.name }));
 
     const canEditRole = !editingEmployee || (editingEmployee.email !== user?.email);
     const canManagePayroll = isOwner || isAdmin || currentOrgRole === 'org_owner' || currentOrgRole === 'org_admin';
@@ -110,7 +104,7 @@ export function EmployeesSettings() {
     const handleEdit = (employee: Employee) => {
         setEditingEmployee(employee);
         setName(employee.name);
-        setRole(employee.role ? (normalizeRole(employee.role) as string) : '');
+        setRole(employee.role || '');
         setEmail(employee.email ?? '');
         setPhone(employee.phone ?? '');
         setPayType(employee.payType || 'hourly');
@@ -197,8 +191,8 @@ export function EmployeesSettings() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             {availableRoles.map(r => (
-                                                <SelectItem key={r} value={r}>
-                                                    {r.replace('org_', '').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                <SelectItem key={r.id} value={r.name}>
+                                                    {r.name}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -280,7 +274,7 @@ export function EmployeesSettings() {
                                         <h3 className="font-semibold">{employee.name}</h3>
                                         <div className="flex items-center gap-2 mt-1">
                                             <Badge variant="outline" className="capitalize">
-                                                {employee.role ? normalizeRole(employee.role).toString().replace('org_', '').replace('_', ' ') : 'N/A'}
+                                                {employee.role || 'N/A'}
                                             </Badge>
                                         </div>
                                         <div className="flex items-center text-sm text-muted-foreground gap-3 mt-1">

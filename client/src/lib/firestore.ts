@@ -607,7 +607,7 @@ export interface TimeEntry {
   employeeId: string;
   date: Timestamp; // Noon-normalized date for grouping
 
-  // Time & Pay Details
+  // Timesheet Details
   startTime?: Timestamp;
   endTime?: Timestamp;
   breakDurationMinutes?: number;
@@ -780,7 +780,7 @@ export interface Employee {
   name: string;
   email?: string;
   phone?: string;
-  role?: 'admin' | 'manager' | 'painter';
+  role?: string;
 
   // Compensation
   payType?: 'hourly' | 'salary';

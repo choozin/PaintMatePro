@@ -33,6 +33,7 @@ export default function Login() {
 
   const [isLogin, setIsLogin] = useState(true);
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [orgName, setOrgName] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,7 +48,7 @@ export default function Login() {
         if (password !== confirmPassword) {
           throw new Error("Passwords do not match");
         }
-        await register(email, password, orgName);
+        await register(email, password, orgName, displayName);
         toast({
           title: "Account Created",
           description: "You have successfully registered. You are now logged in.",
@@ -125,6 +126,17 @@ export default function Login() {
               />
               {!isLogin && (
                 <div className="space-y-4 mt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="displayName">Full Name</Label>
+                    <Input
+                      id="displayName"
+                      type="text"
+                      placeholder="John Doe"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      required
+                    />
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="orgName">Organization Name</Label>
                     <Input

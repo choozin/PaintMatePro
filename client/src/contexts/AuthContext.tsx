@@ -36,7 +36,7 @@ interface AuthContextType {
   entitlements: Entitlement | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, orgName?: string) => Promise<void>;
+  register: (email: string, password: string, orgName?: string, displayName?: string) => Promise<void>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   updateUserProfile: (profile: { displayName?: string }) => Promise<void>;
@@ -218,8 +218,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await authSignIn(email, password);
   };
 
-  const register = async (email: string, password: string, orgName?: string) => {
-    const cred = await authRegisterUser(email, password, orgName);
+  const register = async (email: string, password: string, orgName?: string, displayName?: string) => {
+    const cred = await authRegisterUser(email, password, orgName, displayName);
 
     // Force immediate refresh of claims/profile now that DB is fully populated
     // Force immediate refresh of claims/profile now that DB is fully populated

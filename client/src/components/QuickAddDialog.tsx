@@ -53,6 +53,7 @@ export function QuickAddDialog({ open, onOpenChange, defaultDate, onSuccess, ini
     // Form State
     const [title, setTitle] = useState("");
     const [clientId, setClientId] = useState("");
+    const [location, setLocationText] = useState("");
     const [linkedProjectId, setLinkedProjectId] = useState(initialLinkedProjectId || "");
 
     // Date/Time State
@@ -88,6 +89,18 @@ export function QuickAddDialog({ open, onOpenChange, defaultDate, onSuccess, ini
             setEndDate(defaultDate);
         }
     }, [defaultDate]);
+
+    // Auto-populate location from client
+    useEffect(() => {
+        if (clientId && clientId !== 'internal' && !location) {
+            const client = clients.find((c: any) => c.id === clientId);
+            if (client && client.address) {
+                let addr = client.address.street1 || '';
+                if (client.address.city) addr += `, ${client.address.city}`;
+                setLocationText(addr);
+            }
+        }
+    }, [clientId, clients, location]);
 
     // Update End Date when Start Date changes (if End was same as Start)
     const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,7 +147,7 @@ export function QuickAddDialog({ open, onOpenChange, defaultDate, onSuccess, ini
                 eventCategory: tab === 'event' ? category : undefined, // Only for events
                 status: tab === 'project' ? 'new' : 'booked',
                 clientId: clientId || 'internal',
-                location: 'TBD',
+                location: location || 'TBD',
                 startDate: Timestamp.fromDate(start),
                 estimatedCompletion: Timestamp.fromDate(end),
                 assignedCrewId: (!assigneeId || assigneeId === '_unassigned') ? null : assigneeId,
@@ -272,10 +285,16 @@ export function QuickAddDialog({ open, onOpenChange, defaultDate, onSuccess, ini
                         )}
 
                         {(category === 'appointment' || tab === 'project') && (
-                            <div className="space-y-2">
-                                <Label>Client (Optional)</Label>
-                                <ClientComboSelector clients={clients as any} value={clientId} onChange={setClientId} />
-                            </div>
+                            <>
+                                <div className="space-y-2">
+                                    <Label>Client (Optional)</Label>
+                                    <ClientComboSelector clients={clients as any} value={clientId} onChange={setClientId} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Location / Address</Label>
+                                    <Input value={location} onChange={e => setLocationText(e.target.value)} placeholder="e.g. 123 Main St." />
+                                </div>
+                            </>
                         )}
 
                         <div className="space-y-2">

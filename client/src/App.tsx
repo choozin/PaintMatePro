@@ -69,19 +69,27 @@ function Router() {
     );
   }
 
-  // 2. Global Admin Logic: Always show OrgSelection if no current org is active (or if we force switch)
-  if (user && claims?.globalRole && (claims.globalRole === 'platform_owner' || claims.globalRole === 'platform_admin') && !currentOrgId) {
-    return <OrgSelection />;
-  }
-
-  // 3. Multi-Org User Logic: If >1 orgs and no selection -> Org Selection
+  // 2. Multi-Org User Logic: If >1 orgs and no selection -> Org Selection
   if (user && claims && claims.orgIds.length > 1 && !currentOrgId) {
     return <OrgSelection />;
   }
 
-  // 4. Fallback/Legacy Logic: If 0 orgs and NOT an admin -> Org Setup/Error
+  // 3. Fallback/Legacy Logic: If 0 orgs and NOT an admin -> Org Setup
   if (user && claims && claims.orgIds.length === 0 && !claims.globalRole) {
     return <OrgSetup onOrgIdSet={() => window.location.reload()} />;
+  }
+
+  // 4. Missing Claims Guard (Critical): If user is logged in but claims are not loaded/missing
+  // do not let them fall through to ProtectedRoute (which only checks for `user`).
+  if (user && !claims) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+          <p className="mt-4 text-sm text-muted-foreground">Verifying access...</p>
+        </div>
+      </div>
+    );
   }
 
   return (

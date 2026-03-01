@@ -101,7 +101,7 @@ export function AppSidebar() {
       featureLock: "payments"
     },
     {
-      title: "Time & Pay",
+      title: "Timesheets",
       url: "/time-tracking",
       icon: Clock,
       testId: "time-tracking",

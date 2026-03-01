@@ -54,7 +54,7 @@ export async function signInAnonymously(): Promise<UserCredential> {
 /**
  * Register a new user with email and password
  */
-export async function registerUser(email: string, password: string, orgName?: string): Promise<UserCredential> {
+export async function registerUser(email: string, password: string, orgName?: string, displayName?: string): Promise<UserCredential> {
   try {
     const { createUserWithEmailAndPassword } = await import('firebase/auth');
     const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
@@ -64,83 +64,92 @@ export async function registerUser(email: string, password: string, orgName?: st
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // 1. Create User Document
-    await setDoc(doc(db, 'users', user.uid), {
-      email: user.email,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    // Set display name on Firebase Auth profile if provided
+    if (displayName) {
+      const { updateProfile } = await import('firebase/auth');
+      await updateProfile(user, { displayName });
+    }
 
-    // 2. If Org Name provided, create Org flow (Owner Registration)
-    if (orgName) {
-      console.log('[DEBUG] Starting Org Creation Flow for:', orgName);
+    // If no org name, just create a minimal user document
+    if (!orgName) {
+      await setDoc(doc(db, 'users', user.uid), {
+        email: user.email,
+        displayName: displayName || '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return userCredential;
+    }
 
-      // Create Org
-      try {
-        const orgId = await orgOperations.create({
-          name: orgName,
-          plan: 'free',
-          region: 'US',
-          defaultUnits: 'imperial'
-        });
-        console.log('[DEBUG] Org Created with ID:', orgId);
+    // --- Owner Registration Flow ---
+    console.log('[DEBUG] Starting Org Creation Flow for:', orgName);
 
-        // Create Default Entitlements
-        console.log('[DEBUG] Creating Entitlements...');
-        await entitlementOperations.create(orgId, {
-          plan: 'free',
-          features: {
-            'capture.ar': true,
-            'capture.reference': true, // Basic features
-            'visual.recolor': true,
-            'portal.fullView': true,
-            'pdf.watermark': true,
-            // Disable advanced features for free plan
-            'capture.weeklyLimit': 5,
-            'visual.sheenSimulator': false,
-            'portal.advancedActionsLocked': true,
-            'analytics.lite': true,
-            'analytics.drilldowns': false,
-            eSign: false,
-            payments: false,
-            scheduler: false,
-            'quote.tiers': false,
-            'quote.profitMargin': false,
-            'quote.visualScope': false,
-            'client.importCSV': false,
-          }
-        });
-        console.log('[DEBUG] Entitlements Created');
+    try {
+      // 1. Create Org
+      const orgId = await orgOperations.create({
+        name: orgName,
+        plan: 'free',
+        region: 'US',
+        defaultUnits: 'imperial'
+      });
+      console.log('[DEBUG] Org Created with ID:', orgId);
 
-        // Create Employee Record (Owner)
-        console.log('[DEBUG] Creating Employee Record...');
-        await employeeOperations.create({
-          id: user.uid, // Use Auth ID for owner employee record for easier lookup
-          orgId: orgId,
-          name: email.split('@')[0], // Default name
-          email: email,
-          role: 'admin'
-        } as any);
-        console.log('[DEBUG] Employee Record Created');
+      // 2. Create Default Entitlements
+      console.log('[DEBUG] Creating Entitlements...');
+      await entitlementOperations.create(orgId, {
+        plan: 'free',
+        features: {
+          'capture.ar': true,
+          'capture.reference': true,
+          'visual.recolor': true,
+          'portal.fullView': true,
+          'pdf.watermark': true,
+          'capture.weeklyLimit': 5,
+          'visual.sheenSimulator': false,
+          'portal.advancedActionsLocked': true,
+          'analytics.lite': true,
+          'analytics.drilldowns': false,
+          eSign: false,
+          payments: false,
+          scheduler: false,
+          'quote.tiers': false,
+          'quote.profitMargin': false,
+          'quote.visualScope': false,
+          'client.importCSV': false,
+        }
+      });
+      console.log('[DEBUG] Entitlements Created');
 
-        // Create/Set User Doc with Org/Role
-        // Use 'set' to ensure document creation if it doesn't exist
-        console.log('[DEBUG] Updating User Doc with Permissions...');
-        await userOperations.set(user.uid, {
-          id: user.uid,
-          email: email,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-          orgIds: [orgId],
-          roles: { [orgId]: 'admin' as any },
-          globalRole: 'admin' as any
-        });
-        console.log('[DEBUG] User Doc Updated - Flow Complete');
+      // 3. Set User Doc with Org/Role FIRST (before employee creation)
+      //    This is required because Firestore security rules for employee
+      //    creation check isOrgOwner(), which reads the user doc's roles map.
+      console.log('[DEBUG] Setting User Doc with Permissions...');
+      await userOperations.set(user.uid, {
+        id: user.uid,
+        email: email,
+        displayName: displayName || email.split('@')[0],
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        orgIds: [orgId],
+        roles: { [orgId]: 'org_owner' as any },
+        globalRole: 'org_owner' as any
+      });
+      console.log('[DEBUG] User Doc Set');
 
-      } catch (err) {
-        console.error('[DEBUG] FAILED during Org Creation Flow:', err);
-        throw err;
-      }
+      // 4. Create Employee Record (Owner) — now isOrgOwner() will pass
+      console.log('[DEBUG] Creating Employee Record...');
+      await employeeOperations.create({
+        id: user.uid,
+        orgId: orgId,
+        name: displayName || email.split('@')[0],
+        email: email,
+        role: 'Owner'
+      } as any);
+      console.log('[DEBUG] Employee Record Created - Flow Complete');
+
+    } catch (err) {
+      console.error('[DEBUG] FAILED during Org Creation Flow:', err);
+      throw err;
     }
 
     return userCredential;

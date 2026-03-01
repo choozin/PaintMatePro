@@ -124,6 +124,7 @@ export function CrewScheduler() {
 
   // 3. Status Colors Map
   const statusColors: Record<string, string> = {
+    new: "bg-teal-100 text-teal-800 border-teal-200",
     lead: "bg-blue-100 text-blue-800 border-blue-200",
     quoted: "bg-purple-100 text-purple-800 border-purple-200",
     booked: "bg-indigo-100 text-indigo-800 border-indigo-200",

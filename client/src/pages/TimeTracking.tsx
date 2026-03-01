@@ -411,10 +411,10 @@ export default function TimeTracking() {
                     onOpenChange={(open) => !open && setDialogState(null)}
                     employee={dialogState.employee}
                     date={dialogState.date}
-                    existingEntries={timeEntries.filter(te =>
+                    existingEntries={useMemo(() => timeEntries.filter(te =>
                         te.employeeId === dialogState.employee.id &&
                         isSameDay(te.date.toDate(), dialogState.date)
-                    )}
+                    ), [timeEntries, dialogState.employee.id, dialogState.date])}
                     crews={crews}
                 />
             )}

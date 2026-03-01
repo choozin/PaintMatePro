@@ -180,7 +180,7 @@
             },
             "eSign": "Digital Signatures",
             "payments": "Online Invoicing & Payments",
-            "timeTracking": "Time & Pay",
+            "timeTracking": "Timesheets",
             "scheduler": "Advanced Crew Scheduler"
         },
         "access_denied": {
