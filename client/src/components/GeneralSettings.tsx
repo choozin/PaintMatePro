@@ -32,6 +32,22 @@ export function GeneralSettings() {
         }
     };
 
+    const handleCalendarSettingChange = async (key: 'scheduleWeekStartsOn' | 'payrollWeekStartsOn' | 'timesheetWeekStartsOn', value: 0 | 1) => {
+        if (!currentOrgId || !org) return;
+        try {
+            const currentSettings = org.calendarSettings || {};
+            await orgOperations.update(currentOrgId, {
+                calendarSettings: {
+                    ...currentSettings,
+                    [key]: value
+                }
+            });
+            toast({ title: "Settings Updated", description: "Calendar display settings updated." });
+        } catch (error) {
+            toast({ variant: "destructive", title: "Error", description: "Failed to update settings." });
+        }
+    };
+
     if (!org) return null;
 
     return (
@@ -101,35 +117,65 @@ export function GeneralSettings() {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <FileText className="h-5 w-5" />
-                        Default Quote Style
+                        Calendar & Time Settings
                     </CardTitle>
-                    <CardDescription>Choose how line items are presented to clients by default.</CardDescription>
+                    <CardDescription>Configure which day of the week your calendars and periods start on.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>Quote Format</Label>
-                        <Select
-                            value={org.defaultQuoteStyle || 'detailed'}
-                            onValueChange={(val: any) => handleQuoteStyleChange(val)}
-                        >
-                            <SelectTrigger className="w-full md:w-[300px]">
-                                <SelectValue placeholder="Select style" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="detailed">
-                                    <span className="font-medium block">Detailed Itemization</span>
-                                    <span className="text-xs text-muted-foreground">Show every item and labor hour separately.</span>
-                                </SelectItem>
-                                <SelectItem value="split">
-                                    <span className="font-medium block">Materials & Labor Split</span>
-                                    <span className="text-xs text-muted-foreground">Group all materials and all labor into two lines.</span>
-                                </SelectItem>
-                                <SelectItem value="bundled">
-                                    <span className="font-medium block">Bundled (Value Pricing)</span>
-                                    <span className="text-xs text-muted-foreground">Hide breakdown, show one total per room/area.</span>
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
+                <CardContent className="space-y-6">
+                    <div className="grid gap-4 md:grid-cols-3">
+                        {/* Schedule Start */}
+                        <div className="space-y-2">
+                            <Label>Schedule Start Day</Label>
+                            <Select
+                                value={String(org.calendarSettings?.scheduleWeekStartsOn ?? 0)}
+                                onValueChange={(val: any) => handleCalendarSettingChange('scheduleWeekStartsOn', parseInt(val) as 0 | 1)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select day" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="0">Sunday (Default)</SelectItem>
+                                    <SelectItem value="1">Monday</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-muted-foreground">Changes the left-most column on the Schedule calendar.</p>
+                        </div>
+
+                        {/* Payroll Start */}
+                        <div className="space-y-2">
+                            <Label>Payroll Start Day</Label>
+                            <Select
+                                value={String(org.calendarSettings?.payrollWeekStartsOn ?? 1)}
+                                onValueChange={(val: any) => handleCalendarSettingChange('payrollWeekStartsOn', parseInt(val) as 0 | 1)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select day" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="0">Sunday</SelectItem>
+                                    <SelectItem value="1">Monday (Default)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-muted-foreground">Aligns the weekly and bi-weekly payroll periods.</p>
+                        </div>
+
+                        {/* Timesheets Start */}
+                        <div className="space-y-2">
+                            <Label>Timesheets Start Day</Label>
+                            <Select
+                                value={String(org.calendarSettings?.timesheetWeekStartsOn ?? 1)}
+                                onValueChange={(val: any) => handleCalendarSettingChange('timesheetWeekStartsOn', parseInt(val) as 0 | 1)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select day" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="0">Sunday</SelectItem>
+                                    <SelectItem value="1">Monday (Default)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-muted-foreground">Sets the start day for the weekly time entry view.</p>
+                        </div>
                     </div>
                 </CardContent>
             </Card>

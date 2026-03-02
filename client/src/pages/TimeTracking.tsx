@@ -26,7 +26,7 @@ export default function TimeTracking() {
     const [confirmSubmit, setConfirmSubmit] = useState<{ employee: Employee; draftCount: number } | null>(null);
 
     // Get week range
-    const weekStart = startOfWeek(currentDate, { weekStartsOn: org?.payrollSettings?.payPeriodStartDay as 0 || 0 });
+    const weekStart = startOfWeek(currentDate, { weekStartsOn: (org?.calendarSettings?.timesheetWeekStartsOn ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6 });
     const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
     // Fetch Data

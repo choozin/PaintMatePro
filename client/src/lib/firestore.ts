@@ -177,6 +177,13 @@ export interface Org {
     requireGpsClockIn?: boolean;            // Require GPS coordinates on clock-in
     allowMileageTracking?: boolean;         // Enable mileage field on time entries
   };
+
+  // Calendar & Display Settings
+  calendarSettings?: {
+    scheduleWeekStartsOn?: 0 | 1; // 0 = Sunday (Default), 1 = Monday
+    payrollWeekStartsOn?: 0 | 1;
+    timesheetWeekStartsOn?: 0 | 1;
+  };
 }
 
 export type OrgWithId = Org & { id: string };

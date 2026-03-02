@@ -26,7 +26,7 @@ export default function Organization() {
     React.useEffect(() => {
         if (!currentOrgRole) return; // Wait for load
         if (!hasPermission(currentPermissions, 'manage_org')) {
-            setLocation('/dashboard');
+            setLocation('/');
         }
     }, [currentOrgRole, currentPermissions, setLocation]);
 
@@ -40,7 +40,7 @@ export default function Organization() {
             <RoleGuard scope="org" permission="manage_org">
                 <Card className="border-none shadow-none">
                     <CardContent className="px-0">
-                        <Tabs defaultValue="branding" className="w-full">
+                        <Tabs defaultValue="general" className="w-full">
                             <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent">
                                 <TabsTrigger
                                     value="general"

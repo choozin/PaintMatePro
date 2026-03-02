@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -97,6 +97,9 @@ function Router() {
       <AppLayout>
         <Switch>
           <Route path="/" component={Dashboard} />
+          <Route path="/dashboard">
+            <Redirect to="/" />
+          </Route>
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/clients" component={Clients} />

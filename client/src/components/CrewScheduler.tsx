@@ -67,13 +67,21 @@ export function CrewScheduler() {
     enabled: !!user && !!currentOrgId && !canManageSchedule && crews.length > 0
   });
 
-  const daysHeaders = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const weekStartConfig = org?.calendarSettings?.scheduleWeekStartsOn ?? 0; // Default to Sunday
+  const daysHeaders = weekStartConfig === 1
+    ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  // Helper: Get start of date's week (Sunday)
+  // Helper: Get start of date's week
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
-    const day = d.getDay(); // 0 is Sunday
-    const diff = d.getDate() - day; // subtract day index to get to Sunday (0)
+    const day = d.getDay(); // 0 is Sunday, 1 is Monday...
+    let diff = d.getDate() - day;
+
+    // Adjust diff based on config
+    if (weekStartConfig === 1) { // Monday start
+      diff += (day === 0 ? -6 : 1);
+    }
     return new Date(d.setDate(diff));
   };
 

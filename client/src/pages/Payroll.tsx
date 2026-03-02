@@ -109,7 +109,7 @@ export default function Payroll() {
     };
 
     const payPeriodType = org?.payrollSettings?.payPeriodType || 'weekly';
-    const payPeriodStartDay = org?.payrollSettings?.payPeriodStartDay || 0;
+    const payPeriodStartDay = org?.calendarSettings?.payrollWeekStartsOn ?? 1;
 
     // OT Rules from org settings
     const otRules = org?.payrollSettings?.overtimeRules;
