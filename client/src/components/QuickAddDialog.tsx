@@ -94,10 +94,13 @@ export function QuickAddDialog({ open, onOpenChange, defaultDate, onSuccess, ini
     useEffect(() => {
         if (clientId && clientId !== 'internal' && !location) {
             const client = clients.find((c: any) => c.id === clientId);
-            if (client && client.address) {
-                let addr = client.address.street1 || '';
-                if (client.address.city) addr += `, ${client.address.city}`;
+            if (client && typeof client.address === 'object' && client.address !== null) {
+                const addrObj = client.address as any;
+                let addr = addrObj.street1 || '';
+                if (addrObj.city) addr += `, ${addrObj.city}`;
                 setLocationText(addr);
+            } else if (client && typeof client.address === 'string') {
+                setLocationText(client.address);
             }
         }
     }, [clientId, clients, location]);

@@ -13,7 +13,8 @@ import {
   Clock,
   DollarSign,
   NotebookPen,
-  CreditCard
+  CreditCard,
+  Activity
 } from "lucide-react";
 import {
   Sidebar,

@@ -946,7 +946,7 @@ export const timeEntryOperations = {
 
 // --- Invoicing & Payments ---
 
-export type InvoiceStatus = 'draft' | 'sent' | 'viewed' | 'partially_paid' | 'paid' | 'overdue' | 'void';
+export type InvoiceStatus = 'draft' | 'sent' | 'viewed' | 'partially_paid' | 'paid' | 'overdue' | 'void' | 'refunded';
 export type InvoiceType = 'standard' | 'deposit' | 'progress' | 'final';
 export type PaymentTerms = 'due_on_receipt' | 'net_15' | 'net_30' | 'net_60' | 'custom';
 export type PaymentMethod = 'stripe_card' | 'stripe_ach' | 'cash' | 'check' | 'bank_transfer' | 'other';
@@ -1022,6 +1022,10 @@ export interface Invoice {
   updatedAt: Timestamp;
   createdBy?: string; // User UID
   createdByName?: string;
+
+  // Credit Notes
+  creditNoteIds?: string[]; // IDs of credit notes applied to this invoice
+  totalCreditsApplied?: number; // Sum of all credit notes applied
 }
 
 export const invoiceOperations = {
@@ -1052,6 +1056,74 @@ export const invoiceOperations = {
     // Increment the counter
     await updateDocument<Org>('orgs', orgId, {
       'invoiceSettings.nextInvoiceNumber': nextNum + 1,
+    } as any);
+
+    return formatted;
+  },
+};
+
+// --- Credit Notes ---
+
+export type CreditNoteStatus = 'draft' | 'issued' | 'applied' | 'void';
+export type CreditNoteMethod = 'account_credit' | 'original_payment_method' | 'manual_check' | 'cash' | 'other';
+
+export interface CreditNote {
+  id: string;
+  orgId: string;
+  invoiceId: string; // Source invoice this credit is against
+  clientId: string;
+  projectId: string;
+
+  creditNoteNumber: string; // e.g. "CN-2026-001"
+
+  lineItems: InvoiceLineItem[];
+
+  subtotal: number;
+  taxRate: number;
+  tax: number;
+  total: number; // Total credit amount
+  amountApplied: number; // How much has been applied
+  balanceRemaining: number; // Remaining credit balance
+
+  status: CreditNoteStatus;
+  issueMethod: CreditNoteMethod; // How the credit is handled
+  reason: string; // Required reason for issuing the credit
+
+  issuedDate: Timestamp;
+  appliedDate?: Timestamp;
+  appliedToInvoiceId?: string; // If applied to a different invoice
+
+  notes?: string;
+  internalNotes?: string;
+
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  createdBy?: string;
+  createdByName?: string;
+}
+
+export const creditNoteOperations = {
+  create: (data: Omit<CreditNote, 'id' | 'createdAt' | 'updatedAt'>) =>
+    addDocument<Omit<CreditNote, 'id' | 'createdAt' | 'updatedAt'>>('credit_notes', data),
+  get: (id: string) => getDocById<CreditNote>('credit_notes', id),
+  getByOrg: (orgId: string) =>
+    getDocs<CreditNote>('credit_notes', [where('orgId', '==', orgId)]),
+  getByInvoice: (invoiceId: string) =>
+    getDocs<CreditNote>('credit_notes', [where('invoiceId', '==', invoiceId)]),
+  getByClient: (clientId: string) =>
+    getDocs<CreditNote>('credit_notes', [where('clientId', '==', clientId)]),
+  update: (id: string, data: Partial<CreditNote>) =>
+    updateDocument<CreditNote>('credit_notes', id, data),
+  delete: (id: string) => deleteDocument('credit_notes', id),
+
+  getNextNumber: async (orgId: string): Promise<string> => {
+    const org = await getDocById<Org>('orgs', orgId);
+    const nextNum = (org?.invoiceSettings as any)?.nextCreditNoteNumber || 1;
+    const year = new Date().getFullYear();
+    const formatted = `CN-${year}-${String(nextNum).padStart(3, '0')}`;
+
+    await updateDocument<Org>('orgs', orgId, {
+      'invoiceSettings.nextCreditNoteNumber': nextNum + 1,
     } as any);
 
     return formatted;

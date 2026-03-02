@@ -23,6 +23,7 @@ import TimeTracking from "@/pages/TimeTracking";
 import Payroll from "@/pages/Payroll";
 import Invoices from "@/pages/Invoices";
 import DevNotes from "@/pages/DevNotes";
+import ARAgingReport from "@/pages/ARAgingReport";
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -111,6 +112,7 @@ function Router() {
           <Route path="/payroll" component={Payroll} />
           <Route path="/dev-notes" component={DevNotes} />
           <Route path="/invoices" component={Invoices} />
+          <Route path="/reports/ar-aging" component={ARAgingReport} />
 
           {/* Settings Routes */}
           <Route path="/settings" component={AppSettings} />

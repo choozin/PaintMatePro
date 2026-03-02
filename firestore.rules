@@ -196,5 +196,12 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
     }
 
+    // Credit Notes
+    match /credit_notes/{creditNoteId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && (isOrgMember(request.resource.data.orgId) || isPlatformAdmin());
+      allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+    }
+
   }
 }

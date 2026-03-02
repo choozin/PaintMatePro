@@ -228,6 +228,9 @@ export function PortalDashboard({ project, client, rooms, invoices = [], onAppro
                                                     {invoice.amountPaid > 0 && (
                                                         <><span>•</span><span className="text-green-600">Paid: ${invoice.amountPaid?.toFixed(2)}</span></>
                                                     )}
+                                                    {(invoice.totalCreditsApplied || 0) > 0 && (
+                                                        <><span>•</span><span className="text-orange-600 dark:text-orange-400">Credited: ${(invoice.totalCreditsApplied || 0).toFixed(2)}</span></>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -289,6 +292,12 @@ export function PortalDashboard({ project, client, rooms, invoices = [], onAppro
                                                         <div className="flex justify-between font-bold text-red-600">
                                                             <span>Balance Due</span>
                                                             <span>${invoice.balanceDue?.toFixed(2)}</span>
+                                                        </div>
+                                                    )}
+                                                    {(invoice.totalCreditsApplied || 0) > 0 && (
+                                                        <div className="flex justify-between font-bold text-orange-600 dark:text-orange-400">
+                                                            <span>Credits Applied</span>
+                                                            <span>-${invoice.totalCreditsApplied?.toFixed(2)}</span>
                                                         </div>
                                                     )}
                                                 </div>
