@@ -1256,7 +1256,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                     <div className="flex items-center justify-between pt-2">
                                         <div className="space-y-0.5">
                                             <Label>Bill Paint to Customer</Label>
-                                            <p className="text-[10px] text-muted-foreground">If disabled, paint cost is hidden ($0). Defaults to Org setting.</p>
+                                            <p className="text-[10px] text-muted-foreground">If disabled, paint cost is categorized as an internal expense.</p>
                                         </div>
                                         <Switch
                                             checked={config.billablePaint ?? org?.estimatingSettings?.defaultBillablePaint ?? true}

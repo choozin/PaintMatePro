@@ -37,28 +37,7 @@ export function OrgEntitlementsDialog({ orgId, orgName, children }: OrgEntitleme
     try {
       await entitlementOperations.create(orgId, {
         plan: 'free',
-        features: {
-          'capture.ar': true,
-          'capture.reference': true,
-          'capture.weeklyLimit': 5,
-          'visual.recolor': true,
-          'visual.sheenSimulator': false,
-          'portal.fullView': true,
-          'portal.advancedActionsLocked': true,
-          'analytics.lite': true,
-          'analytics.drilldowns': false,
-          'pdf.watermark': true,
-          eSign: false,
-          payments: false,
-          timeTracking: false,
-          scheduler: false,
-          'quote.tiers': false,
-          'quote.profitMargin': false,
-          'quote.visualScope': false,
-          'client.importCSV': true, // Default to true or false? User asked for it to be togglable. Let's default to true for convenience or false for security? Usually true if it's a new feature they want.
-
-
-        }
+        features: Object.fromEntries(ALL_BOOLEAN_FEATURES.map(feature => [feature, true]))
       });
       toast({
         title: "Initialized",

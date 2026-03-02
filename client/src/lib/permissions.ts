@@ -5,13 +5,22 @@ export type OrgRole = string; // Now dynamic IDs or Names
 // Comprehensive Permissions List
 export type Permission =
     // 1. Administrative
-    | 'manage_org'          // Manage general settings (branding, units)
+    | 'view_organization'   // View organization page
+    | 'manage_org'          // Master permission (Legacy)
+    | 'manage_org_general'  // Tab: General
+    | 'manage_org_branding' // Tab: Branding
+    | 'manage_org_estimating'// Tab: Estimating Defaults
+    | 'manage_org_quoting'   // Tab: Quoting
+    | 'manage_org_employees' // Tab: Employees
+    | 'manage_org_crews'     // Tab: Crews
+    | 'manage_org_supply_rules' // Tab: Supply Rules
     | 'manage_users'        // Invite, edit, or remove users
     | 'manage_roles'        // Create and edit custom roles
     | 'view_activity_logs'  // View audit trails
 
     // 2. Financials & Payroll
     | 'view_financials'     // View dashboards, revenue, profit margins
+    | 'view_timesheets'     // View Timesheets nav item
     | 'view_payroll'        // View employee timesheets and pay
     | 'manage_payroll'      // Export payroll, configure pay periods
     | 'approve_timesheets'  // Approve/reject submitted timesheets
@@ -26,6 +35,7 @@ export type Permission =
     | 'view_full_work_order' // View all restricted fields
 
     // 4. Estimating & Quotes
+    | 'view_quotes'         // View Quotes nav item
     | 'create_quotes'       // Build and save quotes
     | 'view_quote_margins'  // See internal margins/markups
     | 'approve_quotes'      // Mark quotes as approved
@@ -74,10 +84,12 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
         case 'org_owner':
         case 'org_admin':
             return [
-                'manage_org', 'manage_users', 'manage_roles', 'view_activity_logs',
-                'view_financials', 'view_payroll', 'manage_payroll', 'view_labor_rates',
+                'view_organization', 'manage_org', 'manage_org_general', 'manage_org_branding', 'manage_org_estimating',
+                'manage_org_quoting', 'manage_org_employees', 'manage_org_crews', 'manage_org_supply_rules',
+                'manage_users', 'manage_roles', 'view_activity_logs',
+                'view_financials', 'view_timesheets', 'view_payroll', 'manage_payroll', 'view_labor_rates',
                 'view_projects', 'create_projects', 'edit_project_details', 'delete_projects', 'archive_projects', 'view_full_work_order',
-                'create_quotes', 'view_quote_margins', 'approve_quotes', 'send_quotes',
+                'view_quotes', 'create_quotes', 'view_quote_margins', 'approve_quotes', 'send_quotes',
                 'view_catalog', 'manage_catalog', 'view_item_costs',
                 'view_clients', 'manage_clients', 'delete_clients', 'view_client_contact',
                 'view_schedule', 'manage_schedule', 'log_own_time', 'log_crew_time',
@@ -85,9 +97,9 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
             ];
         case 'manager':
             return [
-                'manage_users', 'view_payroll', 'manage_payroll',
+                'manage_users', 'view_timesheets', 'view_payroll', 'manage_payroll',
                 'view_projects', 'create_projects', 'edit_project_details', 'archive_projects', 'view_full_work_order',
-                'create_quotes', 'view_quote_margins', 'approve_quotes', 'send_quotes',
+                'view_quotes', 'create_quotes', 'view_quote_margins', 'approve_quotes', 'send_quotes',
                 'view_catalog', 'manage_catalog', 'view_item_costs',
                 'view_clients', 'manage_clients', 'view_client_contact',
                 'view_schedule', 'manage_schedule', 'log_own_time', 'log_crew_time',
@@ -96,7 +108,7 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
         case 'estimator':
             return [
                 'view_projects', 'create_projects', 'edit_project_details', 'view_full_work_order',
-                'create_quotes', 'view_quote_margins', 'send_quotes',
+                'view_quotes', 'create_quotes', 'view_quote_margins', 'send_quotes',
                 'view_catalog', 'view_item_costs',
                 'view_clients', 'manage_clients', 'view_client_contact',
                 'view_schedule', 'log_own_time'
@@ -141,7 +153,15 @@ export const PERMISSION_GROUPS = [
         id: 'admin',
         label: 'Administrative',
         permissions: [
-            { id: 'manage_org' as Permission, label: 'Manage Organization', description: 'Edit org settings, branding, and billing.' },
+            { id: 'view_organization' as Permission, label: 'Access Organization Page', description: 'Allows viewing the Organization settings page.' },
+            { id: 'manage_org' as Permission, label: 'Manage Organization (Legacy Master)', description: 'Historical permission. Grants wide access.' },
+            { id: 'manage_org_general' as Permission, label: 'Org Tab: General', description: 'Access the General settings tab in Organization.' },
+            { id: 'manage_org_branding' as Permission, label: 'Org Tab: Branding', description: 'Access the Branding tab in Organization.' },
+            { id: 'manage_org_estimating' as Permission, label: 'Org Tab: Estimating', description: 'Access the Estimating Defaults tab in Organization.' },
+            { id: 'manage_org_quoting' as Permission, label: 'Org Tab: Quoting', description: 'Access the Quoting customization tab in Organization.' },
+            { id: 'manage_org_employees' as Permission, label: 'Org Tab: Employees', description: 'Access the Employees tab in Organization.' },
+            { id: 'manage_org_crews' as Permission, label: 'Org Tab: Crews', description: 'Access the Crews tab in Organization.' },
+            { id: 'manage_org_supply_rules' as Permission, label: 'Org Tab: Supply Rules', description: 'Access the Supply Rules tab in Organization.' },
             { id: 'manage_users' as Permission, label: 'Manage Users', description: 'Invite, edit, or remove users.' },
             { id: 'manage_roles' as Permission, label: 'Manage Roles', description: 'Create and edit custom roles and permissions.' },
             { id: 'view_activity_logs' as Permission, label: 'View Activity Logs', description: 'View audit trails of user actions.' },
@@ -152,6 +172,7 @@ export const PERMISSION_GROUPS = [
         label: 'Financials & Payroll',
         permissions: [
             { id: 'view_financials' as Permission, label: 'View Financials', description: 'View revenue dashboards and profit margins.' },
+            { id: 'view_timesheets' as Permission, label: 'View Timesheets', description: 'Access to timesheets nav item.' },
             { id: 'view_payroll' as Permission, label: 'View Payroll', description: 'View employee timesheets and calculated pay.' },
             { id: 'manage_payroll' as Permission, label: 'Manage Payroll', description: 'Export payroll data and configure pay periods.' },
             { id: 'approve_timesheets' as Permission, label: 'Approve Timesheets', description: 'Approve or reject submitted employee timesheets.' },
@@ -174,6 +195,7 @@ export const PERMISSION_GROUPS = [
         id: 'quotes',
         label: 'Estimating & Quotes',
         permissions: [
+            { id: 'view_quotes' as Permission, label: 'View Quotes', description: 'Access to quotes nav item.' },
             { id: 'create_quotes' as Permission, label: 'Create Quotes', description: 'Build and save quotes.' },
             { id: 'view_quote_margins' as Permission, label: 'View Quote Margins', description: 'See internal profit margins and markups.' },
             { id: 'approve_quotes' as Permission, label: 'Approve Quotes', description: 'Mark quotes as manually approved.' },

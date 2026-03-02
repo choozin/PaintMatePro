@@ -601,14 +601,35 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
             });
         }
 
-        // Global Materials (Preserve)
-        const globalMaterials = project.globalMaterialItems || [];
-        if (globalMaterials.length > 0) {
+        // Global Materials (Using customSupplies now)
+        const customSupplies = project.customSupplies || [];
+        const billableSupplies = customSupplies.filter((m: any) => m.billingType === 'billable');
+
+        if (billableSupplies.length > 0) {
             if (config.materialPlacement === 'separate_area') {
-                globalMaterials.forEach((m: any) => collectedMaterials.push({ ...m, description: m.description || m.name, groupTitle: "Materials", amount: m.rate * m.quantity }));
+                billableSupplies.forEach((m: any) =>
+                    collectedMaterials.push({
+                        ...m,
+                        description: m.description || m.name,
+                        groupTitle: "Materials",
+                        amount: m.rate ? (m.rate * m.quantity) : ((m.unitPrice || 0) * (m.qty || 1)),
+                        rate: m.unitPrice || m.rate || 0,
+                        quantity: m.qty || m.quantity || 1
+                    })
+                );
             } else {
                 lines.push({ id: 'h-proj-mat', description: "Project Materials", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Project Materials" });
-                globalMaterials.forEach((m: any) => lines.push({ ...m, description: m.description || m.name, amount: m.rate * m.quantity, type: 'material' }));
+                billableSupplies.forEach((m: any) =>
+                    lines.push({
+                        ...m,
+                        id: `mat-global-${m.id}`,
+                        description: m.description || m.name,
+                        amount: m.rate ? (m.rate * m.quantity) : ((m.unitPrice || 0) * (m.qty || 1)),
+                        rate: m.unitPrice || m.rate || 0,
+                        quantity: m.qty || m.quantity || 1,
+                        type: 'material'
+                    })
+                );
             }
         }
 
@@ -869,13 +890,13 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
             });
         });
 
-        // Materials
         const roomMaterials: any[] = [];
         rooms.forEach((r: any) => {
             if (r.materialItems) roomMaterials.push(...r.materialItems);
         });
 
-        const globalMaterials = project.globalMaterialItems || [];
+        const customSupplies = project.customSupplies || [];
+        const billableSupplies = customSupplies.filter((m: any) => m.billingType === 'billable');
 
         // 1. Handle Room Materials (Configurable Placement)
         if (roomMaterials.length > 0) {
@@ -920,25 +941,32 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
             }
         }
 
-        // 2. Handle Global Materials (Always Separate/Section per user request)
-        if (globalMaterials.length > 0) {
-            // In By Surface, we typically list these in the main list if not "Separate Area" for everything?
-            // User said: "Sub-line option should have the material cost line appear in a separate area if it's a global material cost"
-
-            // If Strategy is Separate Area -> push to collected
+        // 2. Handle Custom Supplies (Always Separate/Section per user request)
+        if (billableSupplies.length > 0) {
             if (config.materialPlacement === 'separate_area') {
-                globalMaterials.forEach((m: any) => collectedMaterials.push({ ...m, description: m.description || m.name, groupTitle: "Materials", amount: m.rate * m.quantity, type: 'material' }));
+                billableSupplies.forEach((m: any) =>
+                    collectedMaterials.push({
+                        ...m,
+                        description: m.description || m.name,
+                        groupTitle: "Materials",
+                        amount: m.rate ? (m.rate * m.quantity) : ((m.unitPrice || 0) * (m.qty || 1)),
+                        rate: m.unitPrice || m.rate || 0,
+                        quantity: m.qty || m.quantity || 1,
+                        type: 'material'
+                    })
+                );
             } else {
-                // Otherwise, list them as a section in the main body (standard list)
                 lines.push({ id: 'h-proj-mat-act', description: "Project Materials", amount: 0, type: 'header', isGroupHeader: true, groupTitle: "Project Materials" });
-                globalMaterials.forEach((m: any) => {
+                billableSupplies.forEach((m: any) => {
+                    const qty = m.qty || m.quantity || 1;
+                    const rate = m.unitPrice || m.rate || 0;
                     lines.push({
                         id: `mat-global-${m.id}`,
                         description: m.description || m.name,
-                        quantity: m.quantity,
-                        unit: m.unit,
-                        rate: m.rate,
-                        amount: m.amount ?? (m.rate * m.quantity),
+                        quantity: qty,
+                        unit: m.unit || 'ea',
+                        rate: rate,
+                        amount: rate * qty,
                         type: 'material',
                         groupTitle: "Project Materials"
                     });

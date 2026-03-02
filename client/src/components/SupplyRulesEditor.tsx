@@ -99,6 +99,33 @@ export function SupplyRulesEditor({ rules, onChange, disabled }: SupplyRulesEdit
         }
     };
 
+    const getConditionLabel = (condition: string) => {
+        switch (condition) {
+            case 'always': return 'Always Include';
+            case 'if_ceiling': return 'If Ceiling Painted';
+            case 'if_trim': return 'If Trim Painted';
+            case 'if_primer': return 'If Primer Required';
+            case 'if_floor_area': return 'If there is Floor Area';
+            default: return condition;
+        }
+    };
+
+    const getQuantityRuleLabel = (rule: SupplyRule) => {
+        const unitLabel = rule.unit || 'Item';
+        if (rule.quantityType === 'fixed') {
+            return `${rule.quantityBase} ${unitLabel} (Fixed)`;
+        }
+
+        switch (rule.quantityType) {
+            case 'per_sqft_wall': return `1 ${unitLabel} per ${rule.quantityBase} Sq Ft of Wall`;
+            case 'per_sqft_floor': return `1 ${unitLabel} per ${rule.quantityBase} Sq Ft of Floor`;
+            case 'per_gallon_total': return `1 ${unitLabel} per ${rule.quantityBase} Gallons of Paint`;
+            case 'per_gallon_primer': return `1 ${unitLabel} per ${rule.quantityBase} Gallons of Primer`;
+            case 'per_linear_ft_perimeter': return `1 ${unitLabel} per ${rule.quantityBase} Linear Ft`;
+            default: return `1 ${unitLabel} per ${rule.quantityBase}`;
+        }
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -208,7 +235,7 @@ export function SupplyRulesEditor({ rules, onChange, disabled }: SupplyRulesEdit
                     <TableHeader>
                         <TableRow>
                             <TableHead>Item</TableHead>
-                            <TableHead>Condition</TableHead>
+                            <TableHead>When to Include</TableHead>
                             <TableHead>Quantity Rule</TableHead>
                             <TableHead className="w-[100px]"></TableHead>
                         </TableRow>
@@ -227,12 +254,8 @@ export function SupplyRulesEditor({ rules, onChange, disabled }: SupplyRulesEdit
                                         <div className="font-medium">{rule.name}</div>
                                         <div className="text-xs text-muted-foreground">{rule.category} • ${rule.unitPrice}/{rule.unit}</div>
                                     </TableCell>
-                                    <TableCell className="capitalize">{rule.condition.replace(/_/g, ' ')}</TableCell>
-                                    <TableCell>
-                                        {rule.quantityType === 'fixed'
-                                            ? `${rule.quantityBase} (Fixed)`
-                                            : `1 per ${rule.quantityBase} ${rule.quantityType.split('_').pop()}`}
-                                    </TableCell>
+                                    <TableCell>{getConditionLabel(rule.condition)}</TableCell>
+                                    <TableCell>{getQuantityRuleLabel(rule)}</TableCell>
                                     <TableCell>
                                         <div className="flex items-center gap-2">
                                             <Button variant="ghost" size="icon" onClick={() => handleEdit(rule)} disabled={disabled}>

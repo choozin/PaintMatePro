@@ -73,40 +73,46 @@ export function AppSidebar() {
       title: t('nav.projects'),
       url: "/projects",
       icon: FolderKanban,
-      testId: "projects"
+      testId: "projects",
+      requiredPermission: 'view_projects'
     },
     {
       title: "Leads & Clients",
       url: "/clients",
       icon: Users,
-      testId: "clients"
+      testId: "clients",
+      requiredPermission: 'view_clients'
     },
     {
       title: t('nav.quotes'),
       url: "/quotes",
       icon: FileText,
-      testId: "quotes"
+      testId: "quotes",
+      requiredPermission: 'view_quotes'
     },
     {
       title: "Catalog",
       url: "/catalog",
       icon: FolderKanban,
       testId: "catalog",
-      featureLock: "manage_catalog", // This should be updated to a real UI entitlement if possible, but keep for now. Actually, wait, Org Entitlements are only the 16 boolean features. manage_catalog is a Role Permission. Let me leave manage_catalog lock to demonstrate, or remove it. The user said ONLY org entitlements get locked. Let's remove the manage_catalog lock and just use it as a normal link.
+      featureLock: "catalog", // Org Entitlement to enable Catalog feature
+      requiredPermission: 'view_catalog'
     },
     {
       title: "Invoices & Payments",
       url: "/invoices",
       icon: CreditCard,
       testId: "invoices",
-      featureLock: "payments"
+      featureLock: "payments",
+      requiredPermission: 'view_invoices'
     },
     {
       title: "Timesheets",
       url: "/time-tracking",
       icon: Clock,
       testId: "time-tracking",
-      featureLock: "timeTracking"
+      featureLock: "timeTracking",
+      requiredPermission: 'view_timesheets'
     },
     {
       title: "Payroll",
@@ -251,7 +257,7 @@ export function AppSidebar() {
 
 
           {/* Organization Settings (Conditional) */}
-          {hasPermission(currentPermissions, 'manage_org') && (
+          {hasPermission(currentPermissions, 'view_organization') && (
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={location === '/organization'} data-testid="link-org-settings">
                 <a href="/organization" onClick={(e) => { e.preventDefault(); handleNav('/organization'); }}>

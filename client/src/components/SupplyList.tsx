@@ -367,20 +367,37 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
     }, [paintNeeds, stats, config, laborConfig]);
 
     const materialsStats = React.useMemo(() => {
-        const paintCost = paintNeeds.total * (config.pricePerGallon || 45);
-        // Only count expenses towards internal project cost
-        const suppliesCost = supplyItems.reduce((acc, item) => {
-            if (item.billingType === 'expense') {
-                return acc + (item.qty * (item.unitPrice || 0));
+        const totalPaintCost = paintNeeds.total * (config.pricePerGallon || 45);
+
+        // Determine if paint is billable based on project config (or org default, but we'll default true if missing)
+        const isPaintBillable = project?.paintConfig?.billablePaint ?? true;
+
+        const billablePaintCost = isPaintBillable ? totalPaintCost : 0;
+        const internalPaintExpense = isPaintBillable ? 0 : totalPaintCost;
+
+        let billableSuppliesCost = 0;
+        let internalSuppliesExpense = 0;
+
+        supplyItems.forEach(item => {
+            const cost = item.qty * (item.unitPrice || 0);
+            if (item.billingType === 'billable') {
+                billableSuppliesCost += cost;
+            } else if (item.billingType === 'expense') {
+                internalSuppliesExpense += cost;
             }
-            return acc;
-        }, 0);
+            // 'checklist' items have no cost impact by design
+        });
+
         return {
-            paintCost,
-            suppliesCost,
-            totalCost: paintCost + suppliesCost
+            billablePaintCost,
+            internalPaintExpense,
+            billableSuppliesCost,
+            internalSuppliesExpense,
+            totalBillable: billablePaintCost + billableSuppliesCost,
+            totalInternalExpense: internalPaintExpense + internalSuppliesExpense,
+            totalCombinedCost: totalPaintCost + billableSuppliesCost + internalSuppliesExpense
         };
-    }, [paintNeeds, config.pricePerGallon, supplyItems]);
+    }, [paintNeeds, config.pricePerGallon, supplyItems, project?.paintConfig?.billablePaint]);
 
     // Fetch Org Rules & Tax Rate
     const [orgRules, setOrgRules] = React.useState<any[]>([]);
@@ -400,11 +417,11 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
     }, [currentOrgId]);
 
     const projectTotals = React.useMemo(() => {
-        const subtotal = materialsStats.totalCost + laborStats.totalCost;
+        const subtotal = materialsStats.totalBillable + laborStats.totalCost;
         const taxAmount = subtotal * (taxRate / 100);
         const total = subtotal + taxAmount;
         return { subtotal, taxAmount, total };
-    }, [materialsStats.totalCost, laborStats.totalCost, taxRate]);
+    }, [materialsStats.totalBillable, laborStats.totalCost, taxRate]);
 
     // Generate Defaults
     const generateDefaults = () => {
@@ -496,7 +513,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             if (config.includePrimer) {
                 const primer = DEFAULT_SUPPLY_ITEMS.find(d => d.id === 'primer-sealer');
                 if (primer) {
-                    items.push({ ...primer, id: 'primer-sealer', name: primer.name!, category: primer.category!, unitPrice: primer.unitPrice, unit: primer.unit, billingType: primer.billingType, qty: Math.ceil(paintNeeds.primer / 5) || 1 } as SupplyItem);
+                    items.push({ ...primer, id: 'primer-sealer', name: primer.name!, category: primer.category!, unitPrice: primer.unitPrice, unit: primer.unit, billingType: primer.billingType, qty: Math.ceil(paintNeeds.primer) || 1 } as SupplyItem);
                 }
             }
 
@@ -841,23 +858,45 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-lg font-medium flex items-center gap-2 text-orange-800">
                                 <DollarSign className="h-5 w-5" />
-                                Materials Cost
+                                Materials & Expenses
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-2 mb-4">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Paint</span>
-                                    <span className="font-medium">${materialsStats.paintCost.toFixed(2)}</span>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div className="space-y-2 p-3 bg-white border border-orange-100 rounded-md shadow-sm">
+                                    <h4 className="font-semibold text-sm text-amber-900 border-b pb-1 mb-2">Billed to Customer</h4>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-muted-foreground">Paint</span>
+                                        <span className="font-medium text-amber-900">${materialsStats.billablePaintCost.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-muted-foreground">Supplies</span>
+                                        <span className="font-medium text-amber-900">${materialsStats.billableSuppliesCost.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm font-semibold pt-1 border-t border-orange-100">
+                                        <span className="text-amber-800">Billable</span>
+                                        <span className="text-amber-900">${materialsStats.totalBillable.toFixed(2)}</span>
+                                    </div>
                                 </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Supplies</span>
-                                    <span className="font-medium">${materialsStats.suppliesCost.toFixed(2)}</span>
+                                <div className="space-y-2 p-3 bg-white border border-slate-200 rounded-md shadow-sm">
+                                    <h4 className="font-semibold text-sm text-slate-700 border-b pb-1 mb-2">Internal Business Expenses</h4>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-muted-foreground">Paint</span>
+                                        <span className="font-medium text-slate-700">${materialsStats.internalPaintExpense.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-muted-foreground">Supplies</span>
+                                        <span className="font-medium text-slate-700">${materialsStats.internalSuppliesExpense.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm font-semibold pt-1 border-t border-slate-100">
+                                        <span className="text-slate-600">Expenses</span>
+                                        <span className="text-slate-700">${materialsStats.totalInternalExpense.toFixed(2)}</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="pt-2 border-t border-orange-200 flex justify-between items-end">
-                                <span className="text-sm font-medium text-orange-800">Total Estimated</span>
-                                <span className="text-2xl font-bold text-orange-600">${materialsStats.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <div className="pt-2 border-t border-orange-200 flex justify-between items-end px-2">
+                                <span className="text-sm font-medium text-orange-800">Total Combined Cost</span>
+                                <span className="text-2xl font-bold text-orange-600">${materialsStats.totalCombinedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                         </CardContent>
                     </Card>
@@ -903,8 +942,8 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                         <CardContent>
                             <div className="space-y-2 mb-4">
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Materials Subtotal</span>
-                                    <span className="font-medium">${materialsStats.totalCost.toFixed(2)}</span>
+                                    <span className="text-muted-foreground">Materials Subtotal (Billable)</span>
+                                    <span className="font-medium">${materialsStats.totalBillable.toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span className="text-muted-foreground">Labor Subtotal</span>

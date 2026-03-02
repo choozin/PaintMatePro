@@ -907,6 +907,7 @@ export const ALL_BOOLEAN_FEATURES = [
   'quote.profitMargin',
   'quote.visualScope',
   'client.importCSV',
+  'catalog'
 ];
 
 export interface UserProfile {

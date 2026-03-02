@@ -10,7 +10,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { SupplyRulesEditor } from './SupplyRulesEditor';
 import { hasPermission, OrgRole } from '@/lib/permissions';
 
 export function EstimatingDefaultsCard() {
@@ -34,17 +33,12 @@ export function EstimatingDefaultsCard() {
         defaultCostPerGallon: 25,
     });
 
-    const [supplyRules, setSupplyRules] = useState<SupplyRule[]>([]);
-
     useEffect(() => {
         if (org) {
             setDefaults(prev => ({
                 ...prev,
                 ...(org.estimatingSettings || {})
             }));
-            if (org.supplyRules) {
-                setSupplyRules(org.supplyRules);
-            }
         }
     }, [org]);
 
@@ -64,8 +58,7 @@ export function EstimatingDefaultsCard() {
         setIsSaving(true);
         try {
             await orgOperations.update(currentOrgId, {
-                estimatingSettings: defaults,
-                supplyRules: supplyRules
+                estimatingSettings: defaults
             });
             toast({ title: "Settings Saved", description: "Estimating defaults updated successfully." });
         } catch (error) {
@@ -193,14 +186,6 @@ export function EstimatingDefaultsCard() {
                                     disabled={!canEdit}
                                 />
                             </div>
-                        </div>
-
-                        <div className="pt-4 border-t">
-                            <SupplyRulesEditor
-                                rules={supplyRules}
-                                onChange={setSupplyRules}
-                                disabled={!canEdit}
-                            />
                         </div>
                     </CollapsibleContent>
                 </Collapsible>
