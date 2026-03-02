@@ -184,6 +184,28 @@ export interface Org {
     payrollWeekStartsOn?: 0 | 1;
     timesheetWeekStartsOn?: 0 | 1;
   };
+
+  // Invoicing & Payments Settings
+  invoiceSettings?: {
+    autoCreateOnQuoteAccept?: boolean;    // Default: false (manual)
+    defaultPaymentTerms?: 'due_on_receipt' | 'net_15' | 'net_30' | 'net_60'; // Default: net_30
+    invoiceNumberPrefix?: string;         // Default: 'INV'
+    nextInvoiceNumber?: number;           // Auto-incrementing counter, starts at 1
+    depositHandling?: 'invoice' | 'first_class'; // Default: 'invoice' (industry standard)
+    defaultDepositPercent?: number;       // Default: 30
+    lateFees?: {
+      enabled: boolean;                   // Default: false
+      type: 'flat' | 'percent';          // Default: 'percent'
+      amount: number;                     // Default: 1.5 (%)
+      gracePeriodDays: number;           // Default: 0
+    };
+    paymentMethods?: {
+      card: boolean;                      // Default: true
+      ach: boolean;                       // Default: false
+    };
+    stripeAccountId?: string;             // Connected Stripe Account ID (set via OAuth)
+    stripeOnboardingComplete?: boolean;   // Whether Stripe onboarding is finished
+  };
 }
 
 export type OrgWithId = Org & { id: string };
@@ -920,6 +942,120 @@ export const timeEntryOperations = {
   getByEmployee: (employeeId: string) => getDocs<TimeEntry>('time_entries', [where('employeeId', '==', employeeId), orderBy('date', 'desc')]),
   update: (id: string, data: Partial<TimeEntry>) => updateDocument<TimeEntry>('time_entries', id, data),
   delete: (id: string) => deleteDocument('time_entries', id),
+};
+
+// --- Invoicing & Payments ---
+
+export type InvoiceStatus = 'draft' | 'sent' | 'viewed' | 'partially_paid' | 'paid' | 'overdue' | 'void';
+export type InvoiceType = 'standard' | 'deposit' | 'progress' | 'final';
+export type PaymentTerms = 'due_on_receipt' | 'net_15' | 'net_30' | 'net_60' | 'custom';
+export type PaymentMethod = 'stripe_card' | 'stripe_ach' | 'cash' | 'check' | 'bank_transfer' | 'other';
+
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  amount?: number;
+  isHeader?: boolean;
+}
+
+export interface InvoicePayment {
+  id: string;
+  amount: number;
+  date: Timestamp;
+  method: PaymentMethod;
+  stripePaymentIntentId?: string;
+  stripeChargeId?: string;
+  referenceNumber?: string;
+  notes?: string;
+  recordedBy?: string; // Employee/user UID who recorded this payment
+  createdAt: Timestamp;
+}
+
+export interface Invoice {
+  id: string;
+  orgId: string;
+  projectId: string;
+  clientId: string;
+  quoteId?: string; // Source quote ID (if converted from quote)
+
+  // Identification
+  invoiceNumber: string; // Auto-generated, e.g. "INV-2026-001"
+
+  // Line Items
+  lineItems: InvoiceLineItem[];
+
+  // Financials
+  subtotal: number;
+  taxRate: number; // Percentage (e.g., 8.25)
+  tax: number;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+
+  // Status & Lifecycle
+  status: InvoiceStatus;
+  invoiceType: InvoiceType;
+  depositPercent?: number; // If type = 'deposit', the % of the quote total
+
+  // Dates
+  issuedDate: Timestamp;
+  dueDate: Timestamp;
+  sentAt?: Timestamp;
+  viewedAt?: Timestamp;
+  paidAt?: Timestamp;
+
+  // Terms
+  paymentTerms: PaymentTerms;
+  customDueDays?: number; // If paymentTerms = 'custom'
+
+  // Payment Records
+  payments: InvoicePayment[];
+
+  // Notes
+  notes?: string; // Client-visible notes
+  internalNotes?: string; // Internal-only notes
+
+  // Audit
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  createdBy?: string; // User UID
+  createdByName?: string;
+}
+
+export const invoiceOperations = {
+  create: (data: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>) =>
+    addDocument<Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>>('invoices', data),
+  get: (id: string) => getDocById<Invoice>('invoices', id),
+  getByOrg: (orgId: string) =>
+    getDocs<Invoice>('invoices', [where('orgId', '==', orgId)]),
+  getByProject: (projectId: string) =>
+    getDocs<Invoice>('invoices', [where('projectId', '==', projectId)]),
+  getByClient: (clientId: string) =>
+    getDocs<Invoice>('invoices', [where('clientId', '==', clientId)]),
+  update: (id: string, data: Partial<Invoice>) =>
+    updateDocument<Invoice>('invoices', id, data),
+  delete: (id: string) => deleteDocument('invoices', id),
+
+  /**
+   * Get the next invoice number for an org.
+   * Reads the org's invoiceSettings.nextInvoiceNumber count, increments it, and returns the formatted string.
+   */
+  getNextNumber: async (orgId: string): Promise<string> => {
+    const org = await getDocById<Org>('orgs', orgId);
+    const prefix = org?.invoiceSettings?.invoiceNumberPrefix || 'INV';
+    const nextNum = org?.invoiceSettings?.nextInvoiceNumber || 1;
+    const year = new Date().getFullYear();
+    const formatted = `${prefix}-${year}-${String(nextNum).padStart(3, '0')}`;
+
+    // Increment the counter
+    await updateDocument<Org>('orgs', orgId, {
+      'invoiceSettings.nextInvoiceNumber': nextNum + 1,
+    } as any);
+
+    return formatted;
+  },
 };
 
 import { Permission } from './permissions';

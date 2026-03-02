@@ -3,7 +3,7 @@ import { useRoute } from "wouter";
 import { PortalLayout } from "@/components/portal/PortalLayout";
 import { PortalAuth } from "@/components/portal/PortalAuth";
 import { PortalDashboard } from "@/components/portal/PortalDashboard";
-import { portalOperations, projectOperations, clientOperations, roomOperations, Project, Client, Room, PortalToken } from "@/lib/firestore";
+import { portalOperations, projectOperations, clientOperations, roomOperations, invoiceOperations, Project, Client, Room, PortalToken, Invoice } from "@/lib/firestore";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -21,6 +21,7 @@ export default function ClientPortal() {
   const [client, setClient] = useState<Client | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [otherProjects, setOtherProjects] = useState<Project[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
 
   // 1. Validate Token on Mount
   useEffect(() => {
@@ -71,10 +72,13 @@ export default function ClientPortal() {
           setProject(p);
 
           // Fetch Client & Rooms
-          const [clientData, roomsData] = await Promise.all([
+          const [clientData, roomsData, invoiceData] = await Promise.all([
             clientOperations.get(p.clientId),
-            roomOperations.getByProject(p.id)
+            roomOperations.getByProject(p.id),
+            invoiceOperations.getByProject(p.id)
           ]);
+
+          setInvoices(invoiceData || []);
 
           if (clientData) {
             setClient(clientData);
@@ -161,6 +165,7 @@ export default function ClientPortal() {
             project={project}
             client={client}
             rooms={rooms}
+            invoices={invoices}
             onApproveQuote={async () => {
               if (!project || !token) return;
               try {

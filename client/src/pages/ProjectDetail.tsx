@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { RoomMeasurement } from "@/components/RoomMeasurement";
 import { QuoteBuilder } from "@/components/QuoteBuilder";
 import { toast } from "@/hooks/use-toast";
-import { ArrowLeft, Calendar, MapPin, User, Ruler, Settings2, PaintBucket, DollarSign, CheckCircle2, Share2, Copy, Mail, Palette, Wand2 } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, User, Ruler, Settings2, PaintBucket, DollarSign, CheckCircle2, Share2, Copy, Mail, Palette, Wand2, CreditCard, AlertTriangle, Loader2, Plus, Send, Eye, MoreHorizontal, Ban } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,16 @@ import { ClientActivityFeed } from "@/components/project/ClientActivityFeed";
 import { Bell } from "lucide-react";
 import { portalOperations } from "@/lib/firestore";
 import { FeatureLock } from "@/components/FeatureLock";
+import { useProjectInvoices } from "@/hooks/useInvoices";
+import { InvoiceBuilderDialog } from "@/components/InvoiceBuilderDialog";
+import { RecordPaymentDialog } from "@/components/RecordPaymentDialog";
+import { InvoicePDFPreview } from "@/components/InvoicePDFPreview";
+import type { Invoice, InvoiceStatus } from "@/lib/firestore";
+import { Timestamp } from "firebase/firestore";
+import { hasPermission } from "@/lib/permissions";
+import { useAuth } from "@/contexts/AuthContext";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export default function ProjectDetail() {
   const params = useParams();
@@ -31,10 +41,16 @@ export default function ProjectDetail() {
 
   const { data: project, isLoading: projectLoading } = useProject(projectId);
   const { data: client } = useClient(project?.clientId || null);
+  const { data: projectInvoices = [] } = useProjectInvoices(projectId || undefined);
+  const { currentPermissions } = useAuth();
 
   // Activity Feed State
   const [showActivity, setShowActivity] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState(0);
+  const [invoiceBuilderOpen, setInvoiceBuilderOpen] = React.useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = React.useState(false);
+  const [paymentInvoice, setPaymentInvoice] = React.useState<Invoice | null>(null);
+  const [previewInvoice, setPreviewInvoice] = React.useState<Invoice | null>(null);
 
   // Poll for unread count (simple version)
   useEffect(() => {
@@ -152,6 +168,7 @@ export default function ProjectDetail() {
     { id: "specs", label: "Project Specs", icon: Settings2 },
     { id: "supplies", label: t('supplies.title'), icon: PaintBucket },
     { id: "quotes", label: t('project_details.tabs.quotes'), icon: DollarSign },
+    { id: "invoices", label: "Invoices", icon: CreditCard },
   ];
 
   return (
@@ -360,6 +377,105 @@ export default function ProjectDetail() {
         {activeTab === "specs" && <ProjectSpecs projectId={projectId!} onNext={() => setActiveTab("supplies")} />}
         {activeTab === "supplies" && <SupplyList projectId={projectId!} onNext={() => setActiveTab("quotes")} />}
         {activeTab === "quotes" && <QuoteBuilder projectId={projectId!} />}
+
+        {activeTab === "invoices" && (
+          <FeatureLock feature="payments">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold">Project Invoices</h2>
+                {hasPermission(currentPermissions, 'create_invoices') && (
+                  <Button onClick={() => setInvoiceBuilderOpen(true)} className="gap-2">
+                    <Plus className="h-4 w-4" />New Invoice
+                  </Button>
+                )}
+              </div>
+
+              {projectInvoices.length > 0 ? (
+                <Card>
+                  <CardContent className="pt-6">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice #</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                          <TableHead className="text-right">Balance</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Due</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {projectInvoices.map(inv => {
+                          const dueDate = inv.dueDate instanceof Timestamp
+                            ? inv.dueDate.toDate() : new Date(inv.dueDate as any);
+                          return (
+                            <TableRow key={inv.id}>
+                              <TableCell className="font-mono">{inv.invoiceNumber}</TableCell>
+                              <TableCell className="text-right">${inv.total?.toFixed(2)}</TableCell>
+                              <TableCell className="text-right font-medium">${inv.balanceDue?.toFixed(2)}</TableCell>
+                              <TableCell>
+                                <Badge variant={inv.status === 'paid' ? 'default' : inv.status === 'overdue' ? 'destructive' : 'outline'}
+                                  className="capitalize">{inv.status?.replace(/_/g, ' ')}</Badge>
+                              </TableCell>
+                              <TableCell className="text-sm">{dueDate.toLocaleDateString()}</TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => setPreviewInvoice(inv)}>
+                                      <Eye className="h-4 w-4 mr-2" />View
+                                    </DropdownMenuItem>
+                                    {!['paid', 'void', 'draft'].includes(inv.status) && hasPermission(currentPermissions, 'record_payments') && (
+                                      <DropdownMenuItem onClick={() => { setPaymentInvoice(inv); setPaymentDialogOpen(true); }}>
+                                        <CreditCard className="h-4 w-4 mr-2" />Record Payment
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                    <CreditCard className="h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                    <h3 className="font-semibold text-lg">No Invoices Yet</h3>
+                    <p className="text-muted-foreground mt-1">Create an invoice for this project to start tracking payments.</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              <InvoiceBuilderDialog
+                open={invoiceBuilderOpen}
+                onOpenChange={setInvoiceBuilderOpen}
+                preselectedProjectId={projectId || undefined}
+              />
+
+              {paymentInvoice && (
+                <RecordPaymentDialog
+                  open={paymentDialogOpen}
+                  onOpenChange={setPaymentDialogOpen}
+                  invoice={paymentInvoice}
+                />
+              )}
+
+              {previewInvoice && (
+                <InvoicePDFPreview
+                  open={!!previewInvoice}
+                  onOpenChange={(open: boolean) => { if (!open) setPreviewInvoice(null); }}
+                  invoice={previewInvoice}
+                />
+              )}
+            </div>
+          </FeatureLock>
+        )}
       </div>
 
       {/* Activity Sheet */}

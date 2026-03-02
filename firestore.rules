@@ -189,5 +189,12 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && (isOrgOwner(resource.data.orgId) || isPlatformAdmin());
     }
 
+    // Invoices
+    match /invoices/{invoiceId} {
+      allow read: if request.auth != null; // Portal users need read access to view invoices
+      allow create: if request.auth != null && (isOrgMember(request.resource.data.orgId) || isPlatformAdmin());
+      allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
+    }
+
   }
 }

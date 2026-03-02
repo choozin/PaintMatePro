@@ -50,5 +50,15 @@
 - [ ] Make the nav open by default (with login screen) if user is not logged in
 - [ ] Add the ability to delete users from an App Management page
 
+## Invoicing — Phase 2
+- [ ] Stripe Connect setup & Pay Now integration (deploy Cloud Functions, configure Stripe keys, wire up portal Pay Now button)
+- [ ] Credit Notes / Refunds
+- [ ] Accounts Receivable Aging Report (CSV/PDF export)
+- [ ] QuickBooks/Xero integration
+
+## Invoicing — Post Phase 2
+- [ ] Automated email reminders for overdue invoices (configurable: 1 day, 7 days, 14 days after due)
+- [ ] Recurring invoices (for maintenance contracts, HOAs, etc.)
+
 ## Design Principles
 > All features must scale gracefully from a solo operator (1 person, no crews) to a large multi-crew company. Never remove existing functionality — only expand and enhance.

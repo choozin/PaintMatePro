@@ -46,7 +46,13 @@ export type Permission =
     | 'view_schedule'       // View calendar
     | 'manage_schedule'     // Drag/drop events, assign crews
     | 'log_own_time'        // Clock in/out for self
-    | 'log_crew_time';      // Clock in/out for others
+    | 'log_crew_time'       // Clock in/out for others
+
+    // 8. Invoicing & Payments
+    | 'view_invoices'       // View invoice list and details
+    | 'create_invoices'     // Create and edit draft invoices
+    | 'manage_invoices'     // Send, void, and manage invoice lifecycle
+    | 'record_payments';    // Record manual payments (cash/check/transfer)
 
 // REMOVED: HARDCODED ROLE_PERMISSIONS
 // We now rely on the database 'roles' collection.
@@ -74,7 +80,8 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
                 'create_quotes', 'view_quote_margins', 'approve_quotes', 'send_quotes',
                 'view_catalog', 'manage_catalog', 'view_item_costs',
                 'view_clients', 'manage_clients', 'delete_clients', 'view_client_contact',
-                'view_schedule', 'manage_schedule', 'log_own_time', 'log_crew_time'
+                'view_schedule', 'manage_schedule', 'log_own_time', 'log_crew_time',
+                'view_invoices', 'create_invoices', 'manage_invoices', 'record_payments'
             ];
         case 'manager':
             return [
@@ -83,7 +90,8 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
                 'create_quotes', 'view_quote_margins', 'approve_quotes', 'send_quotes',
                 'view_catalog', 'manage_catalog', 'view_item_costs',
                 'view_clients', 'manage_clients', 'view_client_contact',
-                'view_schedule', 'manage_schedule', 'log_own_time', 'log_crew_time'
+                'view_schedule', 'manage_schedule', 'log_own_time', 'log_crew_time',
+                'view_invoices', 'create_invoices'
             ];
         case 'estimator':
             return [
@@ -199,6 +207,16 @@ export const PERMISSION_GROUPS = [
             { id: 'manage_schedule' as Permission, label: 'Manage Schedule', description: 'Drag/drop events and assign crews.' },
             { id: 'log_own_time' as Permission, label: 'Log Own Time', description: 'Clock in/out for self.' },
             { id: 'log_crew_time' as Permission, label: 'Log Crew Time', description: 'Clock in/out for others.' },
+        ]
+    },
+    {
+        id: 'invoicing',
+        label: 'Invoicing & Payments',
+        permissions: [
+            { id: 'view_invoices' as Permission, label: 'View Invoices', description: 'View invoice list and details.' },
+            { id: 'create_invoices' as Permission, label: 'Create Invoices', description: 'Create and edit draft invoices.' },
+            { id: 'manage_invoices' as Permission, label: 'Manage Invoices', description: 'Send, void, and manage invoice lifecycle.' },
+            { id: 'record_payments' as Permission, label: 'Record Payments', description: 'Record manual payments (cash, check, transfer).' },
         ]
     }
 ];
