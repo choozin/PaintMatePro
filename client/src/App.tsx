@@ -7,6 +7,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Dashboard from "@/pages/Dashboard";
 import Projects from "@/pages/Projects";
 import ProjectDetail from "@/pages/ProjectDetail";
+import ProjectSnapshot from "@/pages/ProjectSnapshot";
 import Clients from "@/pages/Clients";
 import Quotes from "@/pages/Quotes";
 import Schedule from "@/pages/Schedule";
@@ -103,6 +104,7 @@ function Router() {
             <Redirect to="/" />
           </Route>
           <Route path="/projects" component={Projects} />
+          <Route path="/projects/:id/snapshot" component={ProjectSnapshot} />
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/clients" component={Clients} />
           <Route path="/projects/:projectId/quotes" component={Quotes} />

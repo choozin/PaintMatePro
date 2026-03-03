@@ -178,12 +178,15 @@ export interface Org {
     allowMileageTracking?: boolean;         // Enable mileage field on time entries
   };
 
-  // Calendar & Display Settings
   calendarSettings?: {
     scheduleWeekStartsOn?: 0 | 1; // 0 = Sunday (Default), 1 = Monday
     payrollWeekStartsOn?: 0 | 1;
     timesheetWeekStartsOn?: 0 | 1;
   };
+
+  // Snapshot Settings
+  snapshotAddressDaysVisible?: number; // How many days before a project the address becomes visible on the snapshot
+  snapshotJobScopeVisible?: boolean; // Whether lower-level employees can see job notes and room details
 
   // Invoicing & Payments Settings
   invoiceSettings?: {
@@ -369,7 +372,8 @@ export interface Room {
   length: number;
   width: number;
   height: number;
-  color?: string;
+  color?: string; // Kept as Hex Code
+  colorName?: string; // Descriptive name (e.g., "Sherwin Williams Sea Salt")
   notes?: string;
 
   // Measurements

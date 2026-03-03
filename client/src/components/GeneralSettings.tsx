@@ -179,6 +179,70 @@ export function GeneralSettings() {
                     </div>
                 </CardContent>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        Project Snapshot Settings
+                    </CardTitle>
+                    <CardDescription>Control what details field workers can see and when.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2 max-w-sm">
+                        <Label>Show Address (Days Before Start)</Label>
+                        <Select
+                            value={String(org.snapshotAddressDaysVisible ?? 7)}
+                            onValueChange={async (val) => {
+                                if (!currentOrgId) return;
+                                try {
+                                    await orgOperations.update(currentOrgId, { snapshotAddressDaysVisible: parseInt(val) });
+                                    toast({ title: "Settings Updated", description: "Snapshot address rule updated." });
+                                } catch (error) {
+                                    toast({ variant: "destructive", title: "Error", description: "Failed to update settings." });
+                                }
+                            }}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select days" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="0">On Start Day</SelectItem>
+                                <SelectItem value="1">1 Day Before</SelectItem>
+                                <SelectItem value="2">2 Days Before</SelectItem>
+                                <SelectItem value="3">3 Days Before</SelectItem>
+                                <SelectItem value="7">1 Week Before</SelectItem>
+                                <SelectItem value="14">2 Weeks Before</SelectItem>
+                                <SelectItem value="999">Always Visible</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                            How many days in advance should the actual project address be visible on the Project Snapshot view?
+                        </p>
+                    </div>
+
+                    <div className="flex items-center justify-between space-x-2 pt-4 border-t">
+                        <div className="space-y-0.5">
+                            <Label className="text-base">Show Scope & Room Details</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Allow field workers to see project notes and room-by-room area breakdown on the Snapshot page.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={org.snapshotJobScopeVisible !== false} // default true
+                            onCheckedChange={async (checked) => {
+                                if (!currentOrgId) return;
+                                try {
+                                    await orgOperations.update(currentOrgId, { snapshotJobScopeVisible: checked });
+                                    toast({ title: "Settings Updated", description: `Job scope is now ${checked ? 'visible' : 'hidden'} to field workers.` });
+                                } catch (error) {
+                                    toast({ variant: "destructive", title: "Error", description: "Failed to update settings." });
+                                }
+                            }}
+                        />
+                    </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }

@@ -287,7 +287,7 @@ export function TaskDetailsDialog({ open, onOpenChange, task }: TaskDetailsDialo
                             {task.linkedProjectId && (
                                 <div className="flex items-center gap-3">
                                     <LinkIcon className="h-4 w-4 text-muted-foreground" />
-                                    <span className="text-sm text-blue-600 hover:underline cursor-pointer" onClick={() => window.location.href = `/projects/${task.linkedProjectId}`}>
+                                    <span className="text-sm text-blue-600 hover:underline cursor-pointer" onClick={() => window.location.href = `/projects/${task.linkedProjectId}/snapshot`}>
                                         View Linked Project
                                     </span>
                                 </div>

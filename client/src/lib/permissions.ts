@@ -27,7 +27,8 @@ export type Permission =
     | 'view_labor_rates'    // See specific hourly cost of employees
 
     // 3. Projects
-    | 'view_projects'       // Basic read access
+    | 'view_projects'       // Basic read access (full details)
+    | 'view_project_snapshot'// Read-only glance view for field workers
     | 'create_projects'     // Create new projects
     | 'edit_project_details'// Edit address, notes, specs
     | 'delete_projects'     // Permanently remove projects
@@ -88,7 +89,7 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
                 'manage_org_quoting', 'manage_org_employees', 'manage_org_crews', 'manage_org_supply_rules',
                 'manage_users', 'manage_roles', 'view_activity_logs',
                 'view_financials', 'view_timesheets', 'view_payroll', 'manage_payroll', 'view_labor_rates',
-                'view_projects', 'create_projects', 'edit_project_details', 'delete_projects', 'archive_projects', 'view_full_work_order',
+                'view_projects', 'view_project_snapshot', 'create_projects', 'edit_project_details', 'delete_projects', 'archive_projects', 'view_full_work_order',
                 'view_quotes', 'create_quotes', 'view_quote_margins', 'approve_quotes', 'send_quotes',
                 'view_catalog', 'manage_catalog', 'view_item_costs',
                 'view_clients', 'manage_clients', 'delete_clients', 'view_client_contact',
@@ -98,7 +99,7 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
         case 'manager':
             return [
                 'manage_users', 'view_timesheets', 'view_payroll', 'manage_payroll',
-                'view_projects', 'create_projects', 'edit_project_details', 'archive_projects', 'view_full_work_order',
+                'view_projects', 'view_project_snapshot', 'create_projects', 'edit_project_details', 'archive_projects', 'view_full_work_order',
                 'view_quotes', 'create_quotes', 'view_quote_margins', 'approve_quotes', 'send_quotes',
                 'view_catalog', 'manage_catalog', 'view_item_costs',
                 'view_clients', 'manage_clients', 'view_client_contact',
@@ -107,7 +108,7 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
             ];
         case 'estimator':
             return [
-                'view_projects', 'create_projects', 'edit_project_details', 'view_full_work_order',
+                'view_projects', 'view_project_snapshot', 'create_projects', 'edit_project_details', 'view_full_work_order',
                 'view_quotes', 'create_quotes', 'view_quote_margins', 'send_quotes',
                 'view_catalog', 'view_item_costs',
                 'view_clients', 'manage_clients', 'view_client_contact',
@@ -115,7 +116,7 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
             ];
         case 'foreman':
             return [
-                'view_projects', 'view_full_work_order',
+                'view_projects', 'view_project_snapshot', 'view_full_work_order',
                 'view_catalog',
                 'view_clients', 'view_client_contact',
                 'view_schedule', 'manage_schedule',
@@ -124,7 +125,7 @@ export function getLegacyFallbackPermissions(role: string): Permission[] {
         case 'painter':
         case 'subcontractor':
             return [
-                'view_projects',
+                'view_project_snapshot',
                 'view_schedule',
                 'log_own_time'
             ];
@@ -183,7 +184,8 @@ export const PERMISSION_GROUPS = [
         id: 'projects',
         label: 'Projects',
         permissions: [
-            { id: 'view_projects' as Permission, label: 'View Projects', description: 'Read access to project list and details.' },
+            { id: 'view_projects' as Permission, label: 'View Projects', description: 'Read access to project list and full details.' },
+            { id: 'view_project_snapshot' as Permission, label: 'View Project Snapshot', description: 'Read-only access to basic project info from schedule.' },
             { id: 'create_projects' as Permission, label: 'Create Projects', description: 'Ability to create new projects.' },
             { id: 'edit_project_details' as Permission, label: 'Edit Project Details', description: 'Edit project address, notes, and specs.' },
             { id: 'delete_projects' as Permission, label: 'Delete Projects', description: 'Permanently remove projects.' },

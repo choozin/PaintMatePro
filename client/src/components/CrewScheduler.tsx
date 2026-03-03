@@ -401,7 +401,7 @@ export function CrewScheduler() {
   const handleItemClick = (e: React.MouseEvent, item: Project) => {
     e.stopPropagation();
     if (!item.type || item.type === 'project') {
-      setLocation(`/projects/${item.id}`);
+      setLocation(`/projects/${item.id}/snapshot`);
     } else {
       setSelectedTask(item);
       setDetailsOpen(true);

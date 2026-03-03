@@ -1403,6 +1403,40 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
 
                                             </CardHeader>
                                             <CardContent className="space-y-6">
+                                                {/* General Room Details */}
+                                                <div className="p-4 border rounded-lg bg-slate-50/50 space-y-4">
+                                                    <h3 className="font-semibold text-sm flex items-center gap-2">General Details</h3>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <Label className="text-xs">Color Name</Label>
+                                                            <Input
+                                                                type="text"
+                                                                placeholder="e.g. SW 7008 Alabaster"
+                                                                defaultValue={room.colorName || (room.color && !room.color.startsWith('#') ? room.color : '')}
+                                                                onBlur={e => e.target.value !== (room.colorName || '') && updateRoom.mutate({ id: room.id, data: { colorName: e.target.value } })}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label className="text-xs">Color Swatch (Hex)</Label>
+                                                            <div className="flex gap-2 items-center">
+                                                                <Input
+                                                                    type="color"
+                                                                    className="w-10 h-9 p-1 cursor-pointer"
+                                                                    value={room.color?.startsWith('#') ? room.color : '#ffffff'}
+                                                                    onChange={e => updateRoom.mutate({ id: room.id, data: { color: e.target.value } })}
+                                                                />
+                                                                <Input
+                                                                    type="text"
+                                                                    placeholder="#FFFFFF"
+                                                                    className="uppercase font-mono text-xs flex-1"
+                                                                    defaultValue={room.color?.startsWith('#') ? room.color : ''}
+                                                                    onBlur={e => e.target.value !== (room.color || '') && updateRoom.mutate({ id: room.id, data: { color: e.target.value } })}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
                                                 {/* Room Paint Config */}
                                                 <div className="p-4 border rounded-lg bg-slate-50/50 space-y-4">
                                                     <h3 className="font-semibold text-sm flex items-center gap-2"><PaintBucket className="h-4 w-4" /> Paint System Overrides</h3>
