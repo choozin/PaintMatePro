@@ -39,6 +39,10 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
   const [status, setStatus] = useState<ProjectStatus>(project?.status || "new");
 
+  // Notes
+  const [notes, setNotes] = useState(project?.notes || "");
+  const [internalNotes, setInternalNotes] = useState(project?.internalNotes || "");
+
   // Pause Logic State
   const [pauseStart, setPauseStart] = useState("");
   const [pauseEnd, setPauseEnd] = useState("");
@@ -189,6 +193,9 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
       setStartDate(fmtDate(project.startDate));
       setEstimatedCompletion(fmtDate(project.estimatedCompletion));
 
+      setNotes(project.notes || "");
+      setInternalNotes(project.internalNotes || "");
+
       setCrewId(project.assignedCrewId || "");
     } else if (mode === "create" && defaultClientId && clients.length > 0) {
       // Pre-fill for new project if defaultClientId is provided
@@ -245,6 +252,8 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
         clientId,
         status: statusToSave,
         address, // Corrected from location
+        notes,
+        internalNotes,
         assignedCrewId: crewId || undefined,
         startDate: startDateObj ? Timestamp.fromDate(startDateObj) : null, // Save as Noon UTC or null
         timeline: mode === "create" ? [{
@@ -333,6 +342,8 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
       setAddress(defaultClient?.address || "");
       setStartDate("");
       setEstimatedCompletion("");
+      setNotes("");
+      setInternalNotes("");
       setCrewId("");
     } else if (project) {
       setName(project.name);
@@ -347,6 +358,9 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
 
       setStartDate(fmtDate(project.startDate));
       setEstimatedCompletion(fmtDate(project.estimatedCompletion));
+
+      setNotes(project.notes || "");
+      setInternalNotes(project.internalNotes || "");
 
       setStatus(project.status);
       setCrewId(project.assignedCrewId || "");
@@ -415,6 +429,32 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
               required
               data-testid="input-project-location"
             />
+          </div>
+
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="notes">Client-Visible Project Notes</Label>
+              <p className="text-xs text-muted-foreground">These notes may be visible to the client via their Client Portal.</p>
+              <textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="General project notes, scope overviews, or instructions for the team..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="internalNotes">Internal Project Notes</Label>
+              <p className="text-xs text-muted-foreground">These notes are strictly internal and will never be shown to the client.</p>
+              <textarea
+                id="internalNotes"
+                value={internalNotes}
+                onChange={(e) => setInternalNotes(e.target.value)}
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-yellow-50/50 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="Internal team notes, issues, pricing concerns, or vendor details..."
+              />
+            </div>
           </div>
 
           {/* Status Selection Removed - Workflow Driven */}

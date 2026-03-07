@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ export function EstimatingDefaultsCard() {
         defaultCeilingCoats: 2,
         defaultTrimCoats: 2,
         defaultTaxRate: 0,
-        defaultBillablePaint: true,
+        defaultPaintBilling: 'billable' as 'billable' | 'expense' | 'provided_by_customer',
         defaultPricePerGallon: 45,
         defaultCostPerGallon: 25,
     });
@@ -132,63 +133,67 @@ export function EstimatingDefaultsCard() {
                             disabled={!canEdit}
                         />
                     </div>
-                    <div className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm md:col-span-2">
-                        <div className="space-y-0.5">
+                    <div className="flex flex-col space-y-3 rounded-lg border p-4 shadow-sm md:col-span-2">
+                        <div className="space-y-1">
                             <Label>Bill Paint to Customer</Label>
                             <p className="text-sm text-muted-foreground">
-                                If enabled, paint costs will be included in the quote total. If disabled, paint is treated as non-billable (internal cost only).
+                                Determine the default behavior for paint costs on new projects. This can be overridden per room.
                             </p>
                         </div>
-                        <Switch
-                            checked={defaults.defaultBillablePaint ?? true}
-                            onCheckedChange={(c) => handleToggle('defaultBillablePaint', c)}
+                        <Select
                             disabled={!canEdit}
-                        />
+                            value={defaults.defaultPaintBilling || 'billable'}
+                            onValueChange={(val) => handleChange('defaultPaintBilling', val)}
+                        >
+                            <SelectTrigger className="w-full md:w-[300px]">
+                                <SelectValue placeholder="Select billing behavior" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="billable">Billable (On Quote)</SelectItem>
+                                <SelectItem value="expense">Internal Expense (Not Billed)</SelectItem>
+                                <SelectItem value="provided_by_customer">Provided by Customer ($0)</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
 
-                <Collapsible open={isAdvancedOpen} onOpenChange={setIsAdvancedOpen} className="border rounded-lg p-4 bg-muted/5">
-                    <CollapsibleTrigger asChild>
-                        <Button variant="ghost" className="flex w-full justify-between p-0 h-auto hover:bg-transparent">
-                            <div className="flex items-center gap-2 font-semibold">
-                                <Settings2 className="h-4 w-4" />
-                                Advanced Configuration
-                            </div>
-                            {isAdvancedOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-6 pt-4">
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <div className="space-y-2">
-                                <Label>Wall Coats</Label>
-                                <Input
-                                    type="number"
-                                    value={defaults.defaultWallCoats}
-                                    onChange={(e) => handleChange('defaultWallCoats', parseInt(e.target.value) || 0)}
-                                    disabled={!canEdit}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Ceiling Coats</Label>
-                                <Input
-                                    type="number"
-                                    value={defaults.defaultCeilingCoats}
-                                    onChange={(e) => handleChange('defaultCeilingCoats', parseInt(e.target.value) || 0)}
-                                    disabled={!canEdit}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Trim Coats</Label>
-                                <Input
-                                    type="number"
-                                    value={defaults.defaultTrimCoats}
-                                    onChange={(e) => handleChange('defaultTrimCoats', parseInt(e.target.value) || 0)}
-                                    disabled={!canEdit}
-                                />
-                            </div>
+                <div className="space-y-4 rounded-lg border p-4 bg-muted/5">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                        <Settings2 className="h-4 w-4" />
+                        Default Coats
+                    </h3>
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div className="space-y-2">
+                            <Label>Wall Coats</Label>
+                            <Input
+                                type="number"
+                                value={defaults.defaultWallCoats}
+                                onChange={(e) => handleChange('defaultWallCoats', parseInt(e.target.value) || 0)}
+                                disabled={!canEdit}
+                            />
                         </div>
-                    </CollapsibleContent>
-                </Collapsible>
+                        <div className="space-y-2">
+                            <Label>Ceiling Coats</Label>
+                            <Input
+                                type="number"
+                                value={defaults.defaultCeilingCoats}
+                                onChange={(e) => handleChange('defaultCeilingCoats', parseInt(e.target.value) || 0)}
+                                disabled={!canEdit}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Trim Coats</Label>
+                            <Input
+                                type="number"
+                                value={defaults.defaultTrimCoats}
+                                onChange={(e) => handleChange('defaultTrimCoats', parseInt(e.target.value) || 0)}
+                                disabled={!canEdit}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+
 
                 {!canEdit && (
                     <p className="text-sm text-muted-foreground italic">

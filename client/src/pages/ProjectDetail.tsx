@@ -164,7 +164,6 @@ export default function ProjectDetail() {
 
   const steps = [
     { id: "rooms", label: "Rooms & Surfaces", icon: Ruler },
-    { id: "visuals", label: "Visualizers", icon: Palette },
     { id: "specs", label: "Project Specs", icon: Settings2 },
     { id: "supplies", label: t('supplies.title'), icon: PaintBucket },
     { id: "quotes", label: t('project_details.tabs.quotes'), icon: DollarSign },
@@ -325,54 +324,7 @@ export default function ProjectDetail() {
 
       {/* Tab Content */}
       <div className="mt-6">
-        {activeTab === "rooms" && <RoomMeasurement projectId={projectId!} onNext={() => setActiveTab("visuals")} />}
-
-        {activeTab === "visuals" && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold">Visualizers & Reference</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FeatureLock feature="visual.recolor">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Wand2 className="h-5 w-5 text-indigo-500" />
-                      AI Room Recolor
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="h-32 bg-muted rounded flex items-center justify-center border-2 border-dashed">
-                      <p className="text-muted-foreground">Upload a photo to see new colors instantly</p>
-                    </div>
-                    <Button variant="outline" className="w-full">Launch AI Recolor Tool</Button>
-                  </CardContent>
-                </Card>
-              </FeatureLock>
-
-              <FeatureLock feature="visual.sheenSimulator">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Palette className="h-5 w-5 text-pink-500" />
-                      Sheen Simulator
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="h-32 bg-muted rounded flex items-center justify-center border-2 border-dashed">
-                      <p className="text-muted-foreground">Compare Matte, Eggshell, and Semi-Gloss</p>
-                    </div>
-                    <Button variant="outline" className="w-full">Launch Sheen Simulator</Button>
-                  </CardContent>
-                </Card>
-              </FeatureLock>
-            </div>
-            <div className="flex justify-end pt-4">
-              <Button onClick={() => setActiveTab("specs")} className="w-full md:w-auto font-semibold">
-                Next Step: Project Specs
-                <Settings2 className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+        {activeTab === "rooms" && <RoomMeasurement projectId={projectId!} onNext={() => setActiveTab("specs")} />}
 
         {activeTab === "specs" && <ProjectSpecs projectId={projectId!} onNext={() => setActiveTab("supplies")} />}
         {activeTab === "supplies" && <SupplyList projectId={projectId!} onNext={() => setActiveTab("quotes")} />}

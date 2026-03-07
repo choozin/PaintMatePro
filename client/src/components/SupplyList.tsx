@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
 
 interface PaintConfig {
     coveragePerGallon: number;
@@ -47,6 +48,13 @@ interface PaintConfig {
     deductionMethod?: 'percent' | 'exact';
     deductionExactSqFt?: number;
     pricePerGallon?: number;
+    ceilingCoverage?: number;
+    defaultTrimWidth?: number;
+    paintBilling?: 'billable' | 'expense' | 'provided_by_customer';
+    wallProduct?: any;
+    ceilingProduct?: any;
+    trimProduct?: any;
+    primerProduct?: any;
 }
 
 interface SupplyItem {
@@ -58,7 +66,7 @@ interface SupplyItem {
     unitCost?: number;
     unit?: string;
     roomId?: string;
-    billingType?: 'billable' | 'expense' | 'checklist';
+    billingType?: 'billable' | 'expense' | 'checklist' | 'provided_by_customer';
 }
 
 const DEFAULT_SUPPLY_ITEMS: Partial<SupplyItem>[] = [
@@ -109,6 +117,11 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
         deductionMethod: project?.paintConfig?.deductionMethod || 'percent',
         deductionExactSqFt: project?.paintConfig?.deductionExactSqFt ? Number(project.paintConfig.deductionExactSqFt) : 0,
         pricePerGallon: project?.paintConfig?.pricePerGallon || 45,
+        wallProduct: project?.paintConfig?.wallProduct,
+        ceilingProduct: project?.paintConfig?.ceilingProduct,
+        trimProduct: project?.paintConfig?.trimProduct,
+        primerProduct: project?.paintConfig?.primerProduct,
+        ceilingCoverage: project?.paintConfig?.ceilingCoverage,
     }), [project]);
 
     const laborConfig = React.useMemo(() => ({
@@ -123,11 +136,11 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
     const [newSupplyQty, setNewSupplyQty] = useState(1);
     const [newSupplyPrice, setNewSupplyPrice] = useState<number | undefined>(undefined);
     const [newSupplyRoomId, setNewSupplyRoomId] = useState<string>("general");
-    const [newSupplyBillingType, setNewSupplyBillingType] = useState<'billable' | 'expense' | 'checklist'>('expense');
+    const [newSupplyBillingType, setNewSupplyBillingType] = useState<'billable' | 'expense' | 'checklist' | 'provided_by_customer'>('expense');
 
     // Editing State
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
-    const [editingValues, setEditingValues] = useState<{ name: string; qty: number; price: number; roomId: string; billingType?: 'billable' | 'expense' | 'checklist' }>({ name: '', qty: 1, price: 0, roomId: 'general', billingType: 'expense' });
+    const [editingValues, setEditingValues] = useState<{ name: string; qty: number; price: number; roomId: string; billingType?: 'billable' | 'expense' | 'checklist' | 'provided_by_customer' }>({ name: '', qty: 1, price: 0, roomId: 'general', billingType: 'expense' });
 
     // Load supplies with migration logic
     useEffect(() => {
@@ -294,51 +307,154 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
     }, [rooms]);
 
     const paintNeeds = React.useMemo(() => {
-        // Apply deduction logic
-        let netWallArea = stats.totalWallArea;
-        if (config.deductionMethod === 'exact') {
-            netWallArea = Math.max(0, stats.totalWallArea - (config.deductionExactSqFt || 0));
-        } else {
-            netWallArea = stats.totalWallArea * (1 - config.deductionFactor);
-        }
+        if (!rooms || rooms.length === 0) return {
+            netWallArea: 0, wall: 0, ceiling: 0, trim: 0, primer: 0,
+            total: 0, billable: 0, expense: 0, provided: 0,
+            breakdown: [], aggregatedProducts: [], totalBillableCost: 0, totalExpenseCost: 0
+        };
 
-        let wallGallons = 0;
-        let ceilingGallons = 0;
+        const aggregatedProductsMap = new Map<string, {
+            id: string;
+            name: string;
+            price: number;
+            billingType: 'billable' | 'expense' | 'provided_by_customer';
+            gallonsFloat: number;
+        }>();
 
-        // Ceiling Logic
-        const ceilingArea = config.includeCeiling ? stats.totalFloorArea : 0;
+        const addGallonsToProduct = (product: any, defaultName: string, gallons: number, billingType: any, excludeFromSharedId: string | null) => {
+            if (gallons <= 0) return;
+            const bType = billingType || 'billable';
+            const prodId = product ? (product.id || product.name) : defaultName;
+            const price = product ? product.unitPrice : (config.pricePerGallon || 45);
+            const sharedKey = excludeFromSharedId ? `${prodId}_${bType}_isolated_${excludeFromSharedId}` : `${prodId}_${bType}_shared`;
 
-        if (config.includeCeiling && config.ceilingSamePaint) {
-            // Combine areas for optimization
-            const totalPaintableArea = (netWallArea * config.wallCoats) + (ceilingArea * config.ceilingCoats);
-            wallGallons = Math.ceil(totalPaintableArea / config.coveragePerGallon);
-            // ceilingGallons remains 0 because it's included in wallGallons (which is now "Main Paint")
-        } else {
-            // Separate calculations
-            wallGallons = Math.ceil((netWallArea * config.wallCoats) / config.coveragePerGallon);
-            ceilingGallons = config.includeCeiling
-                ? Math.ceil((ceilingArea * config.ceilingCoats) / config.coveragePerGallon)
-                : 0;
-        }
+            if (!aggregatedProductsMap.has(sharedKey)) {
+                aggregatedProductsMap.set(sharedKey, {
+                    id: prodId,
+                    name: product ? product.name : defaultName,
+                    price: price || 0,
+                    billingType: bType,
+                    gallonsFloat: 0
+                });
+            }
+            aggregatedProductsMap.get(sharedKey)!.gallonsFloat += gallons;
+        };
 
-        // Estimate trim area: Perimeter * 0.5ft (6 inches)
-        const trimArea = stats.totalPerimeter * 0.5;
-        const trimGallons = config.includeTrim
-            ? Math.ceil((trimArea * config.trimCoats) / config.coveragePerGallon)
-            : 0;
-        const primerGallons = config.includePrimer
-            ? Math.ceil(netWallArea / config.coveragePerGallon)
-            : 0;
+        let totalWallGallons = 0;
+        let totalCeilingGallons = 0;
+        let totalTrimGallons = 0;
+        let totalPrimerGallons = 0;
+
+        const breakdown = rooms.map(room => {
+            const l = room.length || 0;
+            const w = room.width || 0;
+            const h = room.height || 0;
+            const perimeter = (l + w) * 2;
+            const floorArea = l * w;
+            const wallArea = perimeter * h;
+
+            const rConfig = room.supplyConfig || {};
+            const includeCeiling = rConfig.includeCeiling ?? config.includeCeiling;
+            const includeTrim = rConfig.includeTrim ?? config.includeTrim;
+            const includePrimer = rConfig.requirePrimer ?? config.includePrimer;
+
+            const wallCoats = rConfig.wallCoats ?? config.wallCoats ?? 2;
+            const ceilingCoats = rConfig.ceilingCoats ?? config.ceilingCoats ?? 1;
+            const trimCoats = rConfig.trimCoats ?? config.trimCoats ?? 1;
+
+            const wallCoverage = rConfig.wallCoverage ?? config.coveragePerGallon ?? 350;
+            const ceilingCoverage = rConfig.ceilingCoverage ?? config.ceilingCoverage ?? 400;
+            const trimWidth = rConfig.trimWidth ?? config.defaultTrimWidth ?? 4;
+
+            const billingType = rConfig.paintBilling || config.paintBilling || 'billable';
+
+            let netWallArea = wallArea;
+            if (config.deductionMethod === 'exact') {
+                const ratio = stats.totalWallArea > 0 ? (wallArea / stats.totalWallArea) : 0;
+                netWallArea = Math.max(0, wallArea - ((config.deductionExactSqFt || 0) * ratio));
+            } else {
+                netWallArea = wallArea * (1 - (config.deductionFactor || 0));
+            }
+
+            const wallPaints = (netWallArea * wallCoats) / wallCoverage;
+            const ceilingPaints = includeCeiling ? (floorArea * ceilingCoats) / ceilingCoverage : 0;
+            const trimArea = perimeter * (trimWidth / 12);
+            const trimPaints = includeTrim ? (trimArea * trimCoats) / wallCoverage : 0;
+            const primerPaints = includePrimer ? netWallArea / wallCoverage : 0;
+
+            const roomTotalGallons = wallPaints + ceilingPaints + trimPaints + primerPaints;
+
+            // Add to products breakdown
+            addGallonsToProduct(rConfig.wallProduct || config.wallProduct, 'Standard Wall Paint', wallPaints, billingType, rConfig.wallExcludeFromSharedPaint ? room.id : null);
+            if (includeCeiling) {
+                addGallonsToProduct(rConfig.ceilingProduct || config.ceilingProduct, 'Standard Ceiling Paint', ceilingPaints, billingType, rConfig.ceilingExcludeFromSharedPaint ? room.id : null);
+            }
+            if (includeTrim) {
+                addGallonsToProduct(rConfig.trimProduct || config.trimProduct, 'Standard Trim Paint', trimPaints, billingType, rConfig.trimExcludeFromSharedPaint ? room.id : null);
+            }
+            if (includePrimer) {
+                addGallonsToProduct(rConfig.primerProduct || config.primerProduct, 'Standard Primer', primerPaints, billingType, null); // No exclusion config for primer
+            }
+
+            totalWallGallons += wallPaints;
+            totalCeilingGallons += ceilingPaints;
+            totalTrimGallons += trimPaints;
+            totalPrimerGallons += primerPaints;
+
+            return {
+                roomId: room.id,
+                roomName: room.name,
+                wallGallons: wallPaints,
+                ceilingGallons: ceilingPaints,
+                trimGallons: trimPaints,
+                primerGallons: primerPaints,
+                totalGallons: roomTotalGallons,
+                billingType
+            };
+        });
+
+        const aggregatedProducts = Array.from(aggregatedProductsMap.values()).map(p => ({
+            ...p,
+            gallonsRounded: Math.ceil(p.gallonsFloat)
+        }));
+
+        let billableGallons = 0;
+        let expenseGallons = 0;
+        let providedGallons = 0;
+        let totalGallonsRounded = 0;
+        let totalBillableCost = 0;
+        let totalExpenseCost = 0;
+
+        aggregatedProducts.forEach(p => {
+            totalGallonsRounded += p.gallonsRounded;
+            const cost = p.gallonsRounded * p.price;
+            if (p.billingType === 'billable') {
+                billableGallons += p.gallonsRounded;
+                totalBillableCost += cost;
+            } else if (p.billingType === 'expense') {
+                expenseGallons += p.gallonsRounded;
+                totalExpenseCost += cost;
+            } else if (p.billingType === 'provided_by_customer') {
+                providedGallons += p.gallonsRounded;
+            }
+        });
 
         return {
-            netWallArea,
-            wall: wallGallons,
-            ceiling: ceilingGallons,
-            trim: trimGallons,
-            primer: primerGallons,
-            total: wallGallons + ceilingGallons + trimGallons + primerGallons
+            netWallArea: stats.totalWallArea,
+            wall: Math.ceil(totalWallGallons),
+            ceiling: Math.ceil(totalCeilingGallons),
+            trim: Math.ceil(totalTrimGallons),
+            primer: Math.ceil(totalPrimerGallons),
+            total: totalGallonsRounded,
+            billable: billableGallons,
+            expense: expenseGallons,
+            provided: providedGallons,
+            breakdown,
+            aggregatedProducts,
+            totalBillableCost,
+            totalExpenseCost
         };
-    }, [stats, config]);
+    }, [stats, config, rooms]);
 
     const laborStats = React.useMemo(() => {
         // Refined Labor Logic
@@ -367,13 +483,9 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
     }, [paintNeeds, stats, config, laborConfig]);
 
     const materialsStats = React.useMemo(() => {
-        const totalPaintCost = paintNeeds.total * (config.pricePerGallon || 45);
-
-        // Determine if paint is billable based on project config (or org default, but we'll default true if missing)
-        const isPaintBillable = project?.paintConfig?.billablePaint ?? true;
-
-        const billablePaintCost = isPaintBillable ? totalPaintCost : 0;
-        const internalPaintExpense = isPaintBillable ? 0 : totalPaintCost;
+        const billablePaintCost = paintNeeds.totalBillableCost;
+        const internalPaintExpense = paintNeeds.totalExpenseCost;
+        const totalPaintCost = billablePaintCost + internalPaintExpense;
 
         let billableSuppliesCost = 0;
         let internalSuppliesExpense = 0;
@@ -385,7 +497,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             } else if (item.billingType === 'expense') {
                 internalSuppliesExpense += cost;
             }
-            // 'checklist' items have no cost impact by design
+            // 'provided_by_customer' has no cost impact
         });
 
         return {
@@ -397,7 +509,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             totalInternalExpense: internalPaintExpense + internalSuppliesExpense,
             totalCombinedCost: totalPaintCost + billableSuppliesCost + internalSuppliesExpense
         };
-    }, [paintNeeds, config.pricePerGallon, supplyItems, project?.paintConfig?.billablePaint]);
+    }, [paintNeeds, config.pricePerGallon, supplyItems]);
 
     // Fetch Org Rules & Tax Rate
     const [orgRules, setOrgRules] = React.useState<any[]>([]);
@@ -596,6 +708,80 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             <div className="grid gap-6 lg:grid-cols-3">
                 {/* Supply List (Left Column) */}
                 <div className="lg:col-span-2 space-y-6">
+                    {/* Paints Required Section */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <PaintBucket className="h-5 w-5" />
+                                Paints Required
+                            </CardTitle>
+                            <CardDescription>Estimated gallons aggregated across all rooms ({paintNeeds.total} total gallons)</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {paintNeeds.aggregatedProducts.length === 0 ? (
+                                <div className="text-center p-4 text-muted-foreground border-2 border-dashed rounded-lg">No paint calculated for these rooms.</div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="rounded-md border overflow-hidden">
+                                        <Table>
+                                            <TableHeader className="bg-slate-50">
+                                                <TableRow>
+                                                    <TableHead className="w-[300px]">Paint Product</TableHead>
+                                                    <TableHead className="text-right">Estimated Need</TableHead>
+                                                    <TableHead className="text-right bg-blue-50/50 font-medium whitespace-nowrap">Gallons to Buy</TableHead>
+                                                    <TableHead>Billing</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {paintNeeds.aggregatedProducts.map((p, i) => (
+                                                    <TableRow key={i}>
+                                                        <TableCell className="font-medium text-xs">
+                                                            <div>{p.name}</div>
+                                                            <div className="text-[10px] text-muted-foreground font-normal">${p.price}/gal</div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-xs">
+                                                            {p.gallonsFloat.toFixed(2)} gal
+                                                        </TableCell>
+                                                        <TableCell className="text-right bg-blue-50/30 text-sm font-bold text-blue-900 border-x">
+                                                            {p.gallonsRounded}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs">
+                                                            {p.billingType === 'billable' ? <Badge variant="default" className="text-[9px]">Billable</Badge> :
+                                                                p.billingType === 'expense' ? <Badge variant="secondary" className="text-[9px] bg-slate-200 text-slate-700">Expense</Badge> :
+                                                                    <Badge variant="outline" className="text-[9px] text-green-700 border-green-200 bg-green-50">Provided</Badge>}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                                <TableRow className="bg-slate-50 font-semibold border-t-2">
+                                                    <TableCell>Total Gallons</TableCell>
+                                                    <TableCell className="text-right text-muted-foreground font-normal">{paintNeeds.aggregatedProducts.reduce((sum, p) => sum + p.gallonsFloat, 0).toFixed(2)} gal</TableCell>
+                                                    <TableCell className="text-right bg-blue-100/50 text-blue-900 text-lg border-x">{paintNeeds.total}</TableCell>
+                                                    <TableCell></TableCell>
+                                                </TableRow>
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                    <div className="flex flex-wrap gap-4 text-sm mt-4 p-4 bg-slate-50 rounded border">
+                                        <div className="space-y-1">
+                                            <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Billable to Customer</div>
+                                            <div className="text-xl font-bold">{paintNeeds.billable} <span className="text-sm font-normal text-muted-foreground">gal</span></div>
+                                        </div>
+                                        <Separator orientation="vertical" className="h-10 my-auto" />
+                                        <div className="space-y-1">
+                                            <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Internal Expense</div>
+                                            <div className="text-xl font-bold">{paintNeeds.expense} <span className="text-sm font-normal text-muted-foreground">gal</span></div>
+                                        </div>
+                                        <Separator orientation="vertical" className="h-10 my-auto" />
+                                        <div className="space-y-1">
+                                            <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Customer Provided</div>
+                                            <div className="text-xl font-bold text-green-700">{paintNeeds.provided} <span className="text-sm font-normal text-muted-foreground">gal</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
                     <Card>
                         <CardHeader>
                             <div className="flex items-center justify-between">
@@ -651,7 +837,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                                                     <div className="grid grid-cols-4 items-center gap-4">
                                                         <Label htmlFor="type" className="text-right">Type</Label>
                                                         <div className="col-span-3">
-                                                            <Select value={newSupplyBillingType} onValueChange={(val: 'billable' | 'expense' | 'checklist') => setNewSupplyBillingType(val)}>
+                                                            <Select value={newSupplyBillingType} onValueChange={(val: 'billable' | 'expense' | 'checklist' | 'provided_by_customer') => setNewSupplyBillingType(val)}>
                                                                 <SelectTrigger>
                                                                     <SelectValue placeholder="Billing Type" />
                                                                 </SelectTrigger>
@@ -659,6 +845,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                                                                     <SelectItem value="checklist">In Inventory</SelectItem>
                                                                     <SelectItem value="expense">Expense (Internal Cost)</SelectItem>
                                                                     <SelectItem value="billable">Billable (On Quote)</SelectItem>
+                                                                    <SelectItem value="provided_by_customer">Provided by Customer ($0)</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>

@@ -77,6 +77,25 @@ export default function ProjectSnapshot() {
     // Job Scope Visibility Logic
     const isScopeVisible = canViewFullDetails || (org?.snapshotJobScopeVisible !== false);
 
+    const handleMap = () => {
+        if (!project.address) return;
+        let queryStr = "";
+        if (typeof project.address === 'string') {
+            queryStr = project.address;
+        } else {
+            const addr = project.address as any;
+            const street = addr.street1 || addr.street || "";
+            const zip = addr.zip || "";
+            const city = addr.city || "";
+            const state = addr.state || "";
+            queryStr = `${street} ${city} ${state} ${zip}`.trim();
+        }
+        if (queryStr) {
+            const query = encodeURIComponent(queryStr);
+            window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+        }
+    };
+
     const renderAddress = () => {
         if (!project.address) return <div className="text-muted-foreground italic text-sm">No address provided</div>;
 
@@ -136,18 +155,25 @@ export default function ProjectSnapshot() {
                 <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">
                         {/* Address */}
-                        <div className="flex items-start gap-3">
-                            <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
-                            <div>
-                                <h4 className="font-medium text-sm text-muted-foreground mb-1">Project Address</h4>
-                                {isAddressVisible ? (
-                                    renderAddress()
-                                ) : (
+                        <div className="flex flex-col gap-2">
+                            <h4 className="font-medium text-sm text-muted-foreground">Project Address</h4>
+                            {isAddressVisible ? (
+                                <Button
+                                    variant="outline"
+                                    className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-red-500 hover:bg-red-50"
+                                    onClick={handleMap}
+                                >
+                                    <MapPin className="h-5 w-5 mr-3 text-red-600 shrink-0 mt-0.5" />
+                                    <div className="text-left text-wrap whitespace-pre-wrap">{renderAddress()}</div>
+                                </Button>
+                            ) : (
+                                <div className="flex items-start gap-3 mt-1 pl-1">
+                                    <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
                                     <div className="text-muted-foreground italic text-sm">
                                         Address hidden until {daysVisibleSetting === 0 ? 'start day' : `${daysVisibleSetting} days before start`}
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Schedule */}
@@ -198,11 +224,22 @@ export default function ProjectSnapshot() {
                     ) : (
                         <>
                             {/* Notes */}
-                            <div className="bg-muted/50 p-4 rounded-lg">
-                                <h4 className="font-semibold mb-2">Project Notes</h4>
-                                <div className="whitespace-pre-wrap text-sm">
-                                    {project.notes || <span className="text-muted-foreground italic">No general notes provided for this project.</span>}
+                            <div className="space-y-4">
+                                <div className="bg-muted/50 p-4 rounded-lg">
+                                    <h4 className="font-semibold mb-2">Client-Visible Project Notes</h4>
+                                    <div className="whitespace-pre-wrap text-sm">
+                                        {project.notes || <span className="text-muted-foreground italic">No general notes provided for this project.</span>}
+                                    </div>
                                 </div>
+
+                                {project.internalNotes && (
+                                    <div className="bg-yellow-50/50 border border-yellow-200 p-4 rounded-lg">
+                                        <h4 className="font-semibold text-amber-900 mb-2">Internal Project Notes</h4>
+                                        <div className="whitespace-pre-wrap text-sm text-slate-800">
+                                            {project.internalNotes}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Room Breakdown (if interior) or general specs */}

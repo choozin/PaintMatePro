@@ -650,50 +650,30 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
             </div>
           </div>
 
-          {/* Reference Photos Placeholder */}
-          <div className="space-y-4 pt-4">
-            <FeatureLock feature="capture.reference">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-xl font-semibold">
-                    <CameraIcon className="h-5 w-5" />
-                    Premium Reference Photos
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline" className="w-full h-24 border-dashed text-muted-foreground hover:text-foreground">
-                    <Plus className="h-6 w-6 mr-2" />
-                    Upload High-Resolution Photos or Blueprints
-                  </Button>
-                </CardContent>
-              </Card>
-            </FeatureLock>
-          </div>
+          {localRooms.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Project Totals</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div><p className="text-sm text-muted-foreground">Total Floor Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).floorArea, 0).toFixed(0)} ft²</p></div>
+                  <div><p className="text-sm text-muted-foreground">Total Wall Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).wallArea, 0).toFixed(0)} ft²</p></div>
+                  <div><p className="text-sm text-muted-foreground">Total Paintable Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).totalArea, 0).toFixed(0)} ft²</p></div>
+                  <div><p className="text-sm text-muted-foreground">Est. Paint Needed</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + Math.ceil(calculateArea(r).wallArea / 350), 0)} gal <span className="text-xs font-normal text-muted-foreground">(1 coat)</span></p></div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {localRooms.length > 0 && (
-          <Card>
-            <CardHeader><CardTitle>Project Totals</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div><p className="text-sm text-muted-foreground">Total Floor Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).floorArea, 0).toFixed(0)} ft²</p></div>
-                <div><p className="text-sm text-muted-foreground">Total Wall Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).wallArea, 0).toFixed(0)} ft²</p></div>
-                <div><p className="text-sm text-muted-foreground">Total Paintable Area</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + calculateArea(r).totalArea, 0).toFixed(0)} ft²</p></div>
-                <div><p className="text-sm text-muted-foreground">Est. Paint Needed</p><p className="text-2xl font-bold font-mono">{localRooms.reduce((s, r) => s + Math.ceil(calculateArea(r).wallArea / 350), 0)} gal <span className="text-xs font-normal text-muted-foreground">(1 coat)</span></p></div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex justify-end pt-6 pb-8">
+            <Button onClick={onNext} className="w-full md:w-auto font-semibold" size="default">
+              Next Step: Project Specs
+              <Ruler className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         )}
       </div>
-
-      {localRooms.length > 0 && (
-        <div className="flex justify-end pt-6 pb-8">
-          <Button onClick={onNext} className="w-full md:w-auto font-semibold" size="default">
-            Next Step: Project Specs
-            <Ruler className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      )}
     </>
   );
 }

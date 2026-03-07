@@ -119,7 +119,7 @@ export interface Org {
     defaultTaxRate?: number; // % (e.g., 8.25)
     defaultPricePerGallon?: number; // New: Default price
     defaultCostPerGallon?: number; // New: Default cost
-    defaultBillablePaint?: boolean; // New: Default billing behavior
+    defaultPaintBilling?: 'billable' | 'expense' | 'provided_by_customer'; // New: Default billing behavior
   };
 
   // Quoting System Phase 2: Customizable Supply Rules
@@ -241,7 +241,7 @@ export interface ProjectSupplyConfig {
   wallCoats?: number; // Override default
 
   wallCoverage?: number; // Override product/default coverage
-  billablePaint?: boolean; // Override Org default
+  paintBilling?: 'billable' | 'expense' | 'provided_by_customer'; // Override Org default
   wallExcludeFromSharedPaint?: boolean;
 
   // Trim Paint
@@ -308,7 +308,7 @@ export interface PaintConfig {
   // Legacy / Migrated to PrepTasks
   includeWallpaperRemoval?: boolean;
   wallpaperRemovalRate?: number;
-  billablePaint?: boolean;
+  paintBilling?: 'billable' | 'expense' | 'provided_by_customer';
 }
 
 export interface CustomSupplyItem {
@@ -320,7 +320,7 @@ export interface CustomSupplyItem {
   unit?: string;
   roomId?: string; // Optional linkage
   actionItemId?: string; // If linked to catalog
-  billingType?: 'billable' | 'expense' | 'checklist';
+  billingType?: 'billable' | 'expense' | 'checklist' | 'provided_by_customer';
 }
 
 export interface ProjectLaborConfig {
@@ -443,6 +443,7 @@ export interface Project {
   globalMiscItems?: MiscMeasurement[];
 
   notes?: string;
+  internalNotes?: string;
   description?: string;
   timeline?: ProjectEvent[];
   quoteTemplateId?: string;

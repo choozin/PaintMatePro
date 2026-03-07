@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useProject, useUpdateProject } from "@/hooks/useProjects";
 import { useRooms, useUpdateRoom } from "@/hooks/useRooms";
-import { Settings2, Save, Loader2, RotateCcw, MoreVertical, Clock, CheckCircle2, DollarSign, PaintBucket, AlertCircle, PlusCircle, ChevronDown, ChevronUp, Ruler, Package, Trash2, ArrowDownToLine, Copy, Pencil, Link as LinkIcon } from "lucide-react";
+import { FeatureLock } from "@/components/FeatureLock";
+import { Settings2, Save, Loader2, RotateCcw, MoreVertical, Clock, CheckCircle2, DollarSign, PaintBucket, AlertCircle, PlusCircle, ChevronDown, ChevronUp, Ruler, Package, Trash2, ArrowDownToLine, Copy, Pencil, Link as LinkIcon, Palette, Wand2, Camera } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { hasPermission } from "@/lib/permissions";
 import { orgOperations, PaintProduct, PaintDetails, roomOperations, Room, PrepTask, MiscMeasurement, PaintConfig } from "@/lib/firestore";
 import { useDebounce } from "@/hooks/useDebounce";
 import { FileText } from "lucide-react";
@@ -289,7 +291,7 @@ function AddMiscItemDialog({
             <Dialog open={isOpen} onOpenChange={onOpenChange}>
                 <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>{initialItem ? 'Edit Work Item' : `Add Work Item (${roomName})`}</DialogTitle>
+                        <DialogTitle>{initialItem ? 'Edit Work Item' : `Add Work Item(${roomName})`}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
                         {/* Collapsible Actions - Hide when editing */}
@@ -374,7 +376,7 @@ function AddMiscItemDialog({
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>{unit === 'fixed' ? 'Price' : `Rate ($ per ${unit === 'units' ? 'item' : unit === 'hours' ? 'hr' : unit})`}</Label>
+                                <Label>{unit === 'fixed' ? 'Price' : `Rate($ per ${unit === 'units' ? 'item' : unit === 'hours' ? 'hr' : unit})`}</Label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2 text-sm text-muted-foreground">$</span>
                                     <Input
@@ -441,8 +443,8 @@ function AddMiscItemDialog({
                                                     {paintProductId === 'default'
                                                         ? `$${defaultProduct?.unitPrice || 45}/gal`
                                                         : `$${paintProducts?.find(p => p.id === paintProductId)?.unitPrice || 0}/gal`}
-                                                </span>
-                                            </div>
+                                                </span >
+                                            </div >
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -451,8 +453,8 @@ function AddMiscItemDialog({
                                             >
                                                 Change
                                             </Button>
-                                        </div>
-                                    </div>
+                                        </div >
+                                    </div >
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
                                             <Label className="text-[10px] text-muted-foreground">Coverage (sqft/gal)</Label>
@@ -480,34 +482,36 @@ function AddMiscItemDialog({
                                         <Switch checked={excludeFromSharedPaint} onCheckedChange={setExcludeFromSharedPaint} className="scale-75 origin-right" />
                                     </div>
                                     <p className="text-[9px] text-muted-foreground">If enabled, this item's paint usage will not share "leftover" gallons from other items.</p>
-                                </div>
+                                </div >
                             )}
-                        </div>
+                        </div >
 
 
                         {/* Custom Area Input for Non-Area Types */}
-                        {requiresPaint && unit !== 'sqft' && unit !== 'linear_ft' && (
-                            <div className="pt-2 border-t border-slate-200">
-                                <div className="space-y-1">
-                                    <Label className="text-xs font-semibold text-blue-700">Paintable Area per Item (sqft)</Label>
-                                    <div className="flex gap-2 items-center">
-                                        <Input
-                                            type="number"
-                                            className="h-8 w-24"
-                                            value={customPaintArea}
-                                            onChange={e => setCustomPaintArea(Number(e.target.value))}
-                                        />
-                                        <span className="text-xs text-muted-foreground">Approx. area to paint per unit</span>
+                        {
+                            requiresPaint && unit !== 'sqft' && unit !== 'linear_ft' && (
+                                <div className="pt-2 border-t border-slate-200">
+                                    <div className="space-y-1">
+                                        <Label className="text-xs font-semibold text-blue-700">Paintable Area per Item (sqft)</Label>
+                                        <div className="flex gap-2 items-center">
+                                            <Input
+                                                type="number"
+                                                className="h-8 w-24"
+                                                value={customPaintArea}
+                                                onChange={e => setCustomPaintArea(Number(e.target.value))}
+                                            />
+                                            <span className="text-xs text-muted-foreground">Approx. area to paint per unit</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            )
+                        }
 
                         <div className="flex justify-between items-center pt-1 border-t border-slate-200">
                             <span className="text-muted-foreground">Est. Paint Volume:</span>
                             <span className="font-medium">{estimatedPaintVolume.toFixed(2)} gal</span>
                         </div>
-                    </div>
+                    </div >
 
 
 
@@ -684,7 +688,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
     const { data: rooms } = useRooms(projectId);
     const updateProject = useUpdateProject();
     const updateRoom = useUpdateRoom();
-    const { currentOrgId, org } = useAuth();
+    const { currentOrgId, org, currentPermissions } = useAuth();
     const { toast } = useToast();
     const { items: catalogItems, addItem } = useCatalog();
 
@@ -693,7 +697,8 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
     const [selectorOpen, setSelectorOpen] = useState(false);
     const [activeSelectorField, setActiveSelectorField] = useState<'wallProduct' | 'ceilingProduct' | 'trimProduct' | 'primerProduct' | null>(null);
     const [selectorContext, setSelectorContext] = useState<'global' | { roomId: string }>('global');
-    const [activeTab, setActiveTab] = useState("global");
+    const [activeTab, setActiveTab] = useState("rooms");
+    const canManageEstimating = hasPermission(currentPermissions, 'manage_org_estimating');
 
     // Prep Dialog
     const [prepDialogOpen, setPrepDialogOpen] = useState(false);
@@ -846,6 +851,33 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
         const newConfig = { ...currentConfig, [key]: value };
         await updateRoom.mutateAsync({ id: roomId, data: { supplyConfig: newConfig } });
         // Toast is a bit noisy for toggles, maybe optional?
+    };
+
+    const handleApplyToAllRooms = async (sourceRoomId: string) => {
+        const sourceRoom = rooms?.find(r => r.id === sourceRoomId);
+        if (!sourceRoom || !rooms) return;
+
+        const configToApply = sourceRoom.supplyConfig || {};
+
+        // Exclude the source room from updates
+        const targetRooms = rooms.filter(r => r.id !== sourceRoomId);
+
+        if (targetRooms.length === 0) {
+            toast({ title: "No other rooms", description: "There are no other rooms to apply to." });
+            return;
+        }
+
+        try {
+            await Promise.all(targetRooms.map(room =>
+                updateRoom.mutateAsync({
+                    id: room.id,
+                    data: { supplyConfig: configToApply }
+                })
+            ));
+            toast({ title: "Configuration Applied", description: `Applied to ${targetRooms.length} rooms.` });
+        } catch (error) {
+            toast({ title: "Error", description: "Failed to apply configuration to all rooms.", variant: "destructive" });
+        }
     };
 
     const handleProductSelect = (product: PaintProduct) => {
@@ -1126,15 +1158,14 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
         toast({ title: workItemId ? "Link Created" : "Link Removed", description: "Association updated." });
     };
 
-
-
     // Aggregate for templating
     const allProjectItems = [
         ...globalMiscItems,
         ...(rooms?.flatMap(r => r.miscItems || []) || [])
     ];
 
-
+    if (isLoadingProject) return <div className="p-8 text-center text-muted-foreground"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />Loading...</div>;
+    if (!project) return <div className="p-8 text-center text-destructive">Project not found</div>;
 
     return (
         <div className="space-y-6">
@@ -1151,123 +1182,22 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="w-full justify-start h-auto bg-transparent border-b p-0 rounded-none mb-6">
-                    <TabsTrigger value="global" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent px-4 py-3">
-                        General Specs & Paint
-                    </TabsTrigger>
                     <TabsTrigger value="rooms" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent px-4 py-3">
                         Rooms
                     </TabsTrigger>
                     <TabsTrigger value="misc" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent px-4 py-3">
-                        Additional Work Items
+                        Other Work
                     </TabsTrigger>
+                    {canManageEstimating && (
+                        <TabsTrigger value="labor" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent px-4 py-3">
+                            Labor & Production Settings
+                        </TabsTrigger>
+                    )}
                 </TabsList>
 
-                <TabsContent value="global" className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* 1. Paint Systems */}
-                        <Card>
-                            <CardHeader><CardTitle className="text-lg">Paint Configuration</CardTitle></CardHeader>
-                            <CardContent className="space-y-4">
-                                {/* Wall Paint */}
-                                <div className="space-y-2">
-                                    <Label>Wall Paint</Label>
-                                    <div className="flex gap-2">
-                                        <div className="flex-1 p-2 border rounded-md bg-muted/20 text-sm flex justify-between items-center">
-                                            <span>{config.wallProduct?.name || "Standard Wall Paint"}</span>
-                                            <span className="text-muted-foreground text-xs">{config.wallProduct ? `$${config.wallProduct.unitPrice}/gal` : "$45/gal"}</span>
-                                        </div>
-                                        <Button variant="outline" size="sm" onClick={() => { setActiveSelectorField('wallProduct'); setSelectorContext('global'); setSelectorOpen(true); }}>Change</Button>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 mt-2">
-                                        <div><Label className="text-xs">Coats</Label><Input type="number" value={config.wallCoats} onChange={e => handleConfigChange('wallCoats', Number(e.target.value))} className="h-8" /></div>
-                                        <div><Label className="text-xs">Coverage (sqft/gal)</Label><Input type="number" value={config.coveragePerGallon} onChange={e => handleConfigChange('coveragePerGallon', Number(e.target.value))} className="h-8" /></div>
-                                    </div>
-                                </div>
-                                <Separator />
-                                {/* Ceiling & Trim Toggles */}
-                                <div className="space-y-2">
-                                    <div className="space-y-2 pt-2 pb-2 border-b border-dashed">
-                                        <div className="flex items-center justify-between">
-                                            <Label>Include Ceilings?</Label>
-                                            <Switch checked={config.includeCeiling} onCheckedChange={c => handleConfigChange('includeCeiling', c)} />
-                                        </div>
-                                        {config.includeCeiling && (
-                                            <div className="p-3 border rounded-md bg-slate-50 space-y-3">
-                                                <div className="space-y-1">
-                                                    <Label className="text-xs">Ceiling Paint</Label>
-                                                    <div className="flex gap-2">
-                                                        <div className="flex-1 p-2 border rounded-md bg-white text-xs flex justify-between items-center">
-                                                            <span>{config.ceilingProduct?.name || "Standard Ceiling Paint"}</span>
-                                                            <span className="text-muted-foreground">{config.ceilingProduct ? `$${config.ceilingProduct.unitPrice}/gal` : "$35/gal"}</span>
-                                                        </div>
-                                                        <Button variant="outline" size="sm" onClick={() => { setActiveSelectorField('ceilingProduct'); setSelectorContext('global'); setSelectorOpen(true); }} className="h-9">Change</Button>
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <div>
-                                                        <Label className="text-xs">Coats</Label>
-                                                        <Input type="number" value={config.ceilingCoats ?? 2} onChange={e => handleConfigChange('ceilingCoats', Number(e.target.value))} className="h-7 text-xs" />
-                                                    </div>
-                                                    <div>
-                                                        <Label className="text-xs">Coverage (sqft/gal)</Label>
-                                                        <Input type="number" value={config.ceilingCoverage ?? 400} onChange={e => handleConfigChange('ceilingCoverage', Number(e.target.value))} className="h-7 text-xs" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div className="space-y-1">
-                                            <Label>Include Trim?</Label>
-                                            {config.includeTrim && (
-                                                <div className="space-y-1 mt-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-muted-foreground min-w-[30px]">Rate: $</span>
-                                                        <Input
-                                                            type="number"
-                                                            className="h-6 w-14 text-xs px-1"
-                                                            value={config.defaultTrimRate ?? 1.50}
-                                                            onChange={e => handleConfigChange('defaultTrimRate', Number(e.target.value))}
-                                                        />
-                                                        <span className="text-xs text-muted-foreground">/ft</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-muted-foreground min-w-[30px]">Width:</span>
-                                                        <Input
-                                                            type="number"
-                                                            className="h-6 w-14 text-xs px-1"
-                                                            value={config.defaultTrimWidth ?? 4}
-                                                            onChange={e => handleConfigChange('defaultTrimWidth', Number(e.target.value))}
-                                                        />
-                                                        <span className="text-xs text-muted-foreground">in</span>
-                                                    </div>
-                                                    <div className="text-[10px] text-muted-foreground pl-[38px]">
-                                                        Global: {Math.round((rooms?.reduce((acc, r) => acc + ((r.length + r.width) * 2), 0) || 0) * ((config.defaultTrimWidth || 4) / 12))} sqft
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <Switch checked={config.includeTrim} onCheckedChange={c => handleConfigChange('includeTrim', c)} />
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <Label>Include Primer?</Label>
-                                        <Switch checked={config.includePrimer} onCheckedChange={c => handleConfigChange('includePrimer', c)} />
-                                    </div>
-                                    <div className="flex items-center justify-between pt-2">
-                                        <div className="space-y-0.5">
-                                            <Label>Bill Paint to Customer</Label>
-                                            <p className="text-[10px] text-muted-foreground">If disabled, paint cost is categorized as an internal expense.</p>
-                                        </div>
-                                        <Switch
-                                            checked={config.billablePaint ?? org?.estimatingSettings?.defaultBillablePaint ?? true}
-                                            onCheckedChange={c => handleConfigChange('billablePaint', c)}
-                                        />
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        {/* 2. Labor Rates */}
+                <TabsContent value="labor" className="space-y-6">
+                    <div className="grid grid-cols-1 gap-6">
+                        {/* 1. Labor Rates */}
                         <Card>
                             <CardHeader><CardTitle className="text-lg">Labor & Production</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
@@ -1290,83 +1220,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                 </div>
                             </CardContent>
                         </Card>
-
                     </div>
-
-                    {/* 3. Global Prep Tasks */}
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle className="text-lg">Additional Prep Tasks (Global)</CardTitle>
-                            <Button variant="outline" size="sm" onClick={() => setPrepDialogOpen(true)}>
-                                <PlusCircle className="h-4 w-4 mr-2" /> Add Prep Default
-                            </Button>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                {globalPrepTasks.length === 0 && (
-                                    <div className="text-center p-4 text-muted-foreground bg-amber-50 rounded-lg border border-amber-100 border-dashed">
-                                        No global prep tasks defined. Add tasks here to apply them to all rooms automatically.
-                                    </div>
-                                )}
-                                {globalPrepTasks.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between items-center p-3 border rounded-md bg-white">
-                                        <div>
-                                            <div className="font-medium flex items-center gap-2">
-                                                {item.name}
-                                                {item.count && item.count > 1 && <Badge variant="secondary" className="text-[10px]">x{item.count}</Badge>}
-                                            </div>
-                                            <div className="text-sm text-muted-foreground">
-                                                {item.unit === 'fixed'
-                                                    ? `Flat Fee: $${item.rate}`
-                                                    : `${item.quantity} ${formatUnit(item.unit)} @ $${item.rate}/${formatUnit(item.unit)}`}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="sm" title={item.linkedWorkItemId ? "Linked to Work Item" : "Link to Work Item"}>
-                                                        <LinkIcon className={`h-4 w-4 ${item.linkedWorkItemId ? "text-indigo-600" : "text-muted-foreground"}`} />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-[200px]">
-                                                    <div className="p-2 text-xs font-semibold text-muted-foreground border-b mb-1">Link to Global Work Item</div>
-                                                    {globalMiscItems.length > 0 ? (
-                                                        <>
-                                                            {globalMiscItems.map(mi => (
-                                                                <DropdownMenuItem
-                                                                    key={mi.id}
-                                                                    className={`text-xs ${item.linkedWorkItemId === mi.id ? "bg-indigo-50 text-indigo-700" : ""}`}
-                                                                    onClick={() => handleLinkPrep('global', item.id!, mi.id, false)}
-                                                                >
-                                                                    {item.linkedWorkItemId === mi.id && <CheckCircle2 className="h-3 w-3 mr-2" />}
-                                                                    {mi.name}
-                                                                </DropdownMenuItem>
-                                                            ))}
-                                                            {item.linkedWorkItemId && (
-                                                                <>
-                                                                    <div className="border-t my-1"></div>
-                                                                    <DropdownMenuItem className="text-xs text-destructive" onClick={() => handleLinkPrep('global', item.id!, null, false)}>
-                                                                        Unlink
-                                                                    </DropdownMenuItem>
-                                                                </>
-                                                            )}
-                                                        </>
-                                                    ) : (
-                                                        <div className="p-2 text-xs text-muted-foreground">No Global Work Items.</div>
-                                                    )}
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-
-                                            <Button variant="ghost" size="sm" onClick={() => openEditPrep(item, 'global')}><Pencil className="h-4 w-4 text-blue-500" /></Button>
-                                            <Button variant="ghost" size="sm" onClick={() => setGlobalPrepTasks(prev => prev.filter(t => t.id !== item.id))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-
                 </TabsContent>
 
                 <TabsContent value="rooms">
@@ -1439,7 +1293,40 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
 
                                                 {/* Room Paint Config */}
                                                 <div className="p-4 border rounded-lg bg-slate-50/50 space-y-4">
-                                                    <h3 className="font-semibold text-sm flex items-center gap-2"><PaintBucket className="h-4 w-4" /> Paint System Overrides</h3>
+                                                    <div className="flex items-center justify-between">
+                                                        <h3 className="font-semibold text-sm flex items-center gap-2"><PaintBucket className="h-4 w-4" /> Paint System Overrides</h3>
+                                                    </div>
+
+                                                    {/* Paint Billing Dropdown */}
+                                                    <div className="space-y-2 pb-4 border-b border-dashed">
+                                                        <div className="flex justify-between items-center">
+                                                            <div className="space-y-0.5">
+                                                                <Label className="text-sm">Bill Paint to Customer</Label>
+                                                                <p className="text-[10px] text-muted-foreground">Override the default paint billing behavior for this room.</p>
+                                                            </div>
+                                                            {room.supplyConfig?.paintBilling !== undefined && <Badge variant="secondary" className="text-[10px]">Override</Badge>}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Select
+                                                                value={room.supplyConfig?.paintBilling || config.paintBilling || 'billable'}
+                                                                onValueChange={(val: any) => handleRoomSupplyUpdate(room.id, 'paintBilling', val)}
+                                                            >
+                                                                <SelectTrigger className="w-full md:w-[300px]">
+                                                                    <SelectValue placeholder="Select billing behavior" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="billable">Billable (On Quote)</SelectItem>
+                                                                    <SelectItem value="expense">Internal Expense (Not Billed)</SelectItem>
+                                                                    <SelectItem value="provided_by_customer">Provided by Customer ($0)</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                            {room.supplyConfig?.paintBilling !== undefined && (
+                                                                <Button variant="ghost" size="icon" onClick={() => handleRoomSupplyUpdate(room.id, 'paintBilling', null)}>
+                                                                    <RotateCcw className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
 
                                                     {/* Wall Paint Product */}
                                                     <div className="space-y-2">
@@ -1665,81 +1552,81 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                             </p>
                                                         </div>
 
-                                                        {/* Trim Toggle & Pricing */}
-                                                        <div className="flex flex-col justify-between space-y-2 border p-3 rounded bg-white col-span-2 md:col-span-1">
-                                                            <div className="flex justify-between items-center">
-                                                                <Label className="text-xs">Include Trim?</Label>
-                                                                <Switch
-                                                                    checked={room.supplyConfig?.includeTrim ?? config.includeTrim}
-                                                                    onCheckedChange={(c) => handleRoomSupplyUpdate(room.id, 'includeTrim', c)}
-                                                                />
-                                                            </div>
-                                                            {(room.supplyConfig?.includeTrim ?? config.includeTrim) && (
-                                                                <div className="space-y-2 pt-2 border-t mt-1">
-                                                                    <div className="flex justify-between items-center">
-                                                                        <Label className="text-[10px] text-muted-foreground">Rate ($/ft)</Label>
-                                                                        {room.supplyConfig?.trimRate !== undefined && <Badge variant="secondary" className="text-[9px] px-1 h-4">Override</Badge>}
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1">
-                                                                        <Input
-                                                                            type="number"
-                                                                            className="h-7 text-xs"
-                                                                            value={room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50}
-                                                                            onChange={e => handleRoomSupplyUpdate(room.id, 'trimRate', Number(e.target.value))}
-                                                                        />
-                                                                        {room.supplyConfig?.trimRate !== undefined && (
-                                                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRoomSupplyUpdate(room.id, 'trimRate', null)}>
-                                                                                <RotateCcw className="h-3 w-3" />
-                                                                            </Button>
-                                                                        )}
-                                                                    </div>
+                                                    </div>
 
-                                                                    <div className="flex justify-between items-center mt-1">
-                                                                        <Label className="text-[10px] text-muted-foreground">Width (in)</Label>
-                                                                        {room.supplyConfig?.trimWidth !== undefined && <Badge variant="secondary" className="text-[9px] px-1 h-4">Override</Badge>}
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1">
-                                                                        <Input
-                                                                            type="number"
-                                                                            className="h-7 text-xs"
-                                                                            value={room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4}
-                                                                            onChange={e => handleRoomSupplyUpdate(room.id, 'trimWidth', Number(e.target.value))}
-                                                                        />
-                                                                        {room.supplyConfig?.trimWidth !== undefined && (
-                                                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRoomSupplyUpdate(room.id, 'trimWidth', null)}>
-                                                                                <RotateCcw className="h-3 w-3" />
-                                                                            </Button>
-                                                                        )}
-                                                                    </div>
+                                                    {/* Trim Toggle & Pricing */}
+                                                    <div className="flex flex-col justify-between space-y-2 border p-3 rounded bg-white col-span-2 md:col-span-1">
+                                                        <div className="flex justify-between items-center">
+                                                            <Label className="text-xs">Include Trim?</Label>
+                                                            <Switch
+                                                                checked={room.supplyConfig?.includeTrim ?? config.includeTrim}
+                                                                onCheckedChange={(c) => handleRoomSupplyUpdate(room.id, 'includeTrim', c)}
+                                                            />
+                                                        </div>
+                                                        {(room.supplyConfig?.includeTrim ?? config.includeTrim) && (
+                                                            <div className="space-y-2 pt-2 border-t mt-1">
+                                                                <div className="flex justify-between items-center">
+                                                                    <Label className="text-[10px] text-muted-foreground">Rate ($/ft)</Label>
+                                                                    {room.supplyConfig?.trimRate !== undefined && <Badge variant="secondary" className="text-[9px] px-1 h-4">Override</Badge>}
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <Input
+                                                                        type="number"
+                                                                        className="h-7 text-xs"
+                                                                        value={room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50}
+                                                                        onChange={e => handleRoomSupplyUpdate(room.id, 'trimRate', Number(e.target.value))}
+                                                                    />
+                                                                    {room.supplyConfig?.trimRate !== undefined && (
+                                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRoomSupplyUpdate(room.id, 'trimRate', null)}>
+                                                                            <RotateCcw className="h-3 w-3" />
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
 
-                                                                    <div className="text-[10px] bg-slate-50 p-1 rounded text-center border space-y-1">
-                                                                        <div>
-                                                                            Est: <span className="font-semibold">${(((room.length + room.width) * 2) * (room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50)).toFixed(2)}</span>
-                                                                            <span className="text-muted-foreground ml-1">({(room.length + room.width) * 2} ft)</span>
-                                                                        </div>
-                                                                        <div className="text-[9px] text-muted-foreground">
-                                                                            Area: {(((room.length + room.width) * 2) * ((room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4) / 12)).toFixed(1)} sqft
-                                                                        </div>
+                                                                <div className="flex justify-between items-center mt-1">
+                                                                    <Label className="text-[10px] text-muted-foreground">Width (in)</Label>
+                                                                    {room.supplyConfig?.trimWidth !== undefined && <Badge variant="secondary" className="text-[9px] px-1 h-4">Override</Badge>}
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <Input
+                                                                        type="number"
+                                                                        className="h-7 text-xs"
+                                                                        value={room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4}
+                                                                        onChange={e => handleRoomSupplyUpdate(room.id, 'trimWidth', Number(e.target.value))}
+                                                                    />
+                                                                    {room.supplyConfig?.trimWidth !== undefined && (
+                                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRoomSupplyUpdate(room.id, 'trimWidth', null)}>
+                                                                            <RotateCcw className="h-3 w-3" />
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="text-[10px] bg-slate-50 p-1 rounded text-center border space-y-1">
+                                                                    <div>
+                                                                        Est: <span className="font-semibold">${(((room.length + room.width) * 2) * (room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50)).toFixed(2)}</span>
+                                                                        <span className="text-muted-foreground ml-1">({(room.length + room.width) * 2} ft)</span>
+                                                                    </div>
+                                                                    <div className="text-[9px] text-muted-foreground">
+                                                                        Area: {(((room.length + room.width) * 2) * ((room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4) / 12)).toFixed(1)} sqft
                                                                     </div>
                                                                 </div>
-                                                            )}
-                                                            {!(room.supplyConfig?.includeTrim ?? config.includeTrim) && (
-                                                                <p className="text-[10px] text-muted-foreground">
-                                                                    {room.supplyConfig?.includeTrim !== undefined ? "Room Override" : `Using Global (${config.includeTrim ? 'Yes' : 'No'})`}
-                                                                </p>
-                                                            )}
-                                                            <div className="flex items-center justify-between space-x-2 mt-2 pt-2 border-t">
-                                                                <Label className="text-[10px] text-muted-foreground">Exclude from shared?</Label>
-                                                                <Switch
-                                                                    checked={room.supplyConfig?.trimExcludeFromSharedPaint || false}
-                                                                    onCheckedChange={c => handleRoomSupplyUpdate(room.id, 'trimExcludeFromSharedPaint', c)}
-                                                                    className="scale-75 origin-right"
-                                                                />
                                                             </div>
+                                                        )}
+                                                        {!(room.supplyConfig?.includeTrim ?? config.includeTrim) && (
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                {room.supplyConfig?.includeTrim !== undefined ? "Room Override" : `Using Global (${config.includeTrim ? 'Yes' : 'No'})`}
+                                                            </p>
+                                                        )}
+                                                        <div className="flex items-center justify-between space-x-2 mt-2 pt-2 border-t">
+                                                            <Label className="text-[10px] text-muted-foreground">Exclude from shared?</Label>
+                                                            <Switch
+                                                                checked={room.supplyConfig?.trimExcludeFromSharedPaint || false}
+                                                                onCheckedChange={c => handleRoomSupplyUpdate(room.id, 'trimExcludeFromSharedPaint', c)}
+                                                                className="scale-75 origin-right"
+                                                            />
                                                         </div>
                                                     </div>
                                                 </div>
-
 
                                                 <Separator className="my-6" />
 
@@ -1909,7 +1796,82 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                         ))}
                                                     </div>
                                                 </div>
-                                            </CardContent>
+
+                                                <div className="mt-8 pt-4 border-t flex justify-end">
+                                                    <Button
+                                                        variant="secondary"
+                                                        className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 bg-opacity-50"
+                                                        onClick={() => handleApplyToAllRooms(room.id)}
+                                                    >
+                                                        <Copy className="h-4 w-4 mr-2" />
+                                                        Apply This Configuration To All Rooms
+                                                    </Button>
+                                                </div>
+
+                                                {/* Visualizers & Reference Photos Placeholder */}
+                                                <div className="space-y-4 pt-8 border-t mt-8">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-5 w-5 rounded bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">V</div>
+                                                        <h2 className="text-xl font-semibold">Visualizers for {room.name}</h2>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-4">
+                                                        <FeatureLock feature="visual.recolor">
+                                                            <Card>
+                                                                <CardHeader>
+                                                                    <CardTitle className="flex items-center gap-2">
+                                                                        <Wand2 className="h-5 w-5 text-indigo-500" />
+                                                                        AI Room Recolor
+                                                                    </CardTitle>
+                                                                </CardHeader>
+                                                                <CardContent className="space-y-4">
+                                                                    <div className="h-32 bg-muted rounded flex items-center justify-center border-2 border-dashed">
+                                                                        <p className="text-muted-foreground">Upload a photo to see new colors instantly</p>
+                                                                    </div>
+                                                                    <Button variant="outline" className="w-full">Launch AI Recolor Tool</Button>
+                                                                </CardContent>
+                                                            </Card>
+                                                        </FeatureLock>
+
+                                                        <FeatureLock feature="visual.sheenSimulator">
+                                                            <Card>
+                                                                <CardHeader>
+                                                                    <CardTitle className="flex items-center gap-2">
+                                                                        <Palette className="h-5 w-5 text-pink-500" />
+                                                                        Sheen Simulator
+                                                                    </CardTitle>
+                                                                </CardHeader>
+                                                                <CardContent className="space-y-4">
+                                                                    <div className="h-32 bg-muted rounded flex items-center justify-center border-2 border-dashed">
+                                                                        <p className="text-muted-foreground">Compare Matte, Eggshell, and Semi-Gloss</p>
+                                                                    </div>
+                                                                    <Button variant="outline" className="w-full">Launch Sheen Simulator</Button>
+                                                                </CardContent>
+                                                            </Card>
+                                                        </FeatureLock>
+                                                    </div>
+
+                                                    {/* Reference Photos Placeholder */}
+                                                    <div className="space-y-4 pt-4">
+                                                        <FeatureLock feature="capture.reference">
+                                                            <Card>
+                                                                <CardHeader>
+                                                                    <CardTitle className="flex items-center gap-2 text-xl font-semibold">
+                                                                        <Camera className="h-5 w-5" />
+                                                                        Premium Reference Photos
+                                                                    </CardTitle>
+                                                                </CardHeader>
+                                                                <CardContent>
+                                                                    <Button variant="outline" className="w-full h-24 border-dashed text-muted-foreground hover:text-foreground">
+                                                                        <PlusCircle className="h-6 w-6 mr-2" />
+                                                                        Upload High-Resolution Photos for {room.name}
+                                                                    </Button>
+                                                                </CardContent>
+                                                            </Card>
+                                                        </FeatureLock>
+                                                    </div>
+                                                </div>
+                                            </CardContent >
                                         </>
                                     );
                                 })()
@@ -1922,14 +1884,14 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                 </CardContent>
                             )}
                         </Card>
-                    </div >
+                    </div>
                 </TabsContent>
 
                 <TabsContent value="misc">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
-                                <CardTitle className="text-lg">Additional Work Items</CardTitle>
+                                <CardTitle className="text-lg">Other Work</CardTitle>
                                 <CardDescription>Manage project-wide work items that are not specific to any single room.</CardDescription>
                             </div>
                             <Button onClick={() => { setActiveRoomIdForMisc('global'); setMiscDialogOpen(true); }}>
@@ -1937,75 +1899,79 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                             </Button>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-4">
-                                {globalMiscItems.length === 0 && (
-                                    <div className="text-center p-12 text-muted-foreground bg-slate-50 rounded-lg border border-dashed flex flex-col items-center justify-center">
-                                        <Package className="h-12 w-12 text-slate-300 mb-4" />
-                                        <h3 className="text-lg font-medium text-slate-900">No Additional Items</h3>
-                                        <p className="text-sm text-slate-500 max-w-sm mt-2 mb-6">
-                                            Add work items here that apply to the whole project or don't fit into a specific room (e.g., Exterior Pressure Wash, Dumpster Fee).
-                                        </p>
-                                        <Button variant="outline" onClick={() => { setActiveRoomIdForMisc('global'); setMiscDialogOpen(true); }}>
-                                            Add Your First Item
-                                        </Button>
-                                    </div>
-                                )}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {globalMiscItems.map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-start p-4 border rounded-lg bg-white hover:border-blue-300 transition-colors shadow-sm">
-                                            <div className="space-y-1">
-                                                <div className="font-medium flex items-center gap-2 text-base">
-                                                    {item.name}
-                                                    {item.count && item.count > 1 && <Badge variant="secondary" className="text-xs">x{item.count}</Badge>}
-                                                </div>
-                                                <div className="text-sm text-muted-foreground flex gap-4">
-                                                    <span className="flex items-center gap-1"><Ruler className="h-3 w-3" /> {item.quantity} {formatUnit(item.unit)}</span>
-                                                    <span className="flex items-center gap-1"><DollarSign className="h-3 w-3" /> ${item.rate}/{formatUnit(item.unit)}</span>
-                                                </div>
-                                                {(item.paintProductId || (item.customPaintArea && item.customPaintArea > 0)) && (
-                                                    <div className="flex gap-2 mt-2">
-                                                        {item.paintProductId && (
-                                                            <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200 bg-blue-50">
-                                                                <PaintBucket className="h-3 w-3 mr-1" />
-                                                                {paintProducts.find(p => p.id === item.paintProductId)?.name || 'Default Paint'}
-                                                            </Badge>
-                                                        )}
-                                                        {item.customPaintArea && item.customPaintArea > 0 && (
-                                                            <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-200 bg-slate-50">
-                                                                Area: {item.customPaintArea} sqft/unit
-                                                            </Badge>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-1 pl-4 border-l ml-4 h-full">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem disabled className="text-xs font-semibold opacity-50">Move to Room:</DropdownMenuItem>
-                                                        {rooms?.map(r => (
-                                                            <DropdownMenuItem key={r.id} onClick={() => moveMiscItem(item.id, r.id)}>{r.name}</DropdownMenuItem>
-                                                        ))}
-                                                        {(!rooms || rooms.length === 0) && <DropdownMenuItem disabled>No Rooms</DropdownMenuItem>}
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                                <Button variant="ghost" size="sm" onClick={() => openEditMisc(item, 'global')}><Pencil className="h-4 w-4 text-blue-500" /></Button>
-                                                <Button variant="ghost" size="sm" onClick={() => removeMiscItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                            </div>
+                            <div className="space-y-8">
+                                {/* Project Notes previously here */}
+
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-slate-800">Global Work Items</h3>
+                                    {globalMiscItems.length === 0 && (
+                                        <div className="text-center p-12 text-muted-foreground bg-slate-50 rounded-lg border border-dashed flex flex-col items-center justify-center">
+                                            <Package className="h-12 w-12 text-slate-300 mb-4" />
+                                            <h3 className="text-lg font-medium text-slate-900">No Additional Items</h3>
+                                            <p className="text-sm text-slate-500 max-w-sm mt-2 mb-6">
+                                                Add work items here that apply to the whole project or don't fit into a specific room (e.g., Exterior Pressure Wash, Dumpster Fee).
+                                            </p>
+                                            <Button variant="outline" onClick={() => { setActiveRoomIdForMisc('global'); setMiscDialogOpen(true); }}>
+                                                Add Your First Item
+                                            </Button>
                                         </div>
-                                    ))}
+                                    )}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {globalMiscItems.map((item, idx) => (
+                                            <div key={idx} className="flex justify-between items-start p-4 border rounded-lg bg-white hover:border-blue-300 transition-colors shadow-sm">
+                                                <div className="space-y-1">
+                                                    <div className="font-medium flex items-center gap-2 text-base">
+                                                        {item.name}
+                                                        {item.count && item.count > 1 && <Badge variant="secondary" className="text-xs">x{item.count}</Badge>}
+                                                    </div>
+                                                    <div className="text-sm text-muted-foreground flex gap-4">
+                                                        <span className="flex items-center gap-1"><Ruler className="h-3 w-3" /> {item.quantity} {formatUnit(item.unit)}</span>
+                                                        <span className="flex items-center gap-1"><DollarSign className="h-3 w-3" /> ${item.rate}/{formatUnit(item.unit)}</span>
+                                                    </div>
+                                                    {(item.paintProductId || (item.customPaintArea && item.customPaintArea > 0)) && (
+                                                        <div className="flex gap-2 mt-2">
+                                                            {item.paintProductId && (
+                                                                <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200 bg-blue-50">
+                                                                    <PaintBucket className="h-3 w-3 mr-1" />
+                                                                    {paintProducts.find(p => p.id === item.paintProductId)?.name || 'Default Paint'}
+                                                                </Badge>
+                                                            )}
+                                                            {item.customPaintArea && item.customPaintArea > 0 && (
+                                                                <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-200 bg-slate-50">
+                                                                    Area: {item.customPaintArea} sqft/unit
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1 pl-4 border-l ml-4 h-full">
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem disabled className="text-xs font-semibold opacity-50">Move to Room:</DropdownMenuItem>
+                                                            {rooms?.map(r => (
+                                                                <DropdownMenuItem key={r.id} onClick={() => moveMiscItem(item.id, r.id)}>{r.name}</DropdownMenuItem>
+                                                            ))}
+                                                            {(!rooms || rooms.length === 0) && <DropdownMenuItem disabled>No Rooms</DropdownMenuItem>}
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                    <Button variant="ghost" size="sm" onClick={() => openEditMisc(item, 'global')}><Pencil className="h-4 w-4 text-blue-500" /></Button>
+                                                    <Button variant="ghost" size="sm" onClick={() => removeMiscItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
                 </TabsContent>
-
-                <div className="flex justify-end mt-8 border-t pt-4">
-                    <Button onClick={onNext} size="lg" className="w-full md:w-auto">
-                        Next: Supplies <ChevronDown className="ml-2 h-4 w-4 rotate-[-90deg]" />
-                    </Button>
-                </div>
             </Tabs>
+            <div className="flex justify-end mt-6">
+                <Button onClick={onNext} size="lg" className="w-full md:w-auto">
+                    Next: Supplies <ChevronDown className="ml-2 h-4 w-4 rotate-[-90deg]" />
+                </Button>
+            </div>
 
             <PaintProductDialog
                 isOpen={isAddPaintOpen}
@@ -2054,7 +2020,6 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                 roomName={activeRoomIdForPrep === 'global' ? 'Global' : rooms?.find(r => r.id === activeRoomIdForPrep)?.name}
                 initialTask={editingPrepTask}
             />
-        </div >
+        </div>
     );
 }
-

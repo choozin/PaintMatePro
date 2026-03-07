@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
     ArrowLeft, Phone, Mail, MapPin,
-    Calendar, PenSquare, User, Clock, ChevronRight, MessageSquare, CheckCircle2, AlertCircle
+    Calendar, PenSquare, User, Clock, ChevronRight, MessageSquare, CheckCircle2, AlertCircle, Loader2
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import { ProjectTimelineSheet } from "@/components/ProjectTimelineSheet";
 import { ProjectDialog } from "@/components/ProjectDialog";
 import { useTranslation } from "react-i18next";
@@ -245,152 +246,192 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
             </div>
 
             {/* 3. Info Grid (Transparent Card feel) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex flex-col gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                {/* Location & Contact */}
-                <div className="space-y-6">
-                    {/* Location */}
-                    <div>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Location</p>
-                        {project.address ? (
-                            <Button
-                                variant="outline"
-                                className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-red-500 hover:bg-red-50"
-                                onClick={handleMap}
-                            >
-                                <MapPin className="h-5 w-5 mr-3 text-red-600 shrink-0" />
-                                <span className="truncate text-left">{project.address}</span>
-                            </Button>
-                        ) : (
-                            <ProjectDialog
+                    {/* Column 1: Location & Contact */}
+                    <div className="space-y-6">
+                        {/* Location */}
+                        <div className="space-y-2">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Location</p>
+                            {project.address ? (
+                                <Button
+                                    variant="outline"
+                                    className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-red-500 hover:bg-red-50"
+                                    onClick={handleMap}
+                                >
+                                    <MapPin className="h-5 w-5 mr-3 text-red-600 shrink-0" />
+                                    <span className="truncate text-left whitespace-normal h-auto leading-tight">{project.address}</span>
+                                </Button>
+                            ) : (
+                                <ProjectDialog
+                                    project={project}
+                                    mode="edit"
+                                    trigger={
+                                        <Button variant="outline" className="w-full justify-start h-auto py-3 px-4 text-muted-foreground hover:text-foreground border-muted-foreground/30 border-dashed">
+                                            <MapPin className="h-5 w-5 mr-3 shrink-0 opacity-50" />
+                                            Add Location
+                                        </Button>
+                                    }
+                                />
+                            )}
+                        </div>
+
+                        {/* Contact */}
+                        <div className="space-y-2">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Contact</p>
+                            <div className="space-y-2">
+                                {/* Phone (Call) */}
+                                {clientPhone ? (
+                                    <Button
+                                        variant="outline"
+                                        className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-blue-500 hover:bg-blue-50 group"
+                                        onClick={handleCall}
+                                    >
+                                        <Phone className="h-5 w-5 mr-3 text-blue-600 shrink-0 group-hover:scale-110 transition-transform" />
+                                        <span className="font-medium text-foreground">{formatPhoneNumber(clientPhone)}</span>
+                                    </Button>
+                                ) : (
+                                    <ProjectDialog
+                                        project={project} mode="edit"
+                                        trigger={
+                                            <Button variant="outline" className="w-full justify-start h-auto py-3 px-4 text-muted-foreground hover:text-foreground border-muted-foreground/30 border-dashed">
+                                                <Phone className="h-5 w-5 mr-3 shrink-0 opacity-50" />
+                                                Add Phone
+                                            </Button>
+                                        }
+                                    />
+                                )}
+
+                                {/* Mobile (Text) - Optional */}
+                                {clientMobilePhone && (
+                                    <Button
+                                        variant="outline"
+                                        className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-green-500 hover:bg-green-50 group"
+                                        onClick={handleText}
+                                    >
+                                        <MessageSquare className="h-5 w-5 mr-3 text-green-600 shrink-0 group-hover:scale-110 transition-transform" />
+                                        <div className="flex flex-col items-start leading-tight">
+                                            <span className="font-medium text-foreground">{formatPhoneNumber(clientMobilePhone)}</span>
+                                            <span className="text-[10px] text-muted-foreground uppercase">Text</span>
+                                        </div>
+                                    </Button>
+                                )}
+
+                                {/* Email */}
+                                {clientEmail ? (
+                                    <Button
+                                        variant="outline"
+                                        className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-indigo-500 hover:bg-indigo-50 group overflow-hidden"
+                                        onClick={handleEmail}
+                                    >
+                                        <Mail className="h-5 w-5 mr-3 text-indigo-600 shrink-0 group-hover:scale-110 transition-transform" />
+                                        <span className="truncate font-medium">{clientEmail}</span>
+                                    </Button>
+                                ) : (
+                                    <ProjectDialog
+                                        project={project} mode="edit"
+                                        trigger={
+                                            <Button variant="outline" className="w-full justify-start h-auto py-3 px-4 text-muted-foreground hover:text-foreground border-muted-foreground/30 border-dashed">
+                                                <Mail className="h-5 w-5 mr-3 shrink-0 opacity-50" />
+                                                Add Email
+                                            </Button>
+                                        }
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Column 2: Schedule / Timeline */}
+                    <div className="space-y-4">
+                        <div className="flex flex-col gap-4">
+                            <div className="flex items-center justify-between">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Project Schedule</p>
+                            </div>
+
+                            {/* Current Step Card */}
+                            <div className="relative border-l-2 border-indigo-200 pl-4 py-2 space-y-3 bg-muted/20 rounded-r-lg p-4 h-full">
+                                {/* Current Step */}
+                                {currentStep && (
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Current Step</p>
+                                        <p className="font-medium text-sm">{currentStep.label}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {currentStep.date ? format(currentStep.date instanceof Date ? currentStep.date : (currentStep.date as any).toDate ? (currentStep.date as any).toDate() : new Date(currentStep.date), "MMM d, yyyy") : "Completed"}
+                                        </p>
+                                    </div>
+                                )}
+                                <div className="absolute left-[-5px] top-[20px] w-2 h-2 rounded-full bg-indigo-500" />
+
+                                {/* Next Step */}
+                                {nextStep && (
+                                    <div className="opacity-75">
+                                        <p className="text-xs text-muted-foreground">Next Step</p>
+                                        <p className="font-medium text-sm">{nextStep.label}</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-xs text-muted-foreground">
+                                                {nextStep.date ? format(nextStep.date instanceof Date ? nextStep.date : (nextStep.date as any).toDate ? (nextStep.date as any).toDate() : new Date(nextStep.date), "MMM d, yyyy") : "Pending"}
+                                            </p>
+                                            {nextStep.action && (
+                                                <Button variant="ghost" className="h-auto p-0 text-xs text-primary underline-offset-4 hover:underline" onClick={nextStep.action.onClick} disabled={nextStep.action.disabled}>
+                                                    {nextStep.action.label}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* View Timeline Button - Full Width Below */}
+                            <ProjectTimelineSheet
                                 project={project}
-                                mode="edit"
                                 trigger={
-                                    <Button variant="outline" className="w-full justify-start h-auto py-3 px-4 text-muted-foreground hover:text-foreground border-muted-foreground/30 border-dashed">
-                                        <MapPin className="h-5 w-5 mr-3 shrink-0 opacity-50" />
-                                        Add Location
+                                    <Button variant="outline" className="w-full self-start border-dashed border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300">
+                                        <Calendar className="h-4 w-4 mr-2" />
+                                        View/Modify Project Timeline
                                     </Button>
                                 }
                             />
-                        )}
-                    </div>
-
-                    {/* Contact */}
-                    <div>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Contact</p>
-                        <div className="space-y-2">
-                            {/* Phone (Call) */}
-                            {clientPhone ? (
-                                <Button
-                                    variant="outline"
-                                    className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-blue-500 hover:bg-blue-50 group"
-                                    onClick={handleCall}
-                                >
-                                    <Phone className="h-5 w-5 mr-3 text-blue-600 shrink-0 group-hover:scale-110 transition-transform" />
-                                    <span className="font-medium text-foreground">{formatPhoneNumber(clientPhone)}</span>
-                                </Button>
-                            ) : (
-                                <ProjectDialog
-                                    project={project} mode="edit"
-                                    trigger={
-                                        <Button variant="outline" className="w-full justify-start h-auto py-3 px-4 text-muted-foreground hover:text-foreground border-muted-foreground/30 border-dashed">
-                                            <Phone className="h-5 w-5 mr-3 shrink-0 opacity-50" />
-                                            Add Phone
-                                        </Button>
-                                    }
-                                />
-                            )}
-
-                            {/* Mobile (Text) - Optional */}
-                            {clientMobilePhone && (
-                                <Button
-                                    variant="outline"
-                                    className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-green-500 hover:bg-green-50 group"
-                                    onClick={handleText}
-                                >
-                                    <MessageSquare className="h-5 w-5 mr-3 text-green-600 shrink-0 group-hover:scale-110 transition-transform" />
-                                    <div className="flex flex-col items-start">
-                                        <span className="font-medium text-foreground">{formatPhoneNumber(clientMobilePhone)}</span>
-                                        <span className="text-[10px] text-muted-foreground uppercase">Text</span>
-                                    </div>
-                                </Button>
-                            )}
-
-                            {/* Email */}
-                            {clientEmail ? (
-                                <Button
-                                    variant="outline"
-                                    className="w-full justify-start h-auto py-3 px-4 border-l-4 border-l-indigo-500 hover:bg-indigo-50 group"
-                                    onClick={handleEmail}
-                                >
-                                    <Mail className="h-5 w-5 mr-3 text-indigo-600 shrink-0 group-hover:scale-110 transition-transform" />
-                                    <span className="truncate font-medium">{clientEmail}</span>
-                                </Button>
-                            ) : (
-                                <ProjectDialog
-                                    project={project} mode="edit"
-                                    trigger={
-                                        <Button variant="outline" className="w-full justify-start h-auto py-3 px-4 text-muted-foreground hover:text-foreground border-muted-foreground/30 border-dashed">
-                                            <Mail className="h-5 w-5 mr-3 shrink-0 opacity-50" />
-                                            Add Email
-                                        </Button>
-                                    }
-                                />
-                            )}
                         </div>
                     </div>
-                </div>
 
-                {/* Schedule / Timeline */}
-                <div className="space-y-4">
+                    {/* Column 3: Project Notes Section */}
                     <div className="flex flex-col gap-4">
-                        <div className="flex items-center justify-between">
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Project Schedule</p>
+                        <div className="space-y-3">
+                            <div>
+                                <Label htmlFor="project-notes-header" className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Client-Visible Notes</Label>
+                            </div>
+                            <div className="relative">
+                                <textarea
+                                    id="project-notes-header"
+                                    value={project?.notes || ""}
+                                    onChange={(e) => {
+                                        if (project) updateProject.mutate({ id: project.id, data: { notes: e.target.value } });
+                                    }}
+                                    className="flex min-h-[90px] w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 resize-y"
+                                    placeholder="General project notes, scope overviews, or instructions for the team..."
+                                />
+                                {updateProject.isPending && <Loader2 className="h-4 w-4 absolute bottom-4 right-4 animate-spin text-muted-foreground" />}
+                            </div>
                         </div>
 
-                        {/* Current Step Card */}
-                        <div className="relative border-l-2 border-indigo-200 pl-4 py-2 space-y-4 bg-muted/20 rounded-r-lg p-4">
-                            {/* Current Step */}
-                            {currentStep && (
-                                <div>
-                                    <p className="text-xs text-muted-foreground">Current Step</p>
-                                    <p className="font-medium text-sm">{currentStep.label}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {currentStep.date ? format(currentStep.date instanceof Date ? currentStep.date : (currentStep.date as any).toDate ? (currentStep.date as any).toDate() : new Date(currentStep.date), "MMM d, yyyy") : "Completed"}
-                                    </p>
-                                </div>
-                            )}
-                            <div className="absolute left-[-5px] top-[20px] w-2 h-2 rounded-full bg-indigo-500" />
-
-                            {/* Next Step */}
-                            {nextStep && (
-                                <div className="opacity-75">
-                                    <p className="text-xs text-muted-foreground">Next Step</p>
-                                    <p className="font-medium text-sm">{nextStep.label}</p>
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-xs text-muted-foreground">
-                                            {nextStep.date ? format(nextStep.date instanceof Date ? nextStep.date : (nextStep.date as any).toDate ? (nextStep.date as any).toDate() : new Date(nextStep.date), "MMM d, yyyy") : "Pending"}
-                                        </p>
-                                        {nextStep.action && (
-                                            <Button variant="ghost" className="h-auto p-0 text-xs text-primary underline-offset-4 hover:underline" onClick={nextStep.action.onClick} disabled={nextStep.action.disabled}>
-                                                {nextStep.action.label}
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
+                        <div className="space-y-3">
+                            <div>
+                                <Label htmlFor="internal-notes-header" className="text-xs font-semibold text-amber-900 uppercase tracking-wide">Invisible Notes</Label>
+                            </div>
+                            <div className="relative">
+                                <textarea
+                                    id="internal-notes-header"
+                                    value={project?.internalNotes || ""}
+                                    onChange={(e) => {
+                                        if (project) updateProject.mutate({ id: project.id, data: { internalNotes: e.target.value } });
+                                    }}
+                                    className="flex min-h-[90px] w-full rounded-md border border-amber-200 bg-amber-50/50 px-3 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-50 resize-y"
+                                    placeholder="Internal team notes, issues, pricing concerns, or vendor details..."
+                                />
+                            </div>
                         </div>
-
-                        {/* View Timeline Button - Full Width Below */}
-                        <ProjectTimelineSheet
-                            project={project}
-                            trigger={
-                                <Button variant="outline" className="w-auto self-start border-dashed border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300">
-                                    <Calendar className="h-4 w-4 mr-2" />
-                                    View/Modify Project Timeline
-                                </Button>
-                            }
-                        />
                     </div>
                 </div>
 
