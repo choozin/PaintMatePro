@@ -375,21 +375,21 @@ export function RoomMeasurement({ projectId, onNext }: RoomMeasurementProps) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div className="bg-background p-3 rounded-lg border shadow-sm">
-                <p className="text-xs text-muted-foreground uppercase font-bold">Total Rooms</p>
-                <p className="text-2xl font-bold">{localRooms.filter(r => r.type !== 'exterior').length}</p>
+              <div className="bg-background p-3 rounded-lg border shadow-sm min-w-0">
+                <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-bold truncate">Total Rooms</p>
+                <p className="text-xl sm:text-2xl font-bold truncate">{localRooms.filter(r => r.type !== 'exterior').length}</p>
               </div>
-              <div className="bg-background p-3 rounded-lg border shadow-sm">
-                <p className="text-xs text-muted-foreground uppercase font-bold">Total Wall Area</p>
-                <p className="text-2xl font-bold">{localRooms.filter(r => r.type !== 'exterior').reduce((acc, r) => acc + calculateArea(r).wallArea, 0).toFixed(0)} <span className="text-sm font-normal text-muted-foreground">ft²</span></p>
+              <div className="bg-background p-3 rounded-lg border shadow-sm min-w-0">
+                <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-bold truncate" title="Total Wall Area">Total Wall Area</p>
+                <p className="text-xl sm:text-2xl font-bold truncate">{localRooms.filter(r => r.type !== 'exterior').reduce((acc, r) => acc + calculateArea(r).wallArea, 0).toFixed(0)} <span className="text-xs sm:text-sm font-normal text-muted-foreground">ft²</span></p>
               </div>
-              <div className="bg-background p-3 rounded-lg border shadow-sm">
-                <p className="text-xs text-muted-foreground uppercase font-bold">Total Floor Area</p>
-                <p className="text-2xl font-bold">{localRooms.filter(r => r.type !== 'exterior').reduce((acc, r) => acc + calculateArea(r).floorArea, 0).toFixed(0)} <span className="text-sm font-normal text-muted-foreground">ft²</span></p>
+              <div className="bg-background p-3 rounded-lg border shadow-sm min-w-0">
+                <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-bold truncate" title="Total Floor Area">Total Floor Area</p>
+                <p className="text-xl sm:text-2xl font-bold truncate">{localRooms.filter(r => r.type !== 'exterior').reduce((acc, r) => acc + calculateArea(r).floorArea, 0).toFixed(0)} <span className="text-xs sm:text-sm font-normal text-muted-foreground">ft²</span></p>
               </div>
-              <div className="bg-background p-3 rounded-lg border shadow-sm">
-                <p className="text-xs text-muted-foreground uppercase font-bold">Exterior Surfaces</p>
-                <p className="text-2xl font-bold">{localRooms.filter(r => r.type === 'exterior').length}</p>
+              <div className="bg-background p-3 rounded-lg border shadow-sm min-w-0">
+                <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-bold truncate" title="Exterior Surfaces">Exterior Surfaces</p>
+                <p className="text-xl sm:text-2xl font-bold truncate">{localRooms.filter(r => r.type === 'exterior').length}</p>
               </div>
             </div>
 

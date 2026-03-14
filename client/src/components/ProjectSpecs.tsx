@@ -3,13 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useProject, useUpdateProject } from "@/hooks/useProjects";
 import { useRooms, useUpdateRoom } from "@/hooks/useRooms";
 import { FeatureLock } from "@/components/FeatureLock";
-import { Settings2, Save, Loader2, RotateCcw, MoreVertical, Clock, CheckCircle2, DollarSign, PaintBucket, AlertCircle, PlusCircle, ChevronDown, ChevronUp, Ruler, Package, Trash2, ArrowDownToLine, Copy, Pencil, Link as LinkIcon, Palette, Wand2, Camera } from "lucide-react";
+import { Settings2, Save, Loader2, RotateCcw, MoreVertical, Clock, CheckCircle2, DollarSign, PaintBucket, AlertCircle, PlusCircle, ChevronDown, ChevronUp, Ruler, Package, Trash2, ArrowDownToLine, Copy, Pencil, Link as LinkIcon, Palette, Wand2, Camera, Info } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { hasPermission } from "@/lib/permissions";
@@ -31,6 +32,7 @@ import {
     DialogHeader,
     DialogTitle,
     DialogDescription,
+    DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -57,6 +59,24 @@ const formatUnit = (unit: string) => {
         default: return unit;
     }
 };
+
+// --- InfoTip Component (Radix Tooltip with tap support) ---
+function InfoTip({ content }: { content: string }) {
+    return (
+        <TooltipProvider delayDuration={0}>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <button type="button" className="inline-flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus:outline-none" tabIndex={0}>
+                        <Info className="h-3.5 w-3.5" />
+                    </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                    {content}
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
+}
 
 // --- Sub-Components ---
 
@@ -260,6 +280,10 @@ function AddMiscItemDialog({
             newItem.coats = coats;
             if (paintProductId !== "default") {
                 newItem.paintProductId = paintProductId;
+                const p = paintProducts?.find(x => x.id === paintProductId);
+                if (p) newItem.paintUnitPrice = p.unitPrice || p.price;
+            } else {
+                newItem.paintUnitPrice = defaultProduct?.unitPrice || defaultProduct?.price || 45;
             }
             newItem.excludeFromSharedPaint = excludeFromSharedPaint;
 
@@ -713,6 +737,13 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
     // Room Selection
     const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 
+    // Auto-select first room when rooms load
+    useEffect(() => {
+        if (!selectedRoomId && rooms && rooms.length > 0) {
+            setSelectedRoomId(rooms[0].id);
+        }
+    }, [rooms, selectedRoomId]);
+
     // Derived Catalog Lists 
     const paintProducts: PaintProduct[] = catalogItems
         .filter(i => i.category === 'paint')
@@ -850,7 +881,44 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
         const currentConfig = room.supplyConfig || {};
         const newConfig = { ...currentConfig, [key]: value };
         await updateRoom.mutateAsync({ id: roomId, data: { supplyConfig: newConfig } });
-        // Toast is a bit noisy for toggles, maybe optional?
+    };
+
+    const handleRoomDoorsUpdate = async (roomId: string, doors: Array<{ width: number; height: number; count: number; includeCasing?: boolean }>) => {
+        await updateRoom.mutateAsync({ id: roomId, data: { doors } });
+    };
+
+    const handleRoomWindowsUpdate = async (roomId: string, windows: Array<{ width: number; height: number; count: number; includeCasing?: boolean }>) => {
+        await updateRoom.mutateAsync({ id: roomId, data: { windows } });
+    };
+
+    // Calculate trim breakdown for a room
+    const calcTrimBreakdown = (room: any) => {
+        const perimeter = (room.length + room.width) * 2;
+        const doors = room.doors || [];
+        const windows = room.windows || [];
+        const rConfig = room.supplyConfig || {};
+
+        const totalDoorWidth = doors.reduce((s: number, d: any) => s + (d.width / 12) * d.count, 0);
+        const totalWindowWidth = windows.reduce((s: number, w: any) => s + (w.width / 12) * w.count, 0);
+
+        const baseboardLF = Math.max(0, perimeter - totalDoorWidth);
+        const doorCasingLF = doors.reduce((s: number, d: any) => {
+            if (d.includeCasing === false) return s;
+            return s + ((d.height / 12) * 2 + (d.width / 12)) * d.count;
+        }, 0);
+        const windowCasingLF = windows.reduce((s: number, w: any) => {
+            if (w.includeCasing === false) return s;
+            return s + ((w.height / 12 + w.width / 12) * 2) * w.count;
+        }, 0);
+        const crownLF = rConfig.includeCrownMolding ? perimeter : 0;
+
+        const includeBaseboard = rConfig.includeBaseboard !== false; // default true
+        const totalLF = (includeBaseboard ? baseboardLF : 0) + doorCasingLF + windowCasingLF + crownLF;
+
+        const openingArea = doors.reduce((s: number, d: any) => s + (d.width / 12) * (d.height / 12) * d.count, 0)
+            + windows.reduce((s: number, w: any) => s + (w.width / 12) * (w.height / 12) * w.count, 0);
+
+        return { baseboardLF, doorCasingLF, windowCasingLF, crownLF, totalLF, openingArea, perimeter };
     };
 
     const handleApplyToAllRooms = async (sourceRoomId: string) => {
@@ -1169,7 +1237,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-4">
                 <h2 className="text-xl font-semibold flex items-center gap-2">
                     <Settings2 className="h-5 w-5" /> Project Specifications
                 </h2>
@@ -1196,27 +1264,47 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                 </TabsList>
 
                 <TabsContent value="labor" className="space-y-6">
-                    <div className="grid grid-cols-1 gap-6">
-                        {/* 1. Labor Rates */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Card>
-                            <CardHeader><CardTitle className="text-lg">Labor & Production</CardTitle></CardHeader>
+                            <CardHeader><CardTitle className="text-lg">Labor Rates</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Hourly Rate ($)</Label>
-                                        <Input type="number" value={laborConfig.hourlyRate} onChange={e => setLaborConfig({ ...laborConfig, hourlyRate: Number(e.target.value) })} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Prod Rate (sqft/hr)</Label>
-                                        <Input type="number" value={laborConfig.productionRate} onChange={e => setLaborConfig({ ...laborConfig, productionRate: Number(e.target.value) })} />
-                                    </div>
-                                </div>
                                 <div className="space-y-2">
-                                    <Label>Difficulty / Waste Factor</Label>
+                                    <div className="flex items-center gap-1.5">
+                                        <Label>Hourly Rate ($)</Label>
+                                        <InfoTip content="The hourly cost of labor charged per painter. Used to calculate total labor cost from estimated hours." />
+                                    </div>
+                                    <Input type="number" value={laborConfig.hourlyRate} onChange={e => setLaborConfig({ ...laborConfig, hourlyRate: Number(e.target.value) })} />
+                                </div>
+                                <Separator />
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <Label>Difficulty / Waste Factor</Label>
+                                        <InfoTip content="Multiplier applied to total labor hours. 1.0 = standard, 1.2 = 20% more time (e.g. high ceilings, detailed trim, furniture moving)." />
+                                    </div>
                                     <div className="flex items-center gap-2">
                                         <Input type="number" step="0.1" value={laborConfig.difficultyFactor} onChange={e => setLaborConfig({ ...laborConfig, difficultyFactor: Number(e.target.value) })} />
                                         <span className="text-sm text-muted-foreground">x Multiplier</span>
                                     </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader><CardTitle className="text-lg">Production Rates</CardTitle></CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <Label>Wall Production Rate (sqft/hr)</Label>
+                                        <InfoTip content="How many square feet of wall a painter can complete per hour. Higher = faster. Industry average: 100-200 sqft/hr." />
+                                    </div>
+                                    <Input type="number" value={laborConfig.productionRate} onChange={e => setLaborConfig({ ...laborConfig, productionRate: Number(e.target.value) })} />
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <Label>Ceiling Production Rate (sqft/hr)</Label>
+                                        <InfoTip content="Square feet of ceiling per hour. Ceilings are typically slower than walls due to overhead work. Leave at 0 to use wall rate." />
+                                    </div>
+                                    <Input type="number" value={laborConfig.ceilingProductionRate} onChange={e => setLaborConfig({ ...laborConfig, ceilingProductionRate: Number(e.target.value) })} placeholder="Uses wall rate if 0" />
                                 </div>
                             </CardContent>
                         </Card>
@@ -1228,17 +1316,35 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                         <Card className="md:col-span-1">
                             <CardHeader><CardTitle className="text-sm">Select Room</CardTitle></CardHeader>
                             <CardContent className="p-0">
-                                <ScrollArea className="h-[400px]">
-                                    {rooms?.map(room => (
-                                        <div
-                                            key={room.id}
-                                            onClick={() => setSelectedRoomId(room.id)}
-                                            className={`p-3 border-b cursor-pointer flex justify-between transition-colors ${selectedRoomId === room.id ? 'bg-muted border-l-4 border-l-primary' : 'hover:bg-muted/50'}`}
-                                        >
-                                            <span className="font-medium">{room.name}</span>
-                                            {room.color && <div className="h-4 w-4 rounded-full border shadow-sm" style={{ backgroundColor: room.color }} title={room.color} />}
-                                        </div>
-                                    ))}
+                                <ScrollArea className="max-h-[60vh] min-h-[200px]">
+                                    {rooms?.map(room => {
+                                        const hasOverrides = room.supplyConfig && Object.keys(room.supplyConfig).some(k => (room.supplyConfig as any)[k] !== undefined && (room.supplyConfig as any)[k] !== null);
+                                        const hasDoors = room.doors && room.doors.length > 0;
+                                        const hasWindows = room.windows && room.windows.length > 0;
+                                        return (
+                                            <div
+                                                key={room.id}
+                                                onClick={() => setSelectedRoomId(room.id)}
+                                                className={`p-3 border-b cursor-pointer transition-colors ${selectedRoomId === room.id ? 'bg-muted border-l-4 border-l-primary' : 'hover:bg-muted/50'}`}
+                                            >
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium">{room.name}</span>
+                                                        {hasOverrides && <Badge variant="secondary" className="text-[9px] px-1 py-0">Custom</Badge>}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {room.color && <div className="h-4 w-4 rounded-full border shadow-sm" style={{ backgroundColor: room.color }} />}
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-2">
+                                                    {room.length && room.width ? <span>{room.length}×{room.width} ft</span> : <span className="italic">No dimensions</span>}
+                                                    {hasDoors && <span>· {(room.doors || []).reduce((s: number, d: any) => s + d.count, 0)} door{(room.doors || []).reduce((s: number, d: any) => s + d.count, 0) !== 1 ? 's' : ''}</span>}
+                                                    {hasWindows && <span>· {(room.windows || []).reduce((s: number, w: any) => s + w.count, 0)} win</span>}
+                                                    {(room.supplyConfig?.includeTrim ?? config.includeTrim) && <span>· Trim ✓</span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                     {(!rooms || rooms.length === 0) && <div className="p-4 text-sm text-muted-foreground text-center">No rooms found.</div>}
                                 </ScrollArea>
                             </CardContent>
@@ -1257,6 +1363,19 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
 
                                             </CardHeader>
                                             <CardContent className="space-y-6">
+                                                {/* Read-only Room Dimensions */}
+                                                {(room.length || room.width || room.height) && (
+                                                    <div className="flex flex-wrap gap-4 text-sm p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+                                                        {room.length && room.width && <div><span className="text-muted-foreground text-xs">Dimensions:</span> <span className="font-medium">{room.length} × {room.width} ft</span></div>}
+                                                        {room.height && <div><span className="text-muted-foreground text-xs">Height:</span> <span className="font-medium">{room.height} ft</span></div>}
+                                                        {room.length && room.width && room.height && (
+                                                            <>
+                                                                <div><span className="text-muted-foreground text-xs">Wall Area:</span> <span className="font-medium">{((room.length + room.width) * 2 * room.height).toLocaleString()} sqft</span></div>
+                                                                <div><span className="text-muted-foreground text-xs">Floor Area:</span> <span className="font-medium">{(room.length * room.width).toLocaleString()} sqft</span></div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 {/* General Room Details */}
                                                 <div className="p-4 border rounded-lg bg-slate-50/50 space-y-4">
                                                     <h3 className="font-semibold text-sm flex items-center gap-2">General Details</h3>
@@ -1294,7 +1413,10 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                 {/* Room Paint Config */}
                                                 <div className="p-4 border rounded-lg bg-slate-50/50 space-y-4">
                                                     <div className="flex items-center justify-between">
-                                                        <h3 className="font-semibold text-sm flex items-center gap-2"><PaintBucket className="h-4 w-4" /> Paint System Overrides</h3>
+                                                        <h3 className="font-semibold text-sm flex items-center gap-2">
+                                                            <PaintBucket className="h-4 w-4" /> Paint System Overrides
+                                                            <InfoTip content="Override the global paint settings for this specific room. Changes here only affect this room's supply and quote calculations." />
+                                                        </h3>
                                                     </div>
 
                                                     {/* Paint Billing Dropdown */}
@@ -1373,7 +1495,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                         {/* Wall Coats */}
                                                         <div className="space-y-2 border p-3 rounded bg-white">
                                                             <div className="flex justify-between items-center">
-                                                                <Label className="text-xs">Wall Coats</Label>
+                                                                <Label className="text-xs">Wall Coats <InfoTip content="Number of coats of paint applied to walls. 2 coats is standard for most jobs. More coats may be needed for drastic color changes." /></Label>
                                                                 {room.supplyConfig?.wallCoats !== undefined && <Badge variant="secondary" className="text-[10px]">Override</Badge>}
                                                             </div>
                                                             <div className="flex gap-2 items-center">
@@ -1397,7 +1519,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                         {/* Wall Coverage */}
                                                         <div className="space-y-2 border p-3 rounded bg-white">
                                                             <div className="flex justify-between items-center">
-                                                                <Label className="text-xs">Coverage (sqft/gal)</Label>
+                                                                <Label className="text-xs">Coverage (sqft/gal) <InfoTip content="Square feet one gallon of paint will cover. 350 is standard. Rough/textured surfaces may be lower (250-300). Smooth surfaces may be higher (400+)." /></Label>
                                                                 {room.supplyConfig?.wallCoverage !== undefined && <Badge variant="secondary" className="text-[10px]">Override</Badge>}
                                                             </div>
                                                             <div className="flex gap-2 items-center">
@@ -1420,7 +1542,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                     </div>
                                                     <div className="flex items-center justify-between space-x-2 border p-2 rounded bg-white col-span-2">
                                                         <div className="space-y-0.5">
-                                                            <Label className="text-xs">Exclude from Shared Paint?</Label>
+                                                            <Label className="text-xs">Exclude from Shared Paint? <InfoTip content="When enabled, this room's paint is calculated independently and won't share leftover gallons with other rooms using the same product." /></Label>
                                                             <p className="text-[9px] text-muted-foreground">Do not share leftover paint with other rooms.</p>
                                                         </div>
                                                         <Switch
@@ -1517,6 +1639,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                                 </div>
                                                                 <Switch
                                                                     checked={room.supplyConfig?.ceilingExcludeFromSharedPaint || false}
+                                                                    onCheckedChange={c => handleRoomSupplyUpdate(room.id, 'ceilingExcludeFromSharedPaint', c)}
                                                                 />
                                                             </div>
                                                         </div>
@@ -1527,7 +1650,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                         {/* Ceiling Toggle */}
                                                         <div className="flex flex-col justify-between space-y-2 border p-3 rounded bg-white">
                                                             <div className="flex justify-between items-center">
-                                                                <Label className="text-xs">Include Ceiling?</Label>
+                                                                <Label className="text-xs">Include Ceiling? <InfoTip content="Include ceiling in paint calculations for this room. When off, no ceiling paint will be estimated for this room." /></Label>
                                                                 <Switch
                                                                     checked={room.supplyConfig?.includeCeiling ?? config.includeCeiling}
                                                                     onCheckedChange={(c) => handleRoomSupplyUpdate(room.id, 'includeCeiling', c)}
@@ -1541,7 +1664,7 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                         {/* Primer Toggle */}
                                                         <div className="flex flex-col justify-between space-y-2 border p-3 rounded bg-white">
                                                             <div className="flex justify-between items-center">
-                                                                <Label className="text-xs">Require Primer?</Label>
+                                                                <Label className="text-xs">Require Primer? <InfoTip content="Add a coat of primer before painting. Recommended for new drywall, dark-to-light color changes, or stain-blocking." /></Label>
                                                                 <Switch
                                                                     checked={room.supplyConfig?.requirePrimer ?? config.includePrimer}
                                                                     onCheckedChange={(c) => handleRoomSupplyUpdate(room.id, 'requirePrimer', c)}
@@ -1554,77 +1677,227 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
 
                                                     </div>
 
-                                                    {/* Trim Toggle & Pricing */}
-                                                    <div className="flex flex-col justify-between space-y-2 border p-3 rounded bg-white col-span-2 md:col-span-1">
+                                                    {/* Enhanced Trim Section */}
+                                                    <div className="flex flex-col space-y-2 border p-3 rounded bg-white col-span-2">
                                                         <div className="flex justify-between items-center">
-                                                            <Label className="text-xs">Include Trim?</Label>
+                                                            <Label className="text-xs font-semibold">Trim & Openings</Label>
                                                             <Switch
                                                                 checked={room.supplyConfig?.includeTrim ?? config.includeTrim}
                                                                 onCheckedChange={(c) => handleRoomSupplyUpdate(room.id, 'includeTrim', c)}
                                                             />
                                                         </div>
-                                                        {(room.supplyConfig?.includeTrim ?? config.includeTrim) && (
-                                                            <div className="space-y-2 pt-2 border-t mt-1">
-                                                                <div className="flex justify-between items-center">
-                                                                    <Label className="text-[10px] text-muted-foreground">Rate ($/ft)</Label>
-                                                                    {room.supplyConfig?.trimRate !== undefined && <Badge variant="secondary" className="text-[9px] px-1 h-4">Override</Badge>}
-                                                                </div>
-                                                                <div className="flex items-center gap-1">
-                                                                    <Input
-                                                                        type="number"
-                                                                        className="h-7 text-xs"
-                                                                        value={room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50}
-                                                                        onChange={e => handleRoomSupplyUpdate(room.id, 'trimRate', Number(e.target.value))}
-                                                                    />
-                                                                    {room.supplyConfig?.trimRate !== undefined && (
-                                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRoomSupplyUpdate(room.id, 'trimRate', null)}>
-                                                                            <RotateCcw className="h-3 w-3" />
-                                                                        </Button>
-                                                                    )}
-                                                                </div>
+                                                        {(room.supplyConfig?.includeTrim ?? config.includeTrim) && (() => {
+                                                            const trimBreakdown = calcTrimBreakdown(room);
+                                                            const trimRate = room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50;
+                                                            const casingW = room.supplyConfig?.casingWidth ?? 3.5;
+                                                            const baseH = room.supplyConfig?.baseboardHeight ?? room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4;
+                                                            const crownW = room.supplyConfig?.crownMoldingWidth ?? 3.5;
+                                                            return (
+                                                                <TooltipProvider delayDuration={200}>
+                                                                    <div className="space-y-4 pt-2 border-t mt-1">
+                                                                        {/* Doors */}
+                                                                        <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <Label className="text-xs text-muted-foreground font-semibold">Doors</Label>
+                                                                                    <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent side="top" className="max-w-[240px]"><p className="text-xs">Door dimensions deduct wall area for paint calculations. If "Paint Casing" is checked, casing trim LF is added to the total.</p></TooltipContent></Tooltip>
+                                                                                </div>
+                                                                                <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => {
+                                                                                    const current = room.doors || [];
+                                                                                    handleRoomDoorsUpdate(room.id, [...current, { width: 36, height: 80, count: 1, includeCasing: true }]);
+                                                                                }}>
+                                                                                    <PlusCircle className="h-3 w-3 mr-1" /> Add Door
+                                                                                </Button>
+                                                                            </div>
+                                                                            {(room.doors || []).length > 0 && (
+                                                                                <div className="flex items-center gap-2 text-[9px] text-muted-foreground font-medium px-0.5">
+                                                                                    <span className="w-16">Width (in)</span>
+                                                                                    <span className="w-1"></span>
+                                                                                    <span className="w-16">Height (in)</span>
+                                                                                    <span className="w-1"></span>
+                                                                                    <span className="w-12">Qty</span>
+                                                                                    <span>Paint Casing?</span>
+                                                                                </div>
+                                                                            )}
+                                                                            {(room.doors || []).map((door: any, idx: number) => (
+                                                                                <div key={idx} className="flex items-center gap-2 text-xs">
+                                                                                    <Input type="number" className="h-7 text-xs w-16" value={door.width}
+                                                                                        onChange={e => { const d = [...(room.doors || [])]; d[idx] = { ...d[idx], width: Number(e.target.value) }; handleRoomDoorsUpdate(room.id, d); }} />
+                                                                                    <span className="text-muted-foreground">×</span>
+                                                                                    <Input type="number" className="h-7 text-xs w-16" value={door.height}
+                                                                                        onChange={e => { const d = [...(room.doors || [])]; d[idx] = { ...d[idx], height: Number(e.target.value) }; handleRoomDoorsUpdate(room.id, d); }} />
+                                                                                    <span className="text-muted-foreground">×</span>
+                                                                                    <Input type="number" className="h-7 text-xs w-12" value={door.count} min={1}
+                                                                                        onChange={e => { const d = [...(room.doors || [])]; d[idx] = { ...d[idx], count: Number(e.target.value) || 1 }; handleRoomDoorsUpdate(room.id, d); }} />
+                                                                                    <label className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                                                                                        <input type="checkbox" className="h-3.5 w-3.5 rounded" checked={door.includeCasing !== false}
+                                                                                            onChange={e => { const d = [...(room.doors || [])]; d[idx] = { ...d[idx], includeCasing: e.target.checked }; handleRoomDoorsUpdate(room.id, d); }} />
+                                                                                        Casing
+                                                                                    </label>
+                                                                                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => {
+                                                                                        const d = (room.doors || []).filter((_: any, i: number) => i !== idx);
+                                                                                        handleRoomDoorsUpdate(room.id, d);
+                                                                                    }}><Trash2 className="h-3 w-3" /></Button>
+                                                                                </div>
+                                                                            ))}
+                                                                            {(room.doors || []).length > 0 && trimBreakdown.doorCasingLF > 0 && (
+                                                                                <p className="text-[10px] text-muted-foreground pl-0.5">↳ Door casing trim: <span className="font-medium">{trimBreakdown.doorCasingLF.toFixed(0)} LF</span></p>
+                                                                            )}
+                                                                            {(!room.doors || room.doors.length === 0) && (
+                                                                                <p className="text-xs text-muted-foreground italic">No doors added</p>
+                                                                            )}
+                                                                        </div>
 
-                                                                <div className="flex justify-between items-center mt-1">
-                                                                    <Label className="text-[10px] text-muted-foreground">Width (in)</Label>
-                                                                    {room.supplyConfig?.trimWidth !== undefined && <Badge variant="secondary" className="text-[9px] px-1 h-4">Override</Badge>}
-                                                                </div>
-                                                                <div className="flex items-center gap-1">
-                                                                    <Input
-                                                                        type="number"
-                                                                        className="h-7 text-xs"
-                                                                        value={room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4}
-                                                                        onChange={e => handleRoomSupplyUpdate(room.id, 'trimWidth', Number(e.target.value))}
-                                                                    />
-                                                                    {room.supplyConfig?.trimWidth !== undefined && (
-                                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRoomSupplyUpdate(room.id, 'trimWidth', null)}>
-                                                                            <RotateCcw className="h-3 w-3" />
-                                                                        </Button>
-                                                                    )}
-                                                                </div>
+                                                                        {/* Windows */}
+                                                                        <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <Label className="text-xs text-muted-foreground font-semibold">Windows</Label>
+                                                                                    <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent side="top" className="max-w-[240px]"><p className="text-xs">Window dimensions deduct wall area for paint calculations. If "Paint Casing" is checked, casing trim LF is added to the total.</p></TooltipContent></Tooltip>
+                                                                                </div>
+                                                                                <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => {
+                                                                                    const current = room.windows || [];
+                                                                                    handleRoomWindowsUpdate(room.id, [...current, { width: 36, height: 48, count: 1, includeCasing: true }]);
+                                                                                }}>
+                                                                                    <PlusCircle className="h-3 w-3 mr-1" /> Add Window
+                                                                                </Button>
+                                                                            </div>
+                                                                            {(room.windows || []).length > 0 && (
+                                                                                <div className="flex items-center gap-2 text-[9px] text-muted-foreground font-medium px-0.5">
+                                                                                    <span className="w-16">Width (in)</span>
+                                                                                    <span className="w-1"></span>
+                                                                                    <span className="w-16">Height (in)</span>
+                                                                                    <span className="w-1"></span>
+                                                                                    <span className="w-12">Qty</span>
+                                                                                    <span>Paint Casing?</span>
+                                                                                </div>
+                                                                            )}
+                                                                            {(room.windows || []).map((win: any, idx: number) => (
+                                                                                <div key={idx} className="flex items-center gap-2 text-xs">
+                                                                                    <Input type="number" className="h-7 text-xs w-16" value={win.width}
+                                                                                        onChange={e => { const w = [...(room.windows || [])]; w[idx] = { ...w[idx], width: Number(e.target.value) }; handleRoomWindowsUpdate(room.id, w); }} />
+                                                                                    <span className="text-muted-foreground">×</span>
+                                                                                    <Input type="number" className="h-7 text-xs w-16" value={win.height}
+                                                                                        onChange={e => { const w = [...(room.windows || [])]; w[idx] = { ...w[idx], height: Number(e.target.value) }; handleRoomWindowsUpdate(room.id, w); }} />
+                                                                                    <span className="text-muted-foreground">×</span>
+                                                                                    <Input type="number" className="h-7 text-xs w-12" value={win.count} min={1}
+                                                                                        onChange={e => { const w = [...(room.windows || [])]; w[idx] = { ...w[idx], count: Number(e.target.value) || 1 }; handleRoomWindowsUpdate(room.id, w); }} />
+                                                                                    <label className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                                                                                        <input type="checkbox" className="h-3.5 w-3.5 rounded" checked={win.includeCasing !== false}
+                                                                                            onChange={e => { const w = [...(room.windows || [])]; w[idx] = { ...w[idx], includeCasing: e.target.checked }; handleRoomWindowsUpdate(room.id, w); }} />
+                                                                                        Casing
+                                                                                    </label>
+                                                                                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => {
+                                                                                        const w = (room.windows || []).filter((_: any, i: number) => i !== idx);
+                                                                                        handleRoomWindowsUpdate(room.id, w);
+                                                                                    }}><Trash2 className="h-3 w-3" /></Button>
+                                                                                </div>
+                                                                            ))}
+                                                                            {(room.windows || []).length > 0 && trimBreakdown.windowCasingLF > 0 && (
+                                                                                <p className="text-[10px] text-muted-foreground pl-0.5">↳ Window casing trim: <span className="font-medium">{trimBreakdown.windowCasingLF.toFixed(0)} LF</span></p>
+                                                                            )}
+                                                                            {(!room.windows || room.windows.length === 0) && (
+                                                                                <p className="text-xs text-muted-foreground italic">No windows added</p>
+                                                                            )}
+                                                                        </div>
 
-                                                                <div className="text-[10px] bg-slate-50 p-1 rounded text-center border space-y-1">
-                                                                    <div>
-                                                                        Est: <span className="font-semibold">${(((room.length + room.width) * 2) * (room.supplyConfig?.trimRate ?? config.defaultTrimRate ?? 1.50)).toFixed(2)}</span>
-                                                                        <span className="text-muted-foreground ml-1">({(room.length + room.width) * 2} ft)</span>
+                                                                        <Separator />
+
+                                                                        {/* Trim Types — just baseboard and crown molding */}
+                                                                        <div className="space-y-2">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <Label className="text-xs text-muted-foreground font-semibold">Trim Types</Label>
+                                                                                <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent side="top" className="max-w-[260px]"><p className="text-xs">Linear footage is auto-calculated from room dimensions. Door/window casing is controlled by the "Paint Casing" checkboxes above.</p></TooltipContent></Tooltip>
+                                                                            </div>
+                                                                            <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                                                                <label className="flex items-center gap-2 p-1.5 rounded border bg-slate-50 cursor-pointer">
+                                                                                    <input type="checkbox" className="h-3.5 w-3.5 rounded"
+                                                                                        checked={room.supplyConfig?.includeBaseboard !== false}
+                                                                                        onChange={e => handleRoomSupplyUpdate(room.id, 'includeBaseboard', e.target.checked)} />
+                                                                                    <span>Baseboard</span>
+                                                                                    <span className="ml-auto text-muted-foreground">{trimBreakdown.baseboardLF.toFixed(0)} ft</span>
+                                                                                </label>
+                                                                                <label className="flex items-center gap-2 p-1.5 rounded border bg-slate-50 cursor-pointer">
+                                                                                    <input type="checkbox" className="h-3.5 w-3.5 rounded"
+                                                                                        checked={room.supplyConfig?.includeCrownMolding || false}
+                                                                                        onChange={e => handleRoomSupplyUpdate(room.id, 'includeCrownMolding', e.target.checked)} />
+                                                                                    <span>Crown Molding</span>
+                                                                                    <span className="ml-auto text-muted-foreground">{trimBreakdown.crownLF.toFixed(0)} ft</span>
+                                                                                </label>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Trim Pricing */}
+                                                                        <div className="grid grid-cols-2 gap-3">
+                                                                            <div className="space-y-1">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <Label className="text-xs text-muted-foreground">Rate ($/ft)</Label>
+                                                                                    <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent className="max-w-[200px]"><p className="text-xs">Price per linear foot of trim work charged to the customer.</p></TooltipContent></Tooltip>
+                                                                                </div>
+                                                                                <Input type="number" step="0.25" className="h-8 text-sm" value={trimRate}
+                                                                                    onChange={e => handleRoomSupplyUpdate(room.id, 'trimRate', Number(e.target.value))} />
+                                                                            </div>
+                                                                            <div className="space-y-1">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <Label className="text-xs text-muted-foreground">Baseboard Ht (in)</Label>
+                                                                                    <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent className="max-w-[200px]"><p className="text-xs">Height of the baseboard trim. Used to calculate paint area (LF × height).</p></TooltipContent></Tooltip>
+                                                                                </div>
+                                                                                <Input type="number" className="h-8 text-sm" value={baseH}
+                                                                                    onChange={e => handleRoomSupplyUpdate(room.id, 'baseboardHeight', Number(e.target.value))} />
+                                                                            </div>
+                                                                            <div className="space-y-1">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <Label className="text-xs text-muted-foreground">Casing Width (in)</Label>
+                                                                                    <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent className="max-w-[200px]"><p className="text-xs">Width of the door/window casing trim. Used to calculate paint area for casing.</p></TooltipContent></Tooltip>
+                                                                                </div>
+                                                                                <Input type="number" className="h-8 text-sm" value={casingW}
+                                                                                    onChange={e => handleRoomSupplyUpdate(room.id, 'casingWidth', Number(e.target.value))} />
+                                                                            </div>
+                                                                            {room.supplyConfig?.includeCrownMolding && (
+                                                                                <div className="space-y-1">
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <Label className="text-xs text-muted-foreground">Crown Width (in)</Label>
+                                                                                        <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent className="max-w-[200px]"><p className="text-xs">Width of crown molding. Used to calculate paint area.</p></TooltipContent></Tooltip>
+                                                                                    </div>
+                                                                                    <Input type="number" className="h-8 text-sm" value={crownW}
+                                                                                        onChange={e => handleRoomSupplyUpdate(room.id, 'crownMoldingWidth', Number(e.target.value))} />
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Summary */}
+                                                                        <div className="text-xs bg-slate-50 p-2.5 rounded border space-y-1.5">
+                                                                            <div className="flex justify-between font-semibold">
+                                                                                <span>Total Trim</span>
+                                                                                <span>{trimBreakdown.totalLF.toFixed(0)} LF — ${(trimBreakdown.totalLF * trimRate).toFixed(2)}</span>
+                                                                            </div>
+                                                                            {trimBreakdown.openingArea > 0 && (
+                                                                                <div className="flex justify-between text-muted-foreground">
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <span>Wall deduction (openings)</span>
+                                                                                        <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent className="max-w-[240px]"><p className="text-xs">Total wall area subtracted for door and window openings. Reduces paint volume needed.</p></TooltipContent></Tooltip>
+                                                                                    </div>
+                                                                                    <span>-{trimBreakdown.openingArea.toFixed(1)} sqft</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Exclude from shared paint */}
+                                                                        <div className="flex items-center justify-between space-x-2 pt-2 border-t">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <Label className="text-xs text-muted-foreground">Exclude from shared paint?</Label>
+                                                                                <Tooltip><TooltipTrigger asChild><Info className="h-3 w-3 text-muted-foreground/50 cursor-help" /></TooltipTrigger><TooltipContent className="max-w-[220px]"><p className="text-xs">When enabled, trim paint is calculated separately instead of sharing paint with the walls.</p></TooltipContent></Tooltip>
+                                                                            </div>
+                                                                            <Switch
+                                                                                checked={room.supplyConfig?.trimExcludeFromSharedPaint || false}
+                                                                                onCheckedChange={c => handleRoomSupplyUpdate(room.id, 'trimExcludeFromSharedPaint', c)}
+                                                                                className="scale-75 origin-right"
+                                                                            />
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="text-[9px] text-muted-foreground">
-                                                                        Area: {(((room.length + room.width) * 2) * ((room.supplyConfig?.trimWidth ?? config.defaultTrimWidth ?? 4) / 12)).toFixed(1)} sqft
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        {!(room.supplyConfig?.includeTrim ?? config.includeTrim) && (
-                                                            <p className="text-[10px] text-muted-foreground">
-                                                                {room.supplyConfig?.includeTrim !== undefined ? "Room Override" : `Using Global (${config.includeTrim ? 'Yes' : 'No'})`}
-                                                            </p>
-                                                        )}
-                                                        <div className="flex items-center justify-between space-x-2 mt-2 pt-2 border-t">
-                                                            <Label className="text-[10px] text-muted-foreground">Exclude from shared?</Label>
-                                                            <Switch
-                                                                checked={room.supplyConfig?.trimExcludeFromSharedPaint || false}
-                                                                onCheckedChange={c => handleRoomSupplyUpdate(room.id, 'trimExcludeFromSharedPaint', c)}
-                                                                className="scale-75 origin-right"
-                                                            />
-                                                        </div>
+                                                                </TooltipProvider>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
 
@@ -1798,14 +2071,30 @@ export function ProjectSpecs({ projectId, onNext }: ProjectSpecsProps) {
                                                 </div>
 
                                                 <div className="mt-8 pt-4 border-t flex justify-end">
-                                                    <Button
-                                                        variant="secondary"
-                                                        className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 bg-opacity-50"
-                                                        onClick={() => handleApplyToAllRooms(room.id)}
-                                                    >
-                                                        <Copy className="h-4 w-4 mr-2" />
-                                                        Apply This Configuration To All Rooms
-                                                    </Button>
+                                                    <Dialog>
+                                                        <DialogTrigger asChild>
+                                                            <Button
+                                                                variant="secondary"
+                                                                className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 bg-opacity-50"
+                                                            >
+                                                                <Copy className="h-4 w-4 mr-2" />
+                                                                Apply This Configuration To All Rooms
+                                                            </Button>
+                                                        </DialogTrigger>
+                                                        <DialogContent>
+                                                            <DialogHeader>
+                                                                <DialogTitle>Apply Configuration to All Rooms?</DialogTitle>
+                                                                <DialogDescription>
+                                                                    This will overwrite the paint settings (coats, coverage, products, billing, trim, ceiling, and primer) for <strong>{(rooms?.length || 1) - 1}</strong> other room{(rooms?.length || 1) - 1 !== 1 ? 's' : ''} with the configuration from <strong>{room.name}</strong>. This cannot be undone.
+                                                                </DialogDescription>
+                                                            </DialogHeader>
+                                                            <DialogFooter className="gap-2">
+                                                                <Button variant="destructive" onClick={() => handleApplyToAllRooms(room.id)}>
+                                                                    Yes, Apply to All
+                                                                </Button>
+                                                            </DialogFooter>
+                                                        </DialogContent>
+                                                    </Dialog>
                                                 </div>
 
                                                 {/* Visualizers & Reference Photos Placeholder */}

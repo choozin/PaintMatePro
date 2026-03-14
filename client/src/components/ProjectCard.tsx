@@ -20,7 +20,7 @@ interface ProjectCardProps {
 
 const statusConfig: Record<string, { color: string; label: string }> = {
   new: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "New" },
-  lead: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "New" }, // Legacy map
+  lead: { color: "bg-amber-100 text-amber-700 border-amber-200", label: "New" }, // Legacy map
   quote_created: { color: "bg-purple-100 text-purple-700 border-purple-200", label: "Quote Created" },
   quoted: { color: "bg-purple-100 text-purple-700 border-purple-200", label: "Quote Created" }, // Legacy map
   quote_sent: { color: "bg-indigo-100 text-indigo-700 border-indigo-200", label: "Quote Sent" },
@@ -32,7 +32,7 @@ const statusConfig: Record<string, { color: string; label: string }> = {
   invoiced: { color: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Invoiced" },
   paid: { color: "bg-green-100 text-green-800 border-green-200", label: "Paid" },
   "on-hold": { color: "bg-rose-100 text-rose-700 border-rose-200", label: "On Hold" },
-  pending: { color: "bg-gray-100 text-gray-700 border-gray-200", label: "Accepted" },
+  pending: { color: "bg-violet-100 text-violet-700 border-violet-200", label: "Accepted" },
   overdue: { color: "bg-red-100 text-red-700 border-red-200", label: "Overdue" },
 };
 

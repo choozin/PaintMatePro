@@ -28,6 +28,7 @@ import { RecordPaymentDialog } from "@/components/RecordPaymentDialog";
 import { InvoicePDFPreview } from "@/components/InvoicePDFPreview";
 import type { Invoice, InvoiceStatus } from "@/lib/firestore";
 import { Timestamp } from "firebase/firestore";
+import { formatCurrency } from "@/lib/currency";
 import { hasPermission } from "@/lib/permissions";
 import { useAuth } from "@/contexts/AuthContext";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -171,7 +172,7 @@ export default function ProjectDetail() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-full overflow-x-hidden pb-10">
       {/* Header Area with Notification Bell */}
       <div className="relative">
         <ProjectHeader
@@ -298,24 +299,24 @@ export default function ProjectDetail() {
       </div>
 
       {/* Stepper Navigation */}
-      <div className="relative" ref={tabsRef}>
+      <div className="relative w-full max-w-full" ref={tabsRef}>
         <div className="absolute top-1/2 left-0 w-full h-0.5 bg-muted -z-10" />
-        <div className="flex justify-between items-center">
+        <div className="flex gap-4 sm:justify-between items-center max-w-full overflow-x-auto pb-4 snap-x snap-mandatory pt-2 px-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {steps.map((step, index) => {
             const isActive = activeTab === step.id;
-            const isCompleted = steps.findIndex(s => s.id === activeTab) > index;
+            const isPast = steps.findIndex(s => s.id === activeTab) > index;
             const Icon = step.icon;
 
             return (
               <button
                 key={step.id}
                 onClick={() => setActiveTab(step.id)}
-                className={`flex flex-col items-center gap-2 bg-background px-4 py-2 rounded-lg transition-colors ${isActive ? "text-primary" : isCompleted ? "text-muted-foreground" : "text-muted-foreground/60"}`}
+                className={`flex flex-col items-center gap-2 bg-background px-4 py-2 rounded-lg transition-colors shrink-0 snap-center min-w-[100px] ${isActive ? "text-primary" : isPast ? "text-primary/70" : "text-muted-foreground/60"}`}
               >
-                <div className={`h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all ${isActive ? "border-primary bg-primary text-primary-foreground shadow-lg scale-110" : isCompleted ? "border-primary/50 bg-primary/10 text-primary" : "border-muted bg-background"}`}>
-                  {isCompleted ? <CheckCircle2 className="h-6 w-6" /> : <Icon className="h-5 w-5" />}
+                <div className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center border-2 transition-all ${isActive ? "border-primary bg-primary text-primary-foreground shadow-lg scale-110" : isPast ? "border-primary/40 bg-primary/10 text-primary/70" : "border-muted bg-background"}`}>
+                  <Icon className="h-5 w-5" />
                 </div>
-                <span className={`text-sm font-medium ${isActive ? "text-foreground" : ""}`}>{step.label}</span>
+                <span className={`text-xs sm:text-sm font-medium whitespace-nowrap ${isActive ? "text-foreground" : ""}`}>{step.label}</span>
               </button>
             );
           })}
@@ -363,8 +364,8 @@ export default function ProjectDetail() {
                           return (
                             <TableRow key={inv.id}>
                               <TableCell className="font-mono">{inv.invoiceNumber}</TableCell>
-                              <TableCell className="text-right">${inv.total?.toFixed(2)}</TableCell>
-                              <TableCell className="text-right font-medium">${inv.balanceDue?.toFixed(2)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(inv.total || 0, inv.currency || 'USD')}</TableCell>
+                              <TableCell className="text-right font-medium">{formatCurrency(inv.balanceDue || 0, inv.currency || 'USD')}</TableCell>
                               <TableCell>
                                 <Badge variant={inv.status === 'paid' ? 'default' : inv.status === 'overdue' ? 'destructive' : 'outline'}
                                   className="capitalize">{inv.status?.replace(/_/g, ' ')}</Badge>

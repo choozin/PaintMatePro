@@ -13,6 +13,39 @@ export interface QuoteLineItem {
     groupTitle?: string;
 }
 
+// --- Exported Utility Functions ---
+
+/** Calculate total trim linear footage for a room using door/window data */
+export function calcRoomTrimLFUtil(room: any): number {
+    const perimeter = ((room.length || 0) + (room.width || 0)) * 2;
+    const doors = room.doors || [];
+    const windows = room.windows || [];
+    const rConfig = room.supplyConfig || {};
+
+    const totalDoorWidthFt = doors.reduce((s: number, d: any) => s + (d.width / 12) * d.count, 0);
+    const baseboardLF = Math.max(0, perimeter - totalDoorWidthFt);
+    const doorCasingLF = doors.reduce((s: number, d: any) => {
+        if (d.includeCasing === false) return s;
+        return s + ((d.height / 12) * 2 + (d.width / 12)) * d.count;
+    }, 0);
+    const windowCasingLF = windows.reduce((s: number, w: any) => {
+        if (w.includeCasing === false) return s;
+        return s + ((w.height / 12 + w.width / 12) * 2) * w.count;
+    }, 0);
+    const crownLF = rConfig.includeCrownMolding ? perimeter : 0;
+    const includeBaseboard = rConfig.includeBaseboard !== false;
+
+    return (includeBaseboard ? baseboardLF : 0) + doorCasingLF + windowCasingLF + crownLF;
+}
+
+/** Calculate total opening area for a room (doors + windows) in sqft */
+export function calcOpeningAreaUtil(room: any): number {
+    const doors = room.doors || [];
+    const windows = room.windows || [];
+    return doors.reduce((s: number, d: any) => s + (d.width / 12) * (d.height / 12) * d.count, 0)
+        + windows.reduce((s: number, w: any) => s + (w.width / 12) * (w.height / 12) * w.count, 0);
+}
+
 // --- Helper Class for Shared Paint Logic ---
 class PaintUsageTracker {
     private products = new Map<string, {
@@ -88,10 +121,18 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
     const paintTracker = new PaintUsageTracker();
 
     // --- Helper Calculations ---
+    // Derive labor rates from project config instead of hardcoded values
+    const hourlyRate = project.laborConfig?.hourlyRate ?? 60;
+    const productionRate = project.laborConfig?.productionRate ?? 150;
+    const difficultyFactor = project.laborConfig?.difficultyFactor ?? 1.0;
+    const wallLaborRate = (hourlyRate / productionRate) * difficultyFactor; // e.g. $60/150 = $0.40/sqft
+    const ceilingLaborRate = (hourlyRate / (productionRate * 0.7)) * difficultyFactor; // ceilings ~30% slower
+    const defaultTrimRate = project.supplyConfig?.defaultTrimRate ?? 1.50; // $/linear_ft
+
     const getLaborCost = (area: number, type: 'wall' | 'ceiling' | 'trim') => {
-        // Simplified mock logic
-        const rate = type === 'wall' ? 1.5 : type === 'ceiling' ? 1.0 : 2.0;
-        return area * rate;
+        if (type === 'ceiling') return area * ceilingLaborRate;
+        if (type === 'trim') return area * wallLaborRate; // trim uses wall rate for area-based calc
+        return area * wallLaborRate; // walls
     };
 
     // Legacy helper kept for bulk calc if needed, though we use tracker mostly
@@ -100,13 +141,46 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
         return gallons * (project.supplyConfig?.pricePerGallon || 45);
     };
 
+    // Enhanced trim LF calculation using door/window data
+    const calcRoomTrimLF = (room: any) => {
+        const perimeter = (room.length + room.width) * 2;
+        const doors = room.doors || [];
+        const windows = room.windows || [];
+        const rConfig = room.supplyConfig || {};
+
+        const totalDoorWidthFt = doors.reduce((s: number, d: any) => s + (d.width / 12) * d.count, 0);
+        const baseboardLF = Math.max(0, perimeter - totalDoorWidthFt);
+        const doorCasingLF = doors.reduce((s: number, d: any) => {
+            if (d.includeCasing === false) return s;
+            return s + ((d.height / 12) * 2 + (d.width / 12)) * d.count;
+        }, 0);
+        const windowCasingLF = windows.reduce((s: number, w: any) => {
+            if (w.includeCasing === false) return s;
+            return s + ((w.height / 12 + w.width / 12) * 2) * w.count;
+        }, 0);
+        const crownLF = rConfig.includeCrownMolding ? perimeter : 0;
+        const includeBaseboard = rConfig.includeBaseboard !== false; // default true
+
+        return (includeBaseboard ? baseboardLF : 0) + doorCasingLF + windowCasingLF + crownLF;
+    };
+
+    // Calculate total opening area for a room (doors + windows) in sqft
+    const calcOpeningArea = (room: any) => {
+        const doors = room.doors || [];
+        const windows = room.windows || [];
+        return doors.reduce((s: number, d: any) => s + (d.width / 12) * (d.height / 12) * d.count, 0)
+            + windows.reduce((s: number, w: any) => s + (w.width / 12) * (w.height / 12) * w.count, 0);
+    };
+
     // --- CORE LISTING LOGIC ---
     if (config.listingStrategy === 'by_room') {
         rooms.forEach((room: any) => {
             const linesForRoom: QuoteLineItem[] = [];
 
             // Walls
-            const wallArea = (room.length + room.width) * 2 * room.height;
+            const grossWallArea = (room.length + room.width) * 2 * room.height;
+            const openingArea = calcOpeningArea(room);
+            const wallArea = Math.max(0, grossWallArea - openingArea);
             const wallLabor = getLaborCost(wallArea, 'wall');
 
             // Paint Tracker - Walls
@@ -139,7 +213,7 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
                 description: "Paint Walls",
                 quantity: config.laborUnit === 'geometric' ? wallArea : undefined,
                 unit: 'sqft',
-                rate: config.laborUnit === 'geometric' ? 1.50 : undefined,
+                rate: config.laborUnit === 'geometric' ? wallLaborRate : undefined,
                 amount: wallLabor, // Base labor
                 type: 'labor',
                 groupTitle: room.name,
@@ -258,7 +332,7 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
                     description: "Paint Ceiling",
                     quantity: ceilingArea,
                     unit: 'sqft',
-                    rate: 1.00,
+                    rate: ceilingLaborRate,
                     amount: getLaborCost(ceilingArea, 'ceiling'),
                     type: 'labor',
                     groupTitle: room.name,
@@ -299,9 +373,9 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
             // Trim (By Room) - With Paint Tracker
             const includeTrim = room.supplyConfig?.includeTrim ?? project.supplyConfig?.includeTrim;
             if (includeTrim) {
-                const trimLF = (room.length + room.width) * 2;
-                const trimWidth = room.supplyConfig?.trimWidth ?? project.supplyConfig?.defaultTrimWidth ?? 4;
-                const trimRate = room.supplyConfig?.trimRate ?? project.supplyConfig?.defaultTrimRate ?? 1.50;
+                const trimLF = calcRoomTrimLF(room);
+                const trimWidth = room.supplyConfig?.baseboardHeight ?? room.supplyConfig?.trimWidth ?? project.supplyConfig?.defaultTrimWidth ?? 4;
+                const trimRate = room.supplyConfig?.trimRate ?? project.supplyConfig?.defaultTrimRate ?? defaultTrimRate;
 
                 const trimProd = project.supplyConfig?.trimProduct;
                 const trimProdId = trimProd?.id || 'default_trim';
@@ -426,7 +500,13 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
                             let price = 45;
                             let name = prodName;
 
-                            if (item.paintProductId !== 'default') {
+                            if (item.paintUnitPrice !== undefined) {
+                                price = item.paintUnitPrice;
+                                if (item.paintProductId !== 'default') {
+                                    const p = catalog.find((x: any) => x.id === item.paintProductId);
+                                    if (p) name = p.name;
+                                }
+                            } else if (item.paintProductId !== 'default') {
                                 const p = catalog.find((x: any) => x.id === item.paintProductId);
                                 if (p) { price = p.unitPrice || p.price || 45; name = p.name; }
                             } else {
@@ -521,11 +601,20 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
                         let prodName = "Paint";
                         let prodId = item.paintProductId;
 
-                        const prod = (item.paintProductId === 'default' ? project.supplyConfig?.wallProduct : catalog?.find((p: any) => p.id === item.paintProductId));
-                        if (prod) {
-                            pricePerGal = (prod as any).unitPrice || (prod as any).price || 45;
-                            prodName = (prod as any).name;
-                            prodId = prod.id;
+                        if (item.paintUnitPrice !== undefined) {
+                            pricePerGal = item.paintUnitPrice;
+                            const prod = (item.paintProductId === 'default' ? project.supplyConfig?.wallProduct : catalog?.find((p: any) => p.id === item.paintProductId));
+                            if (prod) {
+                                prodName = (prod as any).name;
+                                prodId = prod.id;
+                            }
+                        } else {
+                            const prod = (item.paintProductId === 'default' ? project.supplyConfig?.wallProduct : catalog?.find((p: any) => p.id === item.paintProductId));
+                            if (prod) {
+                                pricePerGal = (prod as any).unitPrice || (prod as any).price || 45;
+                                prodName = (prod as any).name;
+                                prodId = prod.id;
+                            }
                         }
 
                         const coats = item.coats || 2;
@@ -641,16 +730,18 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
         let totalPrimerArea = 0;
 
         rooms.forEach((r: any) => {
-            const wallArea = (r.length + r.width) * 2 * r.height;
-            totalWallArea += wallArea;
+            const grossWallArea = (r.length + r.width) * 2 * r.height;
+            const openingArea = calcOpeningArea(r);
+            const wallArea = grossWallArea - openingArea; // Deduct door/window openings
+            totalWallArea += Math.max(0, wallArea);
             if (r.supplyConfig?.includePrimer ?? project.supplyConfig?.includePrimer) {
-                totalPrimerArea += wallArea;
+                totalPrimerArea += Math.max(0, wallArea);
             }
             if (project.supplyConfig?.includeCeiling) {
                 totalCeilingArea += r.length * r.width;
             }
             if (r.supplyConfig?.includeTrim ?? project.supplyConfig?.includeTrim) {
-                totalTrimLF += (r.length + r.width) * 2;
+                totalTrimLF += calcRoomTrimLF(r);
             }
         });
 
@@ -742,7 +833,7 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
                 description: "Paint Walls",
                 quantity: totalWallArea,
                 unit: 'sqft',
-                rate: 1.5,
+                rate: wallLaborRate,
                 amount: getLaborCost(totalWallArea, 'wall') + primerCost,
                 type: 'labor',
                 groupTitle: "Walls",
@@ -763,7 +854,7 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
         }
 
         if (totalCeilingArea > 0) {
-            const ceilLine = { id: 'act-ceil', description: "Paint Ceilings", quantity: totalCeilingArea, unit: 'sqft', rate: 1.0, amount: getLaborCost(totalCeilingArea, 'ceiling'), type: 'labor' as const, groupTitle: "Ceilings", subItems: [] };
+            const ceilLine = { id: 'act-ceil', description: "Paint Ceilings", quantity: totalCeilingArea, unit: 'sqft', rate: ceilingLaborRate, amount: getLaborCost(totalCeilingArea, 'ceiling'), type: 'labor' as const, groupTitle: "Ceilings", subItems: [] };
             if (project.supplyConfig?.ceilingProduct) {
                 const coats = project.supplyConfig.ceilingCoats || 2;
                 applyPaintLogic(ceilLine, totalCeilingArea * coats, project.supplyConfig.ceilingCoverage, coats, project.supplyConfig.ceilingProduct);
@@ -773,7 +864,8 @@ export function generateQuoteLinesV2(project: any, rooms: any[], config: QuoteCo
 
         if (totalTrimLF > 0) {
             const trimWidth = project.supplyConfig?.defaultTrimWidth || 4;
-            const trimLine = { id: 'act-trim', description: `Paint Trim (${trimWidth}" width)`, quantity: totalTrimLF, unit: 'linear_ft', rate: 1.5, amount: totalTrimLF * 1.5, type: 'labor' as const, groupTitle: "Trim", subItems: [] };
+            const actTrimRate = project.supplyConfig?.defaultTrimRate ?? defaultTrimRate;
+            const trimLine = { id: 'act-trim', description: `Paint Trim (${trimWidth}" width)`, quantity: totalTrimLF, unit: 'linear_ft', rate: actTrimRate, amount: totalTrimLF * actTrimRate, type: 'labor' as const, groupTitle: "Trim", subItems: [] };
             if (project.supplyConfig?.trimProduct) {
                 const coats = project.supplyConfig.trimCoats || 2;
                 const trimArea = totalTrimLF * (trimWidth / 12) * coats;

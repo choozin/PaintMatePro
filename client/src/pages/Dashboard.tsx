@@ -8,10 +8,12 @@ import { ActivityFeed } from "@/components/ActivityFeed";
 import { useProjects } from "@/hooks/useProjects";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useLocation } from "wouter";
-import { ArrowRight, DollarSign, AlertTriangle } from "lucide-react";
+import { ArrowRight, DollarSign, AlertTriangle, Briefcase, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useInvoices } from "@/hooks/useInvoices";
 import { useMemo } from "react";
+import { Timestamp } from "firebase/firestore";
 
 export default function Dashboard() {
   const { currentPermissions, currentOrgRole } = useAuth();
@@ -37,6 +39,13 @@ export default function Dashboard() {
       .reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
     return { outstanding, overdueCount, overdueAmount };
   }, [invoices]);
+
+  // Active projects for the dashboard cards
+  const activeProjects = useMemo(() =>
+    projects
+      .filter(p => ['in-progress', 'booked', 'quoting'].includes(p.status))
+      .slice(0, 5),
+    [projects]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
@@ -72,7 +81,31 @@ export default function Dashboard() {
                 <h2 className="text-xl font-bold tracking-tight">Active Projects</h2>
                 <Button variant="ghost" size="sm" onClick={() => setLocation('/projects')}>View All <ArrowRight className="ml-1 h-3 w-3" /></Button>
               </div>
-              {/* We can re-use the Project Cards grid here if desired, or keep it cleaner */}
+              {activeProjects.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {activeProjects.map(p => (
+                    <Card key={p.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setLocation(`/projects/${p.id}`)}>
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1 min-w-0">
+                            <h3 className="font-medium text-sm truncate">{p.name}</h3>
+                            {p.address && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                                <MapPin className="h-3 w-3 shrink-0" />{p.address}
+                              </p>
+                            )}
+                          </div>
+                          <Badge variant="outline" className="shrink-0 ml-2 text-[10px]">
+                            {p.status === 'in-progress' ? 'In Progress' : p.status === 'booked' ? 'Booked' : 'Quoting'}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No active projects right now.</p>
+              )}
             </div>
           )}
 

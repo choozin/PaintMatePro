@@ -101,10 +101,19 @@ service cloud.firestore {
 
     // Quotes
     match /quotes/{quoteId} {
-      // Portal users need read access. We allow authenticated read for now.
+      // Portal users need read access.
       allow read: if request.auth != null;
       allow create: if request.auth != null && (isOrgMember(request.resource.data.orgId) || isPlatformAdmin());
-      allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isOrgOwner(resource.data.orgId) || isPlatformAdmin());
+      allow update: if request.auth != null && (
+        isOrgMember(resource.data.orgId) || 
+        isPlatformAdmin() ||
+        // Portal Approval Logic: Only allow status-related changes if transitioning to 'approved'
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'signedAt', 'signature', 'clientAcceptedBy', 'timeline']) &&
+          request.resource.data.status == 'approved'
+        )
+      );
+      allow delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
     }
 
     // Rooms (Nested lookup required)
@@ -116,12 +125,6 @@ service cloud.firestore {
                             (isPlatformAdmin() || isOrgMember(get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.orgId));
     }
 
-    // Quotes
-    match /quotes/{quoteId} {
-      allow read: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
-      allow create: if request.auth != null && (isOrgMember(request.resource.data.orgId) || isPlatformAdmin());
-      allow update, delete: if request.auth != null && (isOrgMember(resource.data.orgId) || isPlatformAdmin());
-    }
 
     // Employees
     match /employees/{employeeId} {

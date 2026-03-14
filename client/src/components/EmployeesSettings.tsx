@@ -16,6 +16,8 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Globe, MapPin } from 'lucide-react';
 import { Plus, Trash2, Edit2, User, MoreHorizontal, Mail, Phone, Briefcase, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -42,6 +44,8 @@ export function EmployeesSettings() {
     const [phone, setPhone] = useState('');
     const [payType, setPayType] = useState<'hourly' | 'salary'>('hourly');
     const [payRate, setPayRate] = useState<number | ''>('');
+    const [address, setAddress] = useState('');
+    const [jurisdiction, setJurisdiction] = useState<{ country: 'US' | 'CA', stateProvince: string } | null>(null);
 
     const { data: employees, isLoading: queryLoading } = useQuery({
         queryKey: ['employees', currentOrg?.id],
@@ -99,6 +103,8 @@ export function EmployeesSettings() {
         setPhone('');
         setPayType('hourly');
         setPayRate('');
+        setAddress('');
+        setJurisdiction(null);
     };
 
     const handleEdit = (employee: Employee) => {
@@ -109,6 +115,8 @@ export function EmployeesSettings() {
         setPhone(employee.phone ?? '');
         setPayType(employee.payType || 'hourly');
         setPayRate(employee.payRate || '');
+        setAddress(employee.address || '');
+        setJurisdiction(employee.jurisdiction || null);
         setIsDialogOpen(true);
     };
 
@@ -125,6 +133,8 @@ export function EmployeesSettings() {
             phone,
             payType,
             payRate: payRate === '' ? undefined : Number(payRate),
+            address: address || undefined,
+            jurisdiction: jurisdiction || undefined,
         };
 
         try {
@@ -209,6 +219,46 @@ export function EmployeesSettings() {
                                         <Label>Phone (Optional)</Label>
                                         <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" />
                                     </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <MapPin className="h-4 w-4" /> Home Address (Optional)
+                                    </Label>
+                                    <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, City, State" />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <Globe className="h-4 w-4" /> Payroll Jurisdiction
+                                    </Label>
+                                    <Select
+                                        value={jurisdiction ? `${jurisdiction.country}-${jurisdiction.stateProvince}` : ''}
+                                        onValueChange={(val) => {
+                                            if (!val) {
+                                                setJurisdiction(null);
+                                                return;
+                                            }
+                                            const [country, stateProvince] = val.split('-') as ['US' | 'CA', string];
+                                            setJurisdiction({ country, stateProvince });
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select state or province" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[250px]">
+                                            <SelectItem value="US-AL">Alabama (US)</SelectItem>
+                                            <SelectItem value="US-CA">California (US)</SelectItem>
+                                            <SelectItem value="US-NY">New York (US)</SelectItem>
+                                            <SelectItem value="US-TX">Texas (US)</SelectItem>
+                                            <Separator className="my-2" />
+                                            <SelectItem value="CA-AB">Alberta (CA)</SelectItem>
+                                            <SelectItem value="CA-BC">British Columbia (CA)</SelectItem>
+                                            <SelectItem value="CA-ON">Ontario (CA)</SelectItem>
+                                            <SelectItem value="CA-QC">Quebec (CA)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-[10px] text-muted-foreground">Used for calculating location-specific taxes and statutory pay.</p>
                                 </div>
 
                                 {canManagePayroll && (

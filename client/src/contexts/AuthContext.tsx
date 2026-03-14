@@ -86,9 +86,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (roleDoc) {
           setCurrentPermissions(roleDoc.permissions || []);
         } else {
-          // ID not found? Fallback to painter or empty
-          console.warn(`Role ID ${currentOrgRole} not found in DB. Falling back.`);
-          setCurrentPermissions(getLegacyFallbackPermissions('painter'));
+          // Fallback: Try searching for role by name in this Org
+          const allRoles = await orgRoleOperations.getByOrg(currentOrgId);
+          const matchedRole = allRoles.find((r: any) => r.name === currentOrgRole);
+          if (matchedRole) {
+            setCurrentPermissions(matchedRole.permissions || []);
+          } else {
+            console.warn(`Role ${currentOrgRole} not found as ID or Name in DB. Falling back.`);
+            setCurrentPermissions(getLegacyFallbackPermissions('painter'));
+          }
         }
       }
     } catch (e) {
@@ -259,8 +265,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     currentOrgId,
     currentOrgRole,
     currentPermissions, // EXPOSED
-    isOwner: claims?.globalRole === 'owner' || claims?.role === 'owner' || claims?.role === 'platform_owner',
-    isAdmin: claims?.globalRole === 'admin' || claims?.globalRole === 'owner' || claims?.role === 'admin' || claims?.role === 'owner' || claims?.role === 'platform_owner',
+    isOwner: currentOrgRole === 'org_owner' || claims?.globalRole === 'platform_owner',
+    isAdmin: currentOrgRole === 'org_admin' || currentOrgRole === 'org_owner' || claims?.globalRole === 'platform_owner' || claims?.globalRole === 'platform_admin',
     org,
     entitlements,
     loading,

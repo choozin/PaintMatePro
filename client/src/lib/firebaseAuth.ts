@@ -90,6 +90,7 @@ export async function registerUser(email: string, password: string, orgName?: st
         name: orgName,
         plan: 'free',
         region: 'US',
+        currency: 'USD',
         defaultUnits: 'imperial'
       });
       console.log('[DEBUG] Org Created with ID:', orgId);
@@ -104,18 +105,20 @@ export async function registerUser(email: string, password: string, orgName?: st
           'visual.recolor': true,
           'portal.fullView': true,
           'pdf.watermark': true,
-          'capture.weeklyLimit': 5,
-          'visual.sheenSimulator': false,
-          'portal.advancedActionsLocked': true,
+          'capture.weeklyLimit': 999, // Essentially unlimited
+          'visual.sheenSimulator': true,
+          'portal.advancedActionsLocked': false, // Unlocked
           'analytics.lite': true,
-          'analytics.drilldowns': false,
-          eSign: false,
-          payments: false,
-          scheduler: false,
-          'quote.tiers': false,
-          'quote.profitMargin': false,
-          'quote.visualScope': false,
-          'client.importCSV': false,
+          'analytics.drilldowns': true,
+          eSign: true,
+          payments: true,
+          scheduler: true,
+          timeTracking: true,
+          'quote.tiers': true,
+          'quote.profitMargin': true,
+          'quote.visualScope': true,
+          'client.importCSV': true,
+          catalog: true,
         }
       });
       console.log('[DEBUG] Entitlements Created');

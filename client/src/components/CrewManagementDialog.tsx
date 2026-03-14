@@ -45,8 +45,25 @@ export function CrewManagementDialog({ project, currentCrew, trigger, open, onOp
 
     // Update Project Mutation
     const updateProjectMutation = useMutation({
-        mutationFn: ({ assignedCrewId }: { assignedCrewId: string | null }) =>
-            projectOperations.update(project.id, { assignedCrewId } as any),
+        mutationFn: async ({ assignedCrewId }: { assignedCrewId: string | null }) => {
+            const updates: any = { assignedCrewId };
+
+            // Generate timeline event
+            const newEvent = {
+                date: new Date().toISOString(),
+                type: assignedCrewId ? 'crew_assigned' : 'crew_unassigned',
+                title: assignedCrewId ? 'Crew Assigned' : 'Crew Unassigned',
+                description: assignedCrewId
+                    ? `Assigned to ${allCrews?.find(c => c.id === assignedCrewId)?.name}`
+                    : 'Crew assignment removed',
+                userId: org?.id, // Generic marker since we might not have user uid directly here without redefining it
+                status: 'completed'
+            };
+
+            updates.timeline = [...(project.timeline || []), newEvent];
+
+            return projectOperations.update(project.id, updates);
+        },
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['projects'] });
             queryClient.invalidateQueries({ queryKey: ['project', project.id] });

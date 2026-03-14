@@ -15,6 +15,8 @@ import { useCreateInvoice, useUpdateInvoice } from "@/hooks/useInvoices";
 import { invoiceOperations, type Invoice, type InvoiceLineItem, type PaymentTerms, type InvoiceType } from "@/lib/firestore";
 import { Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { calculateTaxLines, TaxLine } from "@/lib/financeUtils";
+import { formatCurrency, getCurrencySymbol } from "@/lib/currency";
 
 interface InvoiceBuilderDialogProps {
     open: boolean;
@@ -62,7 +64,7 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
     const [paymentTerms, setPaymentTerms] = useState<PaymentTerms>(org?.invoiceSettings?.defaultPaymentTerms || 'net_30');
     const [customDueDays, setCustomDueDays] = useState(30);
     const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([emptyLineItem()]);
-    const [taxRate, setTaxRate] = useState(org?.estimatingSettings?.defaultTaxRate || 0);
+    const [taxLines, setTaxLines] = useState<Array<{ name: string; rate: number }>>([]);
     const [notes, setNotes] = useState('');
     const [internalNotes, setInternalNotes] = useState('');
     const [saving, setSaving] = useState(false);
@@ -85,7 +87,13 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
             setPaymentTerms(invoice.paymentTerms || 'net_30');
             setCustomDueDays(invoice.customDueDays || 30);
             setLineItems(invoice.lineItems?.length ? invoice.lineItems : [emptyLineItem()]);
-            setTaxRate(invoice.taxRate || 0);
+
+            if (invoice.taxLines && invoice.taxLines.length > 0) {
+                setTaxLines(invoice.taxLines.map(tl => ({ name: tl.name, rate: tl.rate })));
+            } else if (invoice.taxRate !== undefined) {
+                setTaxLines([{ name: 'Tax', rate: invoice.taxRate }]);
+            }
+
             setNotes(invoice.notes || '');
             setInternalNotes(invoice.internalNotes || '');
         } else {
@@ -96,7 +104,13 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
             setPaymentTerms(org?.invoiceSettings?.defaultPaymentTerms || 'net_30');
             setCustomDueDays(30);
             setLineItems([emptyLineItem()]);
-            setTaxRate(org?.estimatingSettings?.defaultTaxRate || 0);
+
+            if (org?.invoiceSettings?.defaultTaxLines) {
+                setTaxLines(org.invoiceSettings.defaultTaxLines);
+            } else if (org?.estimatingSettings?.defaultTaxRate !== undefined) {
+                setTaxLines([{ name: 'Tax', rate: org.estimatingSettings.defaultTaxRate }]);
+            }
+
             setNotes('');
             setInternalNotes('');
         }
@@ -118,7 +132,12 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
                 amount: li.quantity * li.rate,
             }));
         setLineItems(items.length > 0 ? items : [emptyLineItem()]);
-        setTaxRate(quote.tax && quote.subtotal ? (quote.tax / quote.subtotal) * 100 : taxRate);
+
+        if (quote.taxLines && quote.taxLines.length > 0) {
+            setTaxLines(quote.taxLines.map(tl => ({ name: tl.name, rate: tl.rate })));
+        } else if ((quote as any).taxRate !== undefined) {
+            setTaxLines([{ name: 'Tax', rate: (quote as any).taxRate }]);
+        }
     };
 
     // Line item handlers
@@ -137,12 +156,19 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
 
     // Calculations
     const subtotal = useMemo(() => lineItems.reduce((sum, li) => sum + (li.quantity * li.rate), 0), [lineItems]);
-    const tax = useMemo(() => subtotal * (taxRate / 100), [subtotal, taxRate]);
+
+    const { taxLines: calculatedTaxes, taxTotal } = useMemo(() =>
+        calculateTaxLines(subtotal, taxLines),
+        [subtotal, taxLines]);
+
     const total = useMemo(() => {
-        const baseTotal = subtotal + tax;
+        const baseTotal = subtotal + taxTotal;
         if (invoiceType === 'deposit') return baseTotal * (depositPercent / 100);
         return baseTotal;
-    }, [subtotal, tax, invoiceType, depositPercent]);
+    }, [subtotal, taxTotal, invoiceType, depositPercent]);
+
+    const currency = org?.currency || 'USD';
+    const symbol = getCurrencySymbol(currency);
 
     // Due date calculation
     const dueDate = useMemo(() => {
@@ -171,9 +197,12 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
                 invoiceNumber: invoice?.invoiceNumber || await invoiceOperations.getNextNumber(currentOrgId),
                 lineItems,
                 subtotal,
-                taxRate,
-                tax,
+                taxRate: taxLines.length > 0 ? taxLines[0].rate : 0, // Legacy fallback
+                tax: taxTotal, // Legacy fallback
+                taxTotal,
+                taxLines: calculatedTaxes,
                 total,
+                currency,
                 amountPaid: invoice?.amountPaid || 0,
                 balanceDue: total - (invoice?.amountPaid || 0),
                 status: invoice?.status || 'draft',
@@ -244,7 +273,7 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
                                         <SelectItem key={q.id} value={q.id}>
                                             <span className="flex items-center gap-2">
                                                 <FileText className="h-3 w-3" />
-                                                ${q.total?.toFixed(2)} — {q.createdAt ? new Date(q.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                                                {formatCurrency(q.total || 0, q.currency || 'USD')} — {q.createdAt ? new Date(q.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
                                             </span>
                                         </SelectItem>
                                     ))}
@@ -318,16 +347,17 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
 
                         <div className="space-y-2">
                             {/* Header */}
-                            <div className="grid grid-cols-[1fr_80px_60px_100px_32px] gap-2 text-xs font-medium text-muted-foreground px-1">
+                            <div className="grid grid-cols-[1fr_80px_60px_100px_80px_32px] gap-2 text-xs font-medium text-muted-foreground px-1">
                                 <span>Description</span>
                                 <span>Qty</span>
                                 <span>Unit</span>
                                 <span>Rate</span>
+                                <span className="text-right">Amount</span>
                                 <span></span>
                             </div>
 
                             {lineItems.map((item, idx) => (
-                                <div key={idx} className="grid grid-cols-[1fr_80px_60px_100px_32px] gap-2 items-center">
+                                <div key={idx} className="grid grid-cols-[1fr_80px_60px_100px_80px_32px] gap-2 items-center">
                                     <Input
                                         value={item.description}
                                         onChange={(e) => updateLineItem(idx, 'description', e.target.value)}
@@ -354,6 +384,9 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
                                         step={0.01}
                                         className="text-sm"
                                     />
+                                    <span className="text-sm text-right font-medium text-muted-foreground">
+                                        {formatCurrency(item.quantity * item.rate, currency)}
+                                    </span>
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -372,36 +405,64 @@ export function InvoiceBuilderDialog({ open, onOpenChange, invoice, preselectedP
 
                     {/* Totals */}
                     <div className="flex justify-end">
-                        <div className="w-72 space-y-2">
+                        <div className="w-80 space-y-2">
                             <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Subtotal</span>
-                                <span>${subtotal.toFixed(2)}</span>
+                                <span>{formatCurrency(subtotal, currency)}</span>
                             </div>
-                            <div className="flex justify-between text-sm items-center gap-2">
-                                <span className="text-muted-foreground">Tax Rate (%)</span>
-                                <Input
-                                    type="number"
-                                    value={taxRate}
-                                    onChange={(e) => setTaxRate(Number(e.target.value))}
-                                    className="w-20 h-7 text-sm text-right"
-                                    min={0}
-                                    step={0.01}
-                                />
-                            </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">Tax</span>
-                                <span>${tax.toFixed(2)}</span>
-                            </div>
+
+                            {taxLines.map((tl, idx) => (
+                                <div key={idx} className="flex justify-between text-sm items-center gap-2 group">
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => setTaxLines(taxLines.filter((_, i) => i !== idx))} className="text-red-400">
+                                            <Trash2 className="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                    <input
+                                        className="text-muted-foreground bg-transparent border-none p-0 w-24 text-xs focus:ring-0"
+                                        value={tl.name}
+                                        onChange={e => {
+                                            const newLines = [...taxLines];
+                                            newLines[idx].name = e.target.value;
+                                            setTaxLines(newLines);
+                                        }}
+                                    />
+                                    <div className="flex items-center gap-1 bg-muted px-1 rounded">
+                                        <input
+                                            type="number"
+                                            value={tl.rate}
+                                            onChange={(e) => {
+                                                const newLines = [...taxLines];
+                                                newLines[idx].rate = Number(e.target.value);
+                                                setTaxLines(newLines);
+                                            }}
+                                            className="w-12 h-6 text-xs text-right bg-transparent border-none focus:ring-0"
+                                            min={0}
+                                            step={0.01}
+                                        />
+                                        <span className="text-[10px]">%</span>
+                                    </div>
+                                    <span className="min-w-[60px] text-right">{formatCurrency(calculatedTaxes[idx].amount, currency)}</span>
+                                </div>
+                            ))}
+
+                            <button
+                                onClick={() => setTaxLines([...taxLines, { name: 'Tax', rate: 0 }])}
+                                className="text-[10px] text-muted-foreground hover:text-primary flex items-center gap-1 ml-auto"
+                            >
+                                <Plus className="h-3 w-3" /> Add Tax Line
+                            </button>
+
                             {invoiceType === 'deposit' && (
                                 <div className="flex justify-between text-sm text-amber-600">
                                     <span>Deposit ({depositPercent}%)</span>
-                                    <span>${total.toFixed(2)}</span>
+                                    <span>{formatCurrency(total, currency)}</span>
                                 </div>
                             )}
                             <Separator />
                             <div className="flex justify-between font-bold text-lg">
                                 <span>Total</span>
-                                <span>${total.toFixed(2)}</span>
+                                <span>{formatCurrency(total, currency)}</span>
                             </div>
                             <div className="flex justify-between text-xs text-muted-foreground">
                                 <span>Due Date</span>

@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { employeeOperations, timeEntryOperations, crewOperations, projectOperations, Employee, TimeEntry } from "@/lib/firestore";
+import { calculatePayrollSummary, ProcessedTimeEntry } from "@/lib/payrollRules";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import { Timestamp } from "firebase/firestore";
 import { RoleGuard } from "@/components/RoleGuard";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission } from "@/lib/permissions";
+import { formatCurrency } from "@/lib/currency";
 
 interface EmployeePayrollSummary {
     employee: Employee;
@@ -29,6 +31,7 @@ interface EmployeePayrollSummary {
     grossPay: number;
     status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'processed' | 'mixed';
     entries: TimeEntry[];
+    processedEntries: ProcessedTimeEntry[];
 }
 
 function getPayPeriodRange(date: Date, type: string, startDay: number = 0): { start: Date; end: Date; label: string } {
@@ -211,102 +214,17 @@ export default function Payroll() {
                 return isWithinInterval(d, { start: dateRange.start, end: dateRange.end });
             });
 
-            const rate = emp.payRate || 0;
-            const isSalaried = emp.payType === 'salary';
-
-            let regularHours = 0;
-            let overtimeHours = 0;
-            let doubleTimeHours = 0;
-
-            if (isSalaried) {
-                // Salaried employees: all hours are regular, pay is fixed per period
-                regularHours = empEntries.reduce((sum, e) => sum + e.totalHours, 0);
-            } else {
-                // Hourly employees: apply OT rules
-                // Group entries by date for daily thresholds
-                const byDate: Record<string, number> = {};
-                empEntries.forEach(e => {
-                    const key = format(e.date.toDate(), 'yyyy-MM-dd');
-                    byDate[key] = (byDate[key] || 0) + e.totalHours;
-                });
-
-                let weeklyAccum = 0;
-                Object.values(byDate).forEach(dayHours => {
-                    // Daily thresholds first
-                    let dayRegular = Math.min(dayHours, dailyOTThreshold);
-                    let dayOT = 0;
-                    let dayDT = 0;
-
-                    if (dayHours > dailyDTThreshold) {
-                        dayDT = dayHours - dailyDTThreshold;
-                        dayOT = dailyDTThreshold - dailyOTThreshold;
-                        dayRegular = dailyOTThreshold;
-                    } else if (dayHours > dailyOTThreshold) {
-                        dayOT = dayHours - dailyOTThreshold;
-                        dayRegular = dailyOTThreshold;
-                    }
-
-                    // Weekly threshold check (overflow from weekly cap into OT)
-                    const prevWeekly = weeklyAccum;
-                    weeklyAccum += dayRegular;
-                    if (weeklyAccum > weeklyOTThreshold && prevWeekly < weeklyOTThreshold) {
-                        const overflow = weeklyAccum - weeklyOTThreshold;
-                        dayRegular -= overflow;
-                        dayOT += overflow;
-                    } else if (prevWeekly >= weeklyOTThreshold) {
-                        dayOT += dayRegular;
-                        dayRegular = 0;
-                    }
-
-                    regularHours += dayRegular;
-                    overtimeHours += dayOT;
-                    doubleTimeHours += dayDT;
-                });
-            }
-
-            const totalHours = regularHours + overtimeHours + doubleTimeHours;
-
-            // Calculate pay
-            let regularPay = 0;
-            let overtimePay = 0;
-            let doubleTimePay = 0;
-            let grossPay = 0;
-
-            if (isSalaried) {
-                // Salary: annual rate / periods per year
-                const periodsPerYear = payPeriodType === 'weekly' ? 52 : payPeriodType === 'bi-weekly' ? 26 : payPeriodType === 'semi-monthly' ? 24 : 12;
-                regularPay = rate / periodsPerYear;
-                grossPay = regularPay;
-            } else {
-                regularPay = regularHours * rate;
-                overtimePay = overtimeHours * rate * otMultiplier;
-                doubleTimePay = doubleTimeHours * rate * dtMultiplier;
-                grossPay = regularPay + overtimePay + doubleTimePay;
-            }
-
-            // Determine aggregated status
-            const statuses = empEntries.map(e => e.status);
-            let status: EmployeePayrollSummary['status'] = 'draft';
-            if (empEntries.length === 0) status = 'draft';
-            else if (statuses.every(s => s === 'processed')) status = 'processed';
-            else if (statuses.every(s => s === 'approved' || s === 'processed')) status = 'approved';
-            else if (statuses.every(s => s === 'rejected')) status = 'rejected';
-            else if (statuses.some(s => s === 'rejected') && statuses.some(s => s !== 'rejected')) status = 'mixed';
-            else if (statuses.some(s => s === 'submitted')) status = 'submitted';
-            else status = 'draft';
+            // Process using the shared Overtime Rules Engine
+            const summary = calculatePayrollSummary(
+                empEntries,
+                emp,
+                org?.payrollSettings?.overtimeRules,
+                payPeriodType
+            );
 
             return {
-                employee: emp,
-                regularHours,
-                overtimeHours,
-                doubleTimeHours,
-                totalHours,
-                regularPay,
-                overtimePay,
-                doubleTimePay,
-                grossPay,
-                status,
-                entries: empEntries
+                ...summary,
+                entries: summary.originalEntries
             };
         }).filter(d => d.totalHours > 0 || (d.employee.payType === 'salary'));
     }, [rbacFilteredEmployees, timeEntries, dateRange, dailyOTThreshold, weeklyOTThreshold, dailyDTThreshold, otMultiplier, dtMultiplier, payPeriodType]);
@@ -416,20 +334,18 @@ export default function Payroll() {
         const rows: string[] = [];
 
         activePayroll.forEach(p => {
-            p.entries.forEach(e => {
+            p.processedEntries.forEach(e => {
                 const rate = p.employee.payRate || 0;
-                const multiplier = e.workType === 'overtime' ? otMultiplier : e.workType === 'double_time' ? dtMultiplier : 1.0;
-                const pay = e.totalHours * rate * multiplier;
 
                 rows.push([
                     `"${p.employee.name}"`,
                     p.employee.payType || 'hourly',
                     rate,
                     format(e.date.toDate(), 'yyyy-MM-dd'),
-                    e.projectId,
-                    e.totalHours,
-                    e.workType,
-                    pay.toFixed(2),
+                    e.projectId?.startsWith('_custom_') ? e.projectId.replace('_custom_', '') : (projectNameMap[e.projectId] || e.projectId || '—'),
+                    e.calculatedHours,
+                    e.calculatedWorkType,
+                    e.calculatedPay.toFixed(2),
                     e.status
                 ].join(","));
             });
@@ -511,7 +427,7 @@ export default function Payroll() {
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">${totalPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            <div className="text-2xl font-bold">{formatCurrency(totalPayroll, org?.currency || 'USD')}</div>
                             <p className="text-xs text-muted-foreground">Current period</p>
                         </CardContent>
                     </Card>
@@ -617,7 +533,7 @@ export default function Payroll() {
                                         const colCount = hasDT ? 9 : 8;
 
                                         // Group entries by date for detail view
-                                        const entriesByDate = item.entries.reduce<Record<string, TimeEntry[]>>((acc, e) => {
+                                        const entriesByDate = item.processedEntries.reduce<Record<string, ProcessedTimeEntry[]>>((acc, e) => {
                                             const dateKey = format(e.date.toDate(), 'yyyy-MM-dd');
                                             if (!acc[dateKey]) acc[dateKey] = [];
                                             acc[dateKey].push(e);
@@ -653,12 +569,12 @@ export default function Payroll() {
                                                     <td className="text-center p-3 font-bold">{item.totalHours.toFixed(1)}</td>
                                                     <td className="text-right p-3 text-muted-foreground">
                                                         {item.employee.payType === 'salary'
-                                                            ? `$${(item.employee.payRate || 0).toLocaleString()}/yr`
-                                                            : `$${(item.employee.payRate || 0).toFixed(2)}/hr`
+                                                            ? `${formatCurrency(item.employee.payRate || 0, org?.currency || 'USD')}/yr`
+                                                            : `${formatCurrency(item.employee.payRate || 0, org?.currency || 'USD')}/hr`
                                                         }
                                                     </td>
                                                     <td className="text-right p-3 font-semibold">
-                                                        ${item.grossPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        {formatCurrency(item.grossPay, org?.currency || 'USD')}
                                                     </td>
                                                     <td className="text-center p-3">{statusBadge(item.status)}</td>
                                                     <td className="text-right p-3" onClick={e => e.stopPropagation()}>
@@ -733,10 +649,10 @@ export default function Payroll() {
                                                                                             {format(new Date(dateKey + 'T12:00:00'), 'EEE, MMM d')}
                                                                                         </td>
                                                                                         <td className="py-1.5 px-2 font-medium">{projectName}</td>
-                                                                                        <td className="py-1.5 px-2 text-center">{entry.totalHours.toFixed(1)}</td>
+                                                                                        <td className="py-1.5 px-2 text-center">{entry.calculatedHours.toFixed(1)}</td>
                                                                                         <td className="py-1.5 px-2 text-center capitalize">
-                                                                                            <span className={entry.workType === 'overtime' ? 'text-amber-600' : entry.workType === 'double_time' ? 'text-red-600' : ''}>
-                                                                                                {entry.workType === 'double_time' ? 'DT' : entry.workType === 'overtime' ? 'OT' : 'Reg'}
+                                                                                            <span className={entry.calculatedWorkType === 'overtime' ? 'text-amber-600' : entry.calculatedWorkType === 'double_time' ? 'text-red-600' : ''}>
+                                                                                                {entry.calculatedWorkType === 'double_time' ? 'DT' : entry.calculatedWorkType === 'overtime' ? 'OT' : entry.calculatedWorkType === 'travel' ? 'Travel' : 'Reg'}
                                                                                             </span>
                                                                                         </td>
                                                                                         <td className="py-1.5 px-2 text-center">
@@ -772,7 +688,7 @@ export default function Payroll() {
                                             <td className="text-center p-3">{totalHours.toFixed(1)}</td>
                                             <td className="p-3"></td>
                                             <td className="text-right p-3">
-                                                ${totalPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                {formatCurrency(totalPayroll, org?.currency || 'USD')}
                                             </td>
                                             <td className="p-3"></td>
                                             <td className="p-3"></td>

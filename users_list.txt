@@ -1,0 +1,25 @@
+--- System Users ---
+Email: demo@demo.com | Global: org_owner
+Roles: {"K4oxGBOLkzy2d4vlD9sk":"org_owner"}
+---
+Email: owner@p.com | Global: org_owner
+Roles: {"bU6he56hhlZDoKVDmKrm":"org_owner"}
+---
+Email: owner@pp.com | Global: org_owner
+Roles: {"vpk6Yzp31rYpg5bhUYNZ":"org_owner"}
+---
+Email: ctaylor17@outlook.com | Global: platform_owner
+Roles: {"bU6he56hhlZDoKVDmKrm":"painter"}
+---
+Email: painter@test.com | Global: platform_user
+Roles: {"5oI8369O1PZecXIb4O6K":"painter"}
+---
+Email: tester@example.com | Global: org_owner
+Roles: {"Zxl7F7Y8HiEHrsOww6yQ":"org_owner"}
+---
+Email: accounting@test.com | Global: platform_user
+Roles: {"5oI8369O1PZecXIb4O6K":"manager"}
+---
+Email: compliance-admin@test.com | Global: org_owner
+Roles: {"8iG71bsaFnwOtdx3gVtY":"org_owner"}
+---

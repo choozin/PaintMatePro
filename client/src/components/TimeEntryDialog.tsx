@@ -364,9 +364,7 @@ export function TimeEntryDialog({ employee, date, open, onOpenChange, existingEn
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="regular">Regular</SelectItem>
-                                        <SelectItem value="overtime">Overtime</SelectItem>
                                         <SelectItem value="travel">Travel</SelectItem>
-                                        <SelectItem value="double_time">Double Time</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

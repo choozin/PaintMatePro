@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useClients } from "@/hooks/useClients";
+import { useClients, useDeleteClient } from "@/hooks/useClients";
 import { useProjects } from "@/hooks/useProjects";
 import type { Client, Project } from "@/lib/firestore";
 import { useTranslation } from "react-i18next";
@@ -97,6 +97,8 @@ export default function Clients() {
   const { hasFeature } = useEntitlements();
 
   const isLoading = clientsLoading || projectsLoading;
+  const deleteClient = useDeleteClient();
+  const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
 
   const filteredAndScoredClients = useMemo(() => {
     if (!searchQuery.trim()) return clients.map(c => ({ ...c, score: 0 }));
@@ -227,10 +229,7 @@ export default function Clients() {
                 Status
                 {sortConfig?.key === 'status' && <ArrowUpDown className="ml-2 h-3 w-3 inline" />}
               </TableHead>
-              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('createdAt')}>
-                Added
-                {sortConfig?.key === 'createdAt' && <ArrowUpDown className="ml-2 h-3 w-3 inline" />}
-              </TableHead>
+              <TableHead>Contact</TableHead>
               <TableHead>Location</TableHead>
               <TableHead className="text-right cursor-pointer hover:bg-muted/50" onClick={() => handleSort('projects')}>
                 Projects
@@ -354,7 +353,14 @@ export default function Clients() {
                           <DropdownMenuItem onSelect={() => setSelectedClient(client)}>
                             View Full Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive focus:text-destructive">
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onSelect={() => {
+                              if (window.confirm(`Are you sure you want to delete ${client.name}? This cannot be undone.`)) {
+                                deleteClient.mutate(client.id);
+                              }
+                            }}
+                          >
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>

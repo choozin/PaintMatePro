@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useInvoices, useUpdateInvoice } from "@/hooks/useInvoices";
 import { useProjects } from "@/hooks/useProjects";
 import { useClients } from "@/hooks/useClients";
@@ -91,8 +91,11 @@ export default function Invoices() {
 
     const { data: creditNotes = [] } = useCreditNotes();
 
-    // Auto-detect overdue invoices on load
-    useMemo(() => {
+    // Auto-detect overdue invoices on load (run once)
+    const overdueCheckDone = useRef(false);
+    useEffect(() => {
+        if (overdueCheckDone.current || invoices.length === 0) return;
+        overdueCheckDone.current = true;
         const now = new Date();
         invoices.forEach(inv => {
             if (['sent', 'viewed'].includes(inv.status) && inv.dueDate) {
@@ -148,13 +151,24 @@ export default function Invoices() {
             .reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const collected = invoices
-            .filter(inv => {
-                if (!inv.paidAt) return false;
+        // Sum all individual payments made this month (from payments[] array)
+        let collected = 0;
+        invoices.forEach(inv => {
+            if (inv.payments && Array.isArray(inv.payments)) {
+                inv.payments.forEach((pmt: any) => {
+                    const pmtDate = pmt.date instanceof Timestamp ? pmt.date.toDate() : new Date(pmt.date as any);
+                    if (pmtDate >= startOfMonth) {
+                        collected += pmt.amount || 0;
+                    }
+                });
+            } else if (inv.paidAt) {
+                // Fallback for invoices with no payments[] array (legacy)
                 const paidDate = inv.paidAt instanceof Timestamp ? inv.paidAt.toDate() : new Date(inv.paidAt as any);
-                return paidDate >= startOfMonth;
-            })
-            .reduce((sum, inv) => sum + (inv.amountPaid || 0), 0);
+                if (paidDate >= startOfMonth) {
+                    collected += inv.amountPaid || 0;
+                }
+            }
+        });
         const drafts = invoices.filter(inv => inv.status === 'draft').length;
 
         const creditsIssued = creditNotes
@@ -223,7 +237,7 @@ export default function Invoices() {
 
         body += `--- Line Items ---\n${lineItemsText}\n\n` +
             `Subtotal: $${invoice.subtotal?.toFixed(2)}\n` +
-            (invoice.taxRate > 0 ? `Tax (${invoice.taxRate}%): $${invoice.tax?.toFixed(2)}\n` : '') +
+            ((invoice.taxRate || 0) > 0 ? `Tax (${invoice.taxRate}%): $${invoice.tax?.toFixed(2)}\n` : '') +
             `Total${isCreditNote ? ' Credited' : ''}: $${invoice.total?.toFixed(2)}\n`;
 
         if (!isCreditNote) {
@@ -346,7 +360,7 @@ export default function Invoices() {
                     <CardHeader className="pb-4">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabFilter)}>
-                                <TabsList>
+                                <TabsList className="flex flex-wrap h-auto justify-start gap-1">
                                     <TabsTrigger value="all">All ({invoices.length})</TabsTrigger>
                                     <TabsTrigger value="draft">Draft</TabsTrigger>
                                     <TabsTrigger value="sent">Sent / Active</TabsTrigger>
@@ -369,57 +383,62 @@ export default function Invoices() {
                     <CardContent>
                         {activeTab === 'credits' ? (
                             creditNotes.length > 0 ? (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>CN #</TableHead>
-                                            <TableHead>Date</TableHead>
-                                            <TableHead>Invoice #</TableHead>
-                                            <TableHead>Client</TableHead>
-                                            <TableHead className="text-right">Total</TableHead>
-                                            <TableHead>Status</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {creditNotes.map((cn) => {
-                                            const client = clients.find(c => c.id === cn.clientId);
-                                            const inv = invoices.find(i => i.id === cn.invoiceId);
-                                            const date = cn.createdAt instanceof Timestamp ? cn.createdAt.toDate() : new Date(cn.createdAt as any);
-
-                                            return (
-                                                <TableRow key={cn.id}>
-                                                    <TableCell className="font-mono font-medium text-sm">{cn.creditNoteNumber}</TableCell>
-                                                    <TableCell>{date.toLocaleDateString()}</TableCell>
-                                                    <TableCell className="font-mono text-sm">{inv?.invoiceNumber || cn.invoiceId}</TableCell>
-                                                    <TableCell className="max-w-[150px] truncate">{client?.name || '—'}</TableCell>
-                                                    <TableCell className="text-right font-medium">${cn.total?.toFixed(2)}</TableCell>
-                                                    <TableCell>
-                                                        {cn.status === 'draft' ? <Badge variant="outline">Draft</Badge> : <Badge className="bg-orange-100 text-orange-800">Applied</Badge>}
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        {cn.status === 'draft' && hasPermission(currentPermissions, 'manage_invoices') && (
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => {
-                                                                    if (inv) {
-                                                                        setCreditNoteInvoice(inv);
-                                                                        setCreditNoteDraft(cn);
-                                                                        setCreditNoteOpen(true);
-                                                                    }
-                                                                }}
-                                                            >
-                                                                <FileText className="h-4 w-4 mr-2" />
-                                                                Edit Draft
-                                                            </Button>
-                                                        )}
-                                                    </TableCell>
+                                <div className="relative w-full">
+                                    <div className="overflow-x-auto w-full">
+                                        <Table className="min-w-[800px]">
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>CN #</TableHead>
+                                                    <TableHead>Date</TableHead>
+                                                    <TableHead>Invoice #</TableHead>
+                                                    <TableHead>Client</TableHead>
+                                                    <TableHead className="text-right">Total</TableHead>
+                                                    <TableHead>Status</TableHead>
+                                                    <TableHead className="text-right">Actions</TableHead>
                                                 </TableRow>
-                                            )
-                                        })}
-                                    </TableBody>
-                                </Table>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {creditNotes.map((cn) => {
+                                                    const client = clients.find(c => c.id === cn.clientId);
+                                                    const inv = invoices.find(i => i.id === cn.invoiceId);
+                                                    const date = cn.createdAt instanceof Timestamp ? cn.createdAt.toDate() : new Date(cn.createdAt as any);
+
+                                                    return (
+                                                        <TableRow key={cn.id}>
+                                                            <TableCell className="font-mono font-medium text-sm">{cn.creditNoteNumber}</TableCell>
+                                                            <TableCell>{date.toLocaleDateString()}</TableCell>
+                                                            <TableCell className="font-mono text-sm">{inv?.invoiceNumber || cn.invoiceId}</TableCell>
+                                                            <TableCell className="max-w-[150px] truncate">{client?.name || '—'}</TableCell>
+                                                            <TableCell className="text-right font-medium">${cn.total?.toFixed(2)}</TableCell>
+                                                            <TableCell>
+                                                                {cn.status === 'draft' ? <Badge variant="outline">Draft</Badge> : <Badge className="bg-orange-100 text-orange-800">Applied</Badge>}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                {cn.status === 'draft' && hasPermission(currentPermissions, 'manage_invoices') && (
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        onClick={() => {
+                                                                            if (inv) {
+                                                                                setCreditNoteInvoice(inv);
+                                                                                setCreditNoteDraft(cn);
+                                                                                setCreditNoteOpen(true);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <FileText className="h-4 w-4 mr-2" />
+                                                                        Edit Draft
+                                                                    </Button>
+                                                                )}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
+                                </div>
                             ) : (
                                 <div className="text-center py-16 border-2 border-dashed rounded-lg">
                                     <Undo2 className="h-12 w-12 mx-auto text-muted-foreground opacity-50" />
@@ -428,108 +447,113 @@ export default function Invoices() {
                                 </div>
                             )
                         ) : filteredInvoices.length > 0 ? (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Invoice #</TableHead>
-                                        <TableHead>Client</TableHead>
-                                        <TableHead>Project</TableHead>
-                                        <TableHead className="text-right">Amount</TableHead>
-                                        <TableHead className="text-right">Balance</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Due Date</TableHead>
-                                        <TableHead className="text-right">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredInvoices.map((invoice) => {
-                                        const client = clients.find(c => c.id === invoice.clientId);
-                                        const project = projects.find(p => p.id === invoice.projectId);
-                                        const dueDate = invoice.dueDate instanceof Timestamp
-                                            ? invoice.dueDate.toDate()
-                                            : new Date(invoice.dueDate as any);
-                                        const isOverdue = invoice.status === 'overdue';
-
-                                        return (
-                                            <TableRow key={invoice.id} className={isOverdue ? 'bg-red-50/50 dark:bg-red-950/10' : ''}>
-                                                <TableCell className="font-mono font-medium text-sm">
-                                                    {invoice.invoiceNumber}
-                                                </TableCell>
-                                                <TableCell>{client?.name || '—'}</TableCell>
-                                                <TableCell className="max-w-[200px] truncate">{project?.name || '—'}</TableCell>
-                                                <TableCell className="text-right font-medium">
-                                                    ${invoice.total?.toFixed(2)}
-                                                </TableCell>
-                                                <TableCell className={`text-right font-medium ${isOverdue ? 'text-red-600 dark:text-red-400' : ''}`}>
-                                                    <div>${invoice.balanceDue?.toFixed(2)}</div>
-                                                    {(invoice.totalCreditsApplied || 0) > 0 && (
-                                                        <div className="text-xs text-orange-600 dark:text-orange-400 font-normal">
-                                                            (${invoice.totalCreditsApplied?.toFixed(2)} credited)
-                                                        </div>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>{statusBadge(invoice.status)}</TableCell>
-                                                <TableCell className="text-sm text-muted-foreground">
-                                                    {dueDate.toLocaleDateString()}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem onClick={() => setPreviewInvoice(invoice)}>
-                                                                <Eye className="h-4 w-4 mr-2" />View / Print
-                                                            </DropdownMenuItem>
-                                                            {invoice.status === 'draft' && hasPermission(currentPermissions, 'create_invoices') && (
-                                                                <DropdownMenuItem onClick={() => { setEditingInvoice(invoice); setBuilderOpen(true); }}>
-                                                                    <FileText className="h-4 w-4 mr-2" />Edit
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            {invoice.status === 'draft' && hasPermission(currentPermissions, 'manage_invoices') && (
-                                                                <DropdownMenuItem onClick={() => handleSendInvoice(invoice)}>
-                                                                    <Send className="h-4 w-4 mr-2" />Mark as Sent
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            {invoice.status !== 'draft' && (
-                                                                <DropdownMenuItem onClick={() => handleEmailInvoice(invoice)}>
-                                                                    <Mail className="h-4 w-4 mr-2" />Email to Client
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            {invoice.status === 'refunded' && (
-                                                                <DropdownMenuItem onClick={() => handleEmailInvoice(invoice, true)}>
-                                                                    <Mail className="h-4 w-4 mr-2" />Email Credit Note
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            {!['paid', 'void', 'draft'].includes(invoice.status) && hasPermission(currentPermissions, 'record_payments') && (
-                                                                <DropdownMenuItem onClick={() => { setPaymentInvoice(invoice); setPaymentDialogOpen(true); }}>
-                                                                    <CreditCard className="h-4 w-4 mr-2" />Record Payment
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            {invoice.status !== 'void' && invoice.status !== 'paid' && invoice.status !== 'refunded' && hasPermission(currentPermissions, 'manage_invoices') && (
-                                                                <>
-                                                                    <DropdownMenuSeparator />
-                                                                    <DropdownMenuItem onClick={() => handleVoidInvoice(invoice)} className="text-red-600">
-                                                                        <Ban className="h-4 w-4 mr-2" />Void Invoice
-                                                                    </DropdownMenuItem>
-                                                                </>
-                                                            )}
-                                                            {invoice.amountPaid > 0 && invoice.status !== 'refunded' && invoice.status !== 'void' && hasPermission(currentPermissions, 'manage_invoices') && (
-                                                                <>
-                                                                    <DropdownMenuSeparator />
-                                                                    <DropdownMenuItem onClick={() => { setCreditNoteInvoice(invoice); setCreditNoteOpen(true); }} className="text-orange-600">
-                                                                        <Undo2 className="h-4 w-4 mr-2" />Issue Credit Note
-                                                                    </DropdownMenuItem>
-                                                                </>
-                                                            )}
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </TableCell>
+                            <div className="relative w-full">
+                                <div className="overflow-x-auto w-full">
+                                    <Table className="min-w-[1000px]">
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Invoice #</TableHead>
+                                                <TableHead>Client</TableHead>
+                                                <TableHead>Project</TableHead>
+                                                <TableHead className="text-right">Amount</TableHead>
+                                                <TableHead className="text-right">Balance</TableHead>
+                                                <TableHead>Status</TableHead>
+                                                <TableHead>Due Date</TableHead>
+                                                <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredInvoices.map((invoice) => {
+                                                const client = clients.find(c => c.id === invoice.clientId);
+                                                const project = projects.find(p => p.id === invoice.projectId);
+                                                const dueDate = invoice.dueDate instanceof Timestamp
+                                                    ? invoice.dueDate.toDate()
+                                                    : new Date(invoice.dueDate as any);
+                                                const isOverdue = invoice.status === 'overdue';
+
+                                                return (
+                                                    <TableRow key={invoice.id} className={isOverdue ? 'bg-red-50/50 dark:bg-red-950/10' : ''}>
+                                                        <TableCell className="font-mono font-medium text-sm">
+                                                            {invoice.invoiceNumber}
+                                                        </TableCell>
+                                                        <TableCell>{client?.name || '—'}</TableCell>
+                                                        <TableCell className="max-w-[200px] truncate">{project?.name || '—'}</TableCell>
+                                                        <TableCell className="text-right font-medium">
+                                                            ${invoice.total?.toFixed(2)}
+                                                        </TableCell>
+                                                        <TableCell className={`text-right font-medium ${isOverdue ? 'text-red-600 dark:text-red-400' : ''}`}>
+                                                            <div>${invoice.balanceDue?.toFixed(2)}</div>
+                                                            {(invoice.totalCreditsApplied || 0) > 0 && (
+                                                                <div className="text-xs text-orange-600 dark:text-orange-400 font-normal">
+                                                                    (${invoice.totalCreditsApplied?.toFixed(2)} credited)
+                                                                </div>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>{statusBadge(invoice.status)}</TableCell>
+                                                        <TableCell className="text-sm text-muted-foreground">
+                                                            {dueDate.toLocaleDateString()}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    <DropdownMenuItem onClick={() => setPreviewInvoice(invoice)}>
+                                                                        <Eye className="h-4 w-4 mr-2" />View / Print
+                                                                    </DropdownMenuItem>
+                                                                    {invoice.status === 'draft' && hasPermission(currentPermissions, 'create_invoices') && (
+                                                                        <DropdownMenuItem onClick={() => { setEditingInvoice(invoice); setBuilderOpen(true); }}>
+                                                                            <FileText className="h-4 w-4 mr-2" />Edit
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                    {invoice.status === 'draft' && hasPermission(currentPermissions, 'manage_invoices') && (
+                                                                        <DropdownMenuItem onClick={() => handleSendInvoice(invoice)}>
+                                                                            <Send className="h-4 w-4 mr-2" />Mark as Sent
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                    {invoice.status !== 'draft' && (
+                                                                        <DropdownMenuItem onClick={() => handleEmailInvoice(invoice)}>
+                                                                            <Mail className="h-4 w-4 mr-2" />Email to Client
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                    {invoice.status === 'refunded' && (
+                                                                        <DropdownMenuItem onClick={() => handleEmailInvoice(invoice, true)}>
+                                                                            <Mail className="h-4 w-4 mr-2" />Email Credit Note
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                    {!['paid', 'void', 'draft'].includes(invoice.status) && hasPermission(currentPermissions, 'record_payments') && (
+                                                                        <DropdownMenuItem onClick={() => { setPaymentInvoice(invoice); setPaymentDialogOpen(true); }}>
+                                                                            <CreditCard className="h-4 w-4 mr-2" />Record Payment
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                    {invoice.status !== 'void' && invoice.status !== 'paid' && invoice.status !== 'refunded' && hasPermission(currentPermissions, 'manage_invoices') && (
+                                                                        <>
+                                                                            <DropdownMenuSeparator />
+                                                                            <DropdownMenuItem onClick={() => handleVoidInvoice(invoice)} className="text-red-600">
+                                                                                <Ban className="h-4 w-4 mr-2" />Void Invoice
+                                                                            </DropdownMenuItem>
+                                                                        </>
+                                                                    )}
+                                                                    {invoice.amountPaid > 0 && invoice.status !== 'refunded' && invoice.status !== 'void' && hasPermission(currentPermissions, 'manage_invoices') && (
+                                                                        <>
+                                                                            <DropdownMenuSeparator />
+                                                                            <DropdownMenuItem onClick={() => { setCreditNoteInvoice(invoice); setCreditNoteOpen(true); }} className="text-orange-600">
+                                                                                <Undo2 className="h-4 w-4 mr-2" />Issue Credit Note
+                                                                            </DropdownMenuItem>
+                                                                        </>
+                                                                    )}
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
+                            </div>
                         ) : (
                             <div className="text-center py-16 border-2 border-dashed rounded-lg">
                                 <Receipt className="h-12 w-12 mx-auto text-muted-foreground opacity-50" />

@@ -247,6 +247,8 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
         startDateObj.setUTCHours(12, 0, 0, 0);
       }
 
+      const finalCrewId = crewId && crewId !== '_unassigned' ? crewId : null;
+
       const projectData: any = {
         name,
         clientId,
@@ -254,7 +256,8 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
         address, // Corrected from location
         notes,
         internalNotes,
-        assignedCrewId: crewId || undefined,
+        assignedCrewId: finalCrewId,
+        quoteTemplateId: org?.defaultQuoteTemplateId || undefined,
         startDate: startDateObj ? Timestamp.fromDate(startDateObj) : null, // Save as Noon UTC or null
         timeline: mode === "create" ? [{
           id: 'init-1',
@@ -264,6 +267,30 @@ export function ProjectDialog({ project, trigger, mode = "create", onSuccess, de
           notes: 'Project created manually'
         }] : project?.timeline || [],
       };
+
+      // Handle Crew Assignment Timeline Events
+      if (mode === "create" && finalCrewId) {
+        const crewName = crews.find(c => c.id === finalCrewId)?.name;
+        projectData.timeline.push({
+          id: crypto.randomUUID(),
+          type: 'crew_assigned',
+          label: 'Crew Assigned',
+          date: Timestamp.now(),
+          notes: `Assigned to ${crewName}`
+        });
+      } else if (mode === "edit" && project) {
+        const oldCrewId = project.assignedCrewId || null;
+        if (oldCrewId !== finalCrewId) {
+          const newCrewName = crews.find(c => c.id === finalCrewId)?.name;
+          projectData.timeline.push({
+            id: crypto.randomUUID(),
+            type: finalCrewId ? 'crew_assigned' : 'crew_unassigned',
+            label: finalCrewId ? 'Crew Assigned' : 'Crew Unassigned',
+            date: Timestamp.now(),
+            notes: finalCrewId ? `Assigned to ${newCrewName}` : 'Crew assignment removed'
+          });
+        }
+      }
 
       if (estimatedCompletion && estimatedCompletion.trim() !== '') {
         const endDateObj = new Date(estimatedCompletion);

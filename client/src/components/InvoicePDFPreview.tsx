@@ -8,6 +8,7 @@ import { useClients } from "@/hooks/useClients";
 import { useProjects } from "@/hooks/useProjects";
 import type { Invoice } from "@/lib/firestore";
 import { Timestamp } from "firebase/firestore";
+import { formatCurrency } from "@/lib/currency";
 
 interface InvoicePDFPreviewProps {
     open: boolean;
@@ -73,6 +74,9 @@ export function InvoicePDFPreview({ open, onOpenChange, invoice }: InvoicePDFPre
                             {branding?.companyEmail && (
                                 <p className="text-sm text-muted-foreground">{branding.companyEmail}</p>
                             )}
+                            {org?.businessNumber && (
+                                <p className="text-sm text-muted-foreground font-medium mt-1">Business No: {org.businessNumber}</p>
+                            )}
                         </div>
                         <div className="text-right">
                             <h1 className="text-3xl font-bold uppercase tracking-wider" style={{ color: primaryColor }}>
@@ -134,9 +138,9 @@ export function InvoicePDFPreview({ open, onOpenChange, invoice }: InvoicePDFPre
                                     <tr key={idx} className="border-b border-gray-100 dark:border-gray-800">
                                         <td className="py-2 text-sm">{item.description}</td>
                                         <td className="py-2 text-sm text-right">{item.quantity} {item.unit}</td>
-                                        <td className="py-2 text-sm text-right">${item.rate?.toFixed(2)}</td>
+                                        <td className="py-2 text-sm text-right">{formatCurrency(item.rate, invoice.currency || 'USD')}</td>
                                         <td className="py-2 text-sm text-right font-medium">
-                                            ${(item.quantity * item.rate).toFixed(2)}
+                                            {formatCurrency(item.quantity * item.rate, invoice.currency || 'USD')}
                                         </td>
                                     </tr>
                                 ))}
@@ -149,23 +153,35 @@ export function InvoicePDFPreview({ open, onOpenChange, invoice }: InvoicePDFPre
                         <div className="w-64">
                             <div className="flex justify-between py-1 text-sm">
                                 <span className="text-muted-foreground">Subtotal</span>
-                                <span>${invoice.subtotal?.toFixed(2)}</span>
+                                <span>{formatCurrency(invoice.subtotal || 0, invoice.currency || 'USD')}</span>
                             </div>
-                            {invoice.taxRate > 0 && (
-                                <div className="flex justify-between py-1 text-sm">
-                                    <span className="text-muted-foreground">Tax ({invoice.taxRate}%)</span>
-                                    <span>${invoice.tax?.toFixed(2)}</span>
-                                </div>
+
+                            {/* Multi-tax lines */}
+                            {invoice.taxLines && invoice.taxLines.length > 0 ? (
+                                invoice.taxLines.map((tl, idx) => (
+                                    <div key={idx} className="flex justify-between py-1 text-sm">
+                                        <span className="text-muted-foreground">{tl.name} ({tl.rate}%)</span>
+                                        <span>{formatCurrency(tl.amount, invoice.currency || 'USD')}</span>
+                                    </div>
+                                ))
+                            ) : (
+                                invoice.taxRate !== undefined && invoice.taxRate > 0 && (
+                                    <div className="flex justify-between py-1 text-sm">
+                                        <span className="text-muted-foreground">Tax ({invoice.taxRate}%)</span>
+                                        <span>{formatCurrency(invoice.tax || 0, invoice.currency || 'USD')}</span>
+                                    </div>
+                                )
                             )}
+
                             <Separator className="my-1" />
                             <div className="flex justify-between py-1 font-bold text-lg">
                                 <span>Total</span>
-                                <span>${invoice.total?.toFixed(2)}</span>
+                                <span>{formatCurrency(invoice.total || 0, invoice.currency || 'USD')}</span>
                             </div>
                             {invoice.amountPaid > 0 && (
                                 <div className="flex justify-between py-1 text-sm text-green-600">
                                     <span>Paid</span>
-                                    <span>-${invoice.amountPaid?.toFixed(2)}</span>
+                                    <span>-{formatCurrency(invoice.amountPaid, invoice.currency || 'USD')}</span>
                                 </div>
                             )}
                             {invoice.balanceDue > 0 && (
@@ -173,7 +189,7 @@ export function InvoicePDFPreview({ open, onOpenChange, invoice }: InvoicePDFPre
                                     <Separator className="my-1" />
                                     <div className="flex justify-between py-1 font-bold text-lg" style={{ color: primaryColor }}>
                                         <span>Balance Due</span>
-                                        <span>${invoice.balanceDue?.toFixed(2)}</span>
+                                        <span>{formatCurrency(invoice.balanceDue, invoice.currency || 'USD')}</span>
                                     </div>
                                 </>
                             )}
@@ -195,7 +211,7 @@ export function InvoicePDFPreview({ open, onOpenChange, invoice }: InvoicePDFPre
                                                 {payDate.toLocaleDateString()} — {payment.method?.replace(/_/g, ' ')}
                                                 {payment.referenceNumber ? ` (#${payment.referenceNumber})` : ''}
                                             </span>
-                                            <span className="font-medium text-green-600">${payment.amount?.toFixed(2)}</span>
+                                            <span className="font-medium text-green-600">{formatCurrency(payment.amount || 0, invoice.currency || 'USD')}</span>
                                         </div>
                                     );
                                 })}

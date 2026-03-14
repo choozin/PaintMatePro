@@ -60,14 +60,16 @@ export function AppSidebar() {
       title: t('nav.dashboard'),
       url: "/",
       icon: LayoutDashboard,
-      testId: "dashboard"
+      testId: "dashboard",
+      requiredPermission: 'view_projects' // Minimal project access needed for dashboard
     },
     {
       title: t('nav.schedule'),
       url: "/schedule",
       icon: Calendar,
       testId: "schedule",
-      featureLock: "scheduler"
+      featureLock: "scheduler",
+      requiredPermission: 'view_schedule'
     },
     {
       title: t('nav.projects'),
@@ -199,7 +201,7 @@ export function AppSidebar() {
           <div className="text-xs text-muted-foreground pt-2">
             <div className="flex justify-between items-center">
               <p>Org: <span className="font-medium text-foreground">{org?.name || (claims?.orgIds?.length === 1 ? 'Current' : 'Selected')}</span></p>
-              {(isGlobalAdmin || (claims?.orgIds && claims.orgIds.length > 1)) && (
+              {(isGlobalAdmin || (claims?.orgIds && claims.orgIds.length > 1) || (user?.uid && claims?.orgIds && claims.orgIds.length > 0)) && (
                 <button
                   className="text-primary hover:underline cursor-pointer"
                   onClick={() => {
@@ -236,14 +238,16 @@ export function AppSidebar() {
 
 
           {/* Dev Notes */}
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={location === '/dev-notes'} data-testid="link-dev-notes">
-              <a href="/dev-notes" onClick={(e) => { e.preventDefault(); handleNav('/dev-notes'); }}>
-                <NotebookPen className="h-5 w-5" />
-                <span>Development Notes</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          {isGlobalAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={location === '/dev-notes'} data-testid="link-dev-notes">
+                <a href="/dev-notes" onClick={(e) => { e.preventDefault(); handleNav('/dev-notes'); }}>
+                  <NotebookPen className="h-5 w-5" />
+                  <span>Development Notes</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
 
           {/* Profile Settings */}
           <SidebarMenuItem>

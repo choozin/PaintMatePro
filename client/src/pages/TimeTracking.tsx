@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { employeeOperations, crewOperations, timeEntryOperations, Employee } from "@/lib/firestore";
+import { calculatePayrollSummary } from "@/lib/payrollRules";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -277,7 +278,9 @@ export default function TimeTracking() {
                                     </tr>
                                 ) : visibleEmployees.map(employee => {
                                     const empEntries = timeEntries.filter(te => te.employeeId === employee.id);
-                                    const weeklyTotal = empEntries.reduce((sum, e) => sum + e.totalHours, 0);
+                                    const summary = calculatePayrollSummary(empEntries, employee, org?.payrollSettings?.overtimeRules, 'weekly');
+                                    const weeklyTotal = summary.totalHours;
+                                    const weeklyOT = summary.overtimeHours + summary.doubleTimeHours;
                                     const editable = canEditEmployee(employee);
 
                                     // Count statuses
@@ -342,7 +345,10 @@ export default function TimeTracking() {
                                                 );
                                             })}
                                             <td className="p-2 text-center font-bold text-lg">
-                                                {weeklyTotal.toFixed(1)}
+                                                <div>{weeklyTotal.toFixed(1)}</div>
+                                                {weeklyOT > 0 && (
+                                                    <div className="text-[10px] text-amber-600 font-semibold">{weeklyOT.toFixed(1)} OT/DT</div>
+                                                )}
                                             </td>
                                             <td className="p-2 text-center">
                                                 {weekStatus && (
@@ -411,10 +417,10 @@ export default function TimeTracking() {
                     onOpenChange={(open) => !open && setDialogState(null)}
                     employee={dialogState.employee}
                     date={dialogState.date}
-                    existingEntries={useMemo(() => timeEntries.filter(te =>
+                    existingEntries={timeEntries.filter(te =>
                         te.employeeId === dialogState.employee.id &&
                         isSameDay(te.date.toDate(), dialogState.date)
-                    ), [timeEntries, dialogState.employee.id, dialogState.date])}
+                    )}
                     crews={crews}
                 />
             )}

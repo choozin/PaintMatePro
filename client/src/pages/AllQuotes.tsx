@@ -32,55 +32,54 @@ export default function AllQuotes() {
                 </CardHeader>
                 <CardContent>
                     {quotes && quotes.length > 0 ? (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Project</TableHead>
-                                    <TableHead>Total</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {quotes.map((quote) => (
-                                    <TableRow key={quote.id}>
-                                        <TableCell className="font-medium">
-                                            <div className="flex items-center gap-2">
-                                                <FileText className="h-4 w-4 text-muted-foreground" />
-                                                <span className="font-sans text-sm">
-                                                    {projects.find(p => p.id === quote.projectId)?.name || 'Unknown Project'}
-                                                </span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>${quote.total.toFixed(2)}</TableCell>
-                                        <TableCell>
-                                            {quote.signature ? (
-                                                <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border-green-200">Signed</Badge>
-                                            ) : (
-                                                <Badge variant="outline">Draft</Badge>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-2 text-muted-foreground">
-                                                <Calendar className="h-3 w-3" />
-                                                {quote.createdAt ? new Date(quote.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
+                        <div className="relative w-full">
+                            <div className="overflow-x-auto w-full">
+                                <Table className="min-w-[700px]">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Project</TableHead>
+                                            <TableHead>Total</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead>Date</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {quotes.map((quote) => (
+                                            <TableRow
+                                                key={quote.id}
+                                                className="cursor-pointer hover:bg-muted/50"
                                                 onClick={() => setLocation(`/projects/${quote.projectId}/quotes`)}
                                             >
-                                                View
-                                                <ArrowRight className="h-4 w-4 ml-2" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                                <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        <FileText className="h-4 w-4 text-muted-foreground" />
+                                                        <span className="font-sans text-sm">
+                                                            {projects.find(p => p.id === quote.projectId)?.name || 'Unknown Project'}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>${quote.total.toFixed(2)}</TableCell>
+                                                <TableCell>
+                                                    {quote.signature ? (
+                                                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border-green-200">Signed</Badge>
+                                                    ) : (
+                                                        <Badge variant="outline">Draft</Badge>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Calendar className="h-3 w-3" />
+                                                        {quote.createdAt ? new Date(quote.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                            {/* Mobile Scroll Indicator Gradient */}
+                            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
+                        </div>
                     ) : (
                         <div className="text-center py-12 border-2 border-dashed rounded-lg">
                             <FileText className="h-12 w-12 mx-auto text-muted-foreground opacity-50" />

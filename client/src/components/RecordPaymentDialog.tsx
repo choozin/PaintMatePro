@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,17 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice }: RecordPayme
     const [paymentNotes, setPaymentNotes] = useState('');
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
     const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (open) {
+            setAmount(invoice.balanceDue || 0);
+            setMethod('check');
+            setReferenceNumber('');
+            setPaymentNotes('');
+            setPaymentDate(new Date().toISOString().slice(0, 10));
+            setSaving(false);
+        }
+    }, [open, invoice.balanceDue]);
 
     const handleSave = async () => {
         if (amount <= 0) {

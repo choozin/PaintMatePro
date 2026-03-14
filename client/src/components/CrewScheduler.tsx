@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Briefcase, Clock, Lock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Briefcase, Clock, Lock, AlertCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useProjects } from "@/hooks/useProjects";
 import { Timestamp } from "firebase/firestore";
@@ -203,6 +203,7 @@ export function CrewScheduler() {
       trackIndex: number,
       isIndefinite: boolean,
       isSingleDay: boolean,
+      hasConflict?: boolean,
       startTimeDisplay?: string
     }> = [];
 
@@ -283,6 +284,45 @@ export function CrewScheduler() {
       });
     });
 
+
+    // Conflict Detection Logic: CrewID -> DayIndex -> ProjectID list
+    const crewDailyAssignments: Record<string, Record<number, string[]>> = {};
+
+    relevantProjects.forEach((p: any) => {
+      if (!p.assignedCrewId) return;
+      const pStart = toDate(p.startDate);
+      const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : new Date(pStart.getTime() + 3 * 86400000);
+
+      const weekStartT = weekStart.getTime();
+
+      for (let day = 0; day < 7; day++) {
+        const dayT = weekStartT + (day * 86400000);
+        const dayEndT = dayT + 86399999;
+
+        if (pStart.getTime() <= dayEndT && pEnd.getTime() >= dayT) {
+          if (!crewDailyAssignments[p.assignedCrewId]) crewDailyAssignments[p.assignedCrewId] = {};
+          if (!crewDailyAssignments[p.assignedCrewId][day]) crewDailyAssignments[p.assignedCrewId][day] = [];
+          crewDailyAssignments[p.assignedCrewId][day].push(p.id);
+        }
+      }
+    });
+
+    // Mark items as conflicted
+    items.forEach(item => {
+      const p = item.project;
+      if (!p.assignedCrewId) return;
+
+      // Check if this project is part of ANY multi-assignment day for its crew
+      let hasConflict = false;
+      for (let day = 0; day < 7; day++) {
+        const assigns = crewDailyAssignments[p.assignedCrewId]?.[day] || [];
+        if (assigns.length > 1 && assigns.includes(p.id)) {
+          hasConflict = true;
+          break;
+        }
+      }
+      item.hasConflict = hasConflict;
+    });
 
     return { items, maxTrack: Math.max(...items.map(i => i.trackIndex), 0) };
   };
@@ -447,195 +487,203 @@ export function CrewScheduler() {
 
     return (
       <>
-        <Card>
-          <CardContent className="p-0 min-h-[600px] flex flex-col">
-            {/* Header All Day Section */}
-            {allDayItems.length > 0 && (
-              <div className="p-4 border-b bg-muted/20">
-                <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-2">All Day / Multi-Day</h3>
-                <div className="space-y-2">
-                  {allDayItems.map(p => (
-                    <div key={p.id} onClick={(e) => handleItemClick(e, p)} className={cn("p-2 rounded border cursor-pointer hover:shadow-md transition-all flex items-center justify-between", statusColors[getStatusForDate(p, currentDate)] || "bg-white")}>
-                      <span className="font-medium text-sm">{p.name}</span>
-                      {p.assignedCrewId && enableTeam && (
-                        <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: crews.find(c => c.id === p.assignedCrewId)?.color || '#ccc' }} />
-                          <span className="text-xs text-muted-foreground">{crews.find(c => c.id === p.assignedCrewId)?.name}</span>
-                        </div>
-                      )}
+        <Card className="overflow-hidden w-full">
+          <CardContent className="p-0 min-h-[600px] flex flex-col w-full overflow-x-auto">
+            <div className="min-w-[600px] flex-1 flex flex-col">
+              {/* Header All Day Section */}
+              {allDayItems.length > 0 && (
+                <div className="p-4 border-b bg-muted/20">
+                  <h3 className="text-xs font-semibold uppercase text-muted-foreground mb-2">All Day / Multi-Day</h3>
+                  <div className="space-y-2">
+                    {allDayItems.map(p => (
+                      <div key={p.id} onClick={(e) => handleItemClick(e, p)} className={cn("p-2 rounded border cursor-pointer hover:shadow-md transition-all flex items-center justify-between", statusColors[getStatusForDate(p, currentDate)] || "bg-white")}>
+                        <span className="font-medium text-sm">{p.name}</span>
+                        {p.assignedCrewId && enableTeam && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: crews.find(c => c.id === p.assignedCrewId)?.color || '#ccc' }} />
+                            <span className="text-xs text-muted-foreground">{crews.find(c => c.id === p.assignedCrewId)?.name}</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Hourly Grid (6am to 7pm = 13 hours total) */}
+              <div className="flex-1 flex overflow-y-auto">
+                {/* Time Labels Sidebar */}
+                <div className="w-16 flex-shrink-0 border-r bg-muted/5">
+                  {hours.map(hour => (
+                    <div key={hour} className="h-[60px] text-right pr-4 py-2 text-xs text-muted-foreground font-medium relative">
+                      <span className="absolute right-3 -translate-y-1/2 bg-muted/5 px-1 rounded-sm">
+                        {hour > 12 ? `${hour - 12} PM` : hour === 12 ? `12 PM` : `${hour} AM`}
+                      </span>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
 
-            {/* Hourly Grid (6am to 7pm = 13 hours total) */}
-            <div className="flex-1 flex overflow-y-auto">
-              {/* Time Labels Sidebar */}
-              <div className="w-16 flex-shrink-0 border-r bg-muted/5">
-                {hours.map(hour => (
-                  <div key={hour} className="h-[60px] text-right pr-4 py-2 text-xs text-muted-foreground font-medium relative">
-                    <span className="absolute right-3 -translate-y-1/2 bg-muted/5 px-1 rounded-sm">
-                      {hour > 12 ? `${hour - 12} PM` : hour === 12 ? `12 PM` : `${hour} AM`}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                {/* Day Track (Relative Container) */}
+                <div className="flex-1 relative min-h-[780px]"> {/* 13 hours * 60px */}
 
-              {/* Day Track (Relative Container) */}
-              <div className="flex-1 relative min-h-[780px]"> {/* 13 hours * 60px */}
-
-                {/* Horizontal Grid Lines */}
-                {hours.map((hour, idx) => (
-                  <div
-                    key={hour}
-                    className="absolute w-full border-t border-muted/50 pointer-events-none"
-                    style={{ top: `${(idx / 13) * 100}%` }}
-                    onClick={() => handleTimeSlotClick(currentDate, hour)}
-                  />
-                ))}
-
-                {/* Clickable Background for Empty Slots */}
-                <div
-                  className="absolute inset-0 z-0 grid"
-                  style={{ gridTemplateRows: 'repeat(13, 1fr)' }}
-                >
-                  {hours.map(hour => (
+                  {/* Horizontal Grid Lines */}
+                  {hours.map((hour, idx) => (
                     <div
                       key={hour}
-                      className={cn("w-full transition-colors", canManageSchedule ? "cursor-pointer hover:bg-muted/10" : "")}
+                      className="absolute w-full border-t border-muted/50 pointer-events-none"
+                      style={{ top: `${(idx / 13) * 100}%` }}
                       onClick={() => handleTimeSlotClick(currentDate, hour)}
-                      title={canManageSchedule ? "Click to add item" : ""}
                     />
                   ))}
-                </div>
 
-                {/* Render Events */}
-                {(() => {
-                  // 1. Filter and compute actual render bounds
-                  const renderableItems = timedItems.map(p => {
-                    const pStart = toDate(p.startDate);
-                    const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : new Date(pStart.getTime() + 60 * 60 * 1000);
-
-                    const renderStart = new Date(currentDate);
-                    renderStart.setHours(6, 0, 0, 0);
-                    const renderEnd = new Date(currentDate);
-                    renderEnd.setHours(19, 0, 0, 0);
-
-                    let actualStart = pStart < renderStart ? renderStart : pStart;
-                    let actualEnd = pEnd > renderEnd ? renderEnd : pEnd;
-
-                    return { p, actualStart, actualEnd };
-                  }).filter(item => !(item.actualEnd <= item.actualStart)); // Filter out things outside the window
-
-                  // 2. Sort by start time, then by end time (longest first)
-                  renderableItems.sort((a, b) => {
-                    const diff = a.actualStart.getTime() - b.actualStart.getTime();
-                    if (diff !== 0) return diff;
-                    return b.actualEnd.getTime() - a.actualEnd.getTime();
-                  });
-
-                  // 3. Calculate Layout Columns (Google Calendar style)
-                  type RenderableItem = typeof renderableItems[0];
-                  type LayoutItem = RenderableItem & { column?: number; totalColumns?: number };
-
-                  const layoutItems: LayoutItem[] = [];
-                  let columns: LayoutItem[][] = [];
-                  let lastEventEnding: Date | null = null;
-
-                  for (let i = 0; i < renderableItems.length; i++) {
-                    const ev = renderableItems[i] as LayoutItem;
-
-                    // If this event starts after ALL previous events in the group have ended, start a new group
-                    if (lastEventEnding !== null && ev.actualStart >= lastEventEnding) {
-                      // Apply totalColumns to previous group
-                      columns.forEach(col => col.forEach(e => e.totalColumns = columns.length));
-                      columns = [];
-                      lastEventEnding = null;
-                    }
-
-                    // Find first available column
-                    let placed = false;
-                    for (let c = 0; c < columns.length; c++) {
-                      const lastColEvent = columns[c][columns[c].length - 1];
-                      if (ev.actualStart >= lastColEvent.actualEnd) {
-                        columns[c].push(ev);
-                        ev.column = c;
-                        placed = true;
-                        break;
-                      }
-                    }
-
-                    // If no column available, create a new one
-                    if (!placed) {
-                      columns.push([ev]);
-                      ev.column = columns.length - 1;
-                    }
-
-                    if (lastEventEnding === null || ev.actualEnd > lastEventEnding) {
-                      lastEventEnding = ev.actualEnd;
-                    }
-
-                    layoutItems.push(ev);
-                  }
-                  // Apply totalColumns to final group
-                  columns.forEach(col => col.forEach(e => e.totalColumns = columns.length));
-
-                  // 4. Render
-                  return layoutItems.map(({ p, actualStart, actualEnd, column = 0, totalColumns = 1 }) => {
-                    const startHourOffset = actualStart.getHours() + (actualStart.getMinutes() / 60) - 6;
-                    const topPercent = (startHourOffset / 13) * 100;
-
-                    const durationHours = (actualEnd.getTime() - actualStart.getTime()) / (1000 * 60 * 60);
-                    const heightPercent = (durationHours / 13) * 100;
-
-                    // Width & Left based on columns
-                    const widthPercent = (100 / totalColumns) * 0.95; // 95% to leave a tiny gap
-                    const leftPercentOffset = (column / totalColumns) * 100;
-
-                    return (
+                  {/* Clickable Background for Empty Slots */}
+                  <div
+                    className="absolute inset-0 z-0 grid"
+                    style={{ gridTemplateRows: 'repeat(13, 1fr)' }}
+                  >
+                    {hours.map(hour => (
                       <div
-                        key={p.id}
-                        onClick={(e) => handleItemClick(e, p)}
-                        className={cn(
-                          "absolute rounded p-2 text-xs border cursor-pointer hover:scale-[1.01] hover:z-20 transition-all shadow-sm z-10 flex flex-col overflow-hidden",
-                          (p.assignedCrewId && crews.find(c => c.id === p.assignedCrewId)?.paletteId)
-                            ? CREW_PALETTES.find(palette => palette.id === crews.find(c => c.id === p.assignedCrewId)?.paletteId)?.class
-                            : statusColors[getStatusForDate(p, currentDate)]
-                        )}
-                        style={{
-                          top: `${topPercent}%`,
-                          height: `${heightPercent}%`,
-                          minHeight: '24px',
-                          left: `calc(${leftPercentOffset}% + 8px)`,
-                          width: `calc(${widthPercent}% - 16px)`
-                        }}
-                      >
-                        <div className="font-bold flex items-center gap-2 truncate">
-                          <span className="opacity-75 shrink-0 block sm:hidden md:block">
-                            {(() => {
-                              const pStart = toDate(p.startDate);
-                              const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : pStart;
-                              const fStart = pStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-                              const isSameDay = pStart.toDateString() === pEnd.toDateString();
-                              const hasDuration = pEnd.getTime() > pStart.getTime();
+                        key={hour}
+                        className={cn("w-full transition-colors", canManageSchedule ? "cursor-pointer hover:bg-muted/10" : "")}
+                        onClick={() => handleTimeSlotClick(currentDate, hour)}
+                        title={canManageSchedule ? "Click to add item" : ""}
+                      />
+                    ))}
+                  </div>
 
-                              if (!hasDuration) return fStart;
+                  {/* Render Events */}
+                  {(() => {
+                    // 1. Filter and compute actual render bounds
+                    const renderableItems = timedItems.map(p => {
+                      const pStart = toDate(p.startDate);
+                      const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : new Date(pStart.getTime() + 60 * 60 * 1000);
 
-                              if (isSameDay) {
-                                return `${fStart} - ${pEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-                              } else {
-                                return `${fStart} - ${pEnd.toLocaleDateString([], { weekday: 'short' })} ${pEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-                              }
-                            })()}
-                          </span>
-                          <span className="truncate">{p.name}</span>
+                      const renderStart = new Date(currentDate);
+                      renderStart.setHours(6, 0, 0, 0);
+                      const renderEnd = new Date(currentDate);
+                      renderEnd.setHours(19, 0, 0, 0);
+
+                      let actualStart = pStart < renderStart ? renderStart : pStart;
+                      let actualEnd = pEnd > renderEnd ? renderEnd : pEnd;
+
+                      return { p, actualStart, actualEnd };
+                    }).filter(item => !(item.actualEnd <= item.actualStart)); // Filter out things outside the window
+
+                    // 2. Sort by start time, then by end time (longest first)
+                    renderableItems.sort((a, b) => {
+                      const diff = a.actualStart.getTime() - b.actualStart.getTime();
+                      if (diff !== 0) return diff;
+                      return b.actualEnd.getTime() - a.actualEnd.getTime();
+                    });
+
+                    // 3. Calculate Layout Columns (Google Calendar style)
+                    type RenderableItem = typeof renderableItems[0];
+                    type LayoutItem = RenderableItem & { column?: number; totalColumns?: number };
+
+                    const layoutItems: LayoutItem[] = [];
+                    let columns: LayoutItem[][] = [];
+                    let lastEventEnding: Date | null = null;
+
+                    for (let i = 0; i < renderableItems.length; i++) {
+                      const ev = renderableItems[i] as LayoutItem;
+
+                      // If this event starts after ALL previous events in the group have ended, start a new group
+                      if (lastEventEnding !== null && ev.actualStart >= lastEventEnding) {
+                        // Apply totalColumns to previous group
+                        columns.forEach(col => col.forEach(e => e.totalColumns = columns.length));
+                        columns = [];
+                        lastEventEnding = null;
+                      }
+
+                      // Find first available column
+                      let placed = false;
+                      for (let c = 0; c < columns.length; c++) {
+                        const lastColEvent = columns[c][columns[c].length - 1];
+                        if (ev.actualStart >= lastColEvent.actualEnd) {
+                          columns[c].push(ev);
+                          ev.column = c;
+                          placed = true;
+                          break;
+                        }
+                      }
+
+                      // If no column available, create a new one
+                      if (!placed) {
+                        columns.push([ev]);
+                        ev.column = columns.length - 1;
+                      }
+
+                      if (lastEventEnding === null || ev.actualEnd > lastEventEnding) {
+                        lastEventEnding = ev.actualEnd;
+                      }
+
+                      layoutItems.push(ev);
+                    }
+                    // Apply totalColumns to final group
+                    columns.forEach(col => col.forEach(e => e.totalColumns = columns.length));
+
+                    // 4. Render
+                    return layoutItems.map(({ p, actualStart, actualEnd, column = 0, totalColumns = 1 }) => {
+                      const startHourOffset = actualStart.getHours() + (actualStart.getMinutes() / 60) - 6;
+                      const topPercent = (startHourOffset / 13) * 100;
+
+                      const durationHours = (actualEnd.getTime() - actualStart.getTime()) / (1000 * 60 * 60);
+                      const heightPercent = (durationHours / 13) * 100;
+
+                      // Width & Left based on columns
+                      const widthPercent = (100 / totalColumns) * 0.95; // 95% to leave a tiny gap
+                      const leftPercentOffset = (column / totalColumns) * 100;
+
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={(e) => handleItemClick(e, p)}
+                          className={cn(
+                            "absolute rounded p-2 text-xs border cursor-pointer hover:scale-[1.01] hover:z-20 transition-all shadow-sm z-10 flex flex-col overflow-hidden",
+                            (p.assignedCrewId && crews.find(c => c.id === p.assignedCrewId)?.paletteId)
+                              ? CREW_PALETTES.find(palette => palette.id === crews.find(c => c.id === p.assignedCrewId)?.paletteId)?.class
+                              : statusColors[getStatusForDate(p, currentDate)],
+                            items.filter(item => item.assignedCrewId === p.assignedCrewId && item.id !== p.id).length > 0 && "ring-2 ring-destructive ring-offset-1 border-destructive shadow-lg"
+                          )}
+                          style={{
+                            top: `${topPercent}%`,
+                            height: `${heightPercent}%`,
+                            minHeight: '24px',
+                            left: `calc(${leftPercentOffset}% + 8px)`,
+                            width: `calc(${widthPercent}% - 16px)`
+                          }}
+                        >
+                          <div className="font-bold flex items-center justify-between gap-2 overflow-hidden">
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="opacity-75 shrink-0 block sm:hidden md:block">
+                                {(() => {
+                                  const pStart = toDate(p.startDate);
+                                  const pEnd = p.estimatedCompletion ? toDate(p.estimatedCompletion) : pStart;
+                                  const fStart = pStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                                  const isSameDay = pStart.toDateString() === pEnd.toDateString();
+                                  const hasDuration = pEnd.getTime() > pStart.getTime();
+
+                                  if (!hasDuration) return fStart;
+
+                                  if (isSameDay) {
+                                    return `${fStart} - ${pEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                                  } else {
+                                    return `${fStart} - ${pEnd.toLocaleDateString([], { weekday: 'short' })} ${pEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                                  }
+                                })()}
+                              </span>
+                              <span className="truncate">{p.name}</span>
+                            </div>
+                            {items.filter(item => item.assignedCrewId === p.assignedCrewId && item.id !== p.id).length > 0 && (
+                              <AlertCircle className="h-3 w-3 text-destructive animate-pulse shrink-0" />
+                            )}
+                          </div>
+                          {p.assignedCrewId && <div className="mt-1 text-[10px] opacity-80 truncate">{crews.find(c => c.id === p.assignedCrewId)?.name}</div>}
                         </div>
-                        {p.assignedCrewId && <div className="mt-1 text-[10px] opacity-80 truncate">{crews.find(c => c.id === p.assignedCrewId)?.name}</div>}
-                      </div>
-                    );
-                  });
-                })()}
+                      );
+                    });
+                  })()}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -661,13 +709,13 @@ export function CrewScheduler() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 lg:gap-4">
+        <div className="flex items-center gap-2 shrink-0">
           <CalendarIcon className="h-5 w-5" />
           <h2 className="text-2xl font-semibold">Project Schedule</h2>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-start lg:justify-end gap-3 w-full lg:w-auto">
           {enableTeam && (
             <div className="w-[200px]">
               <Select
@@ -751,202 +799,210 @@ export function CrewScheduler() {
       </div>
 
       {viewMode === 'day' ? renderDayView() : (
-        <Card>
-          <CardContent className="p-0 select-none">
-            {/* Calendar Header */}
-            <div className="grid grid-cols-7 border-b bg-muted/40 text-muted-foreground">
-              {daysHeaders.map((day) => (
-                <div key={day} className="py-2 text-center text-xs font-semibold uppercase tracking-wider">
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {/* Calendar Body */}
-            <div className="border-l border-b">
-              {weeks.map((week, weekIndex) => {
-                // Calculate layout for this week
-                const { items } = getLayoutForWeek(week);
-
-                return (
-                  <div key={weekIndex} className="relative min-h-[120px] bg-background border-b hover:bg-muted/5 transition-colors group/week">
-                    {/* Layer 1: Visual Grid Lines (Background) */}
-                    <div className="absolute inset-0 grid grid-cols-7 pointer-events-none z-0">
-                      {week.map((date, dayIdx) => (
-                        <div
-                          key={dayIdx}
-                          className={cn(
-                            "border-r h-full transition-colors relative",
-                            isToday(date) ? "bg-blue-50/30 w-full border-l-2 border-l-red-500" : "",
-                            isWeekend(date) ? "bg-slate-100/60" : "", // Darker weekend shading
-                            viewMode === 'month' && !isCurrentMonth(date) ? "bg-muted/10 border-r-muted/50" : ""
-                          )}
-                        />
-                      ))}
-                    </div>
-
-                    {/* Layer 2: Click Capture Overlay (Transparent, Interactive) */}
-                    <div className="absolute inset-0 grid grid-cols-7 z-[5]">
-                      {week.map((date, dayIdx) => (
-                        <div
-                          key={dayIdx}
-                          onClick={() => handleDayClick(date)}
-                          className="cursor-pointer hover:bg-black/5 transition-colors"
-                          title="Click to view full day"
-                        />
-                      ))}
-                    </div>
-
-                    {/* Layer 3: Day Numbers (Visual, Non-Interactive) */}
-                    <div className="absolute inset-0 grid grid-cols-7 pointer-events-none z-[10]">
-                      {week.map((date, dayIdx) => (
-                        <div key={dayIdx} className={cn("p-2 border-t-2 border-transparent", isToday(date) && "border-primary")}>
-                          <span
-                            className={cn(
-                              "text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full transition-colors",
-                              isToday(date)
-                                ? "bg-primary text-primary-foreground shadow-sm"
-                                : viewMode === 'month' && !isCurrentMonth(date)
-                                  ? "text-muted-foreground/50"
-                                  : "text-muted-foreground group-hover/week:text-foreground"
-                            )}
-                          >
-                            {date.getDate()}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Layer 4: Ribbons (Interactive Content) */}
-                    <div className="relative pt-10 pb-2 px-1 grid grid-cols-7 gap-y-1 pointer-events-none z-[20]">
-                      {items.map((item) => {
-                        // Determines rendering style: Chip (Single) vs Ribbon (Multi)
-
-                        const isHovered = hoveredProjectId === item.project.id;
-
-                        const projectDaysInWeek = Array.from({ length: item.duration }, (_, i) => {
-                          const d = new Date(week[0]);
-                          d.setDate(d.getDate() + item.startDayIdx + i);
-                          return d;
-                        });
-
-                        return (
-                          <div
-                            key={`${item.project.id}-${weekIndex}`}
-                            onMouseEnter={() => setHoveredProjectId(item.project.id)}
-                            onMouseLeave={() => setHoveredProjectId(null)}
-                            onClick={(e) => handleItemClick(e, item.project)}
-                            className={cn(
-                              "cursor-pointer relative h-8 transition-all duration-200 text-xs pointer-events-auto", // Enable pointer info
-                              isHovered ? "z-30 scale-[1.01]" : "z-10",
-                              // Styling specific to Type
-                              item.isSingleDay
-                                ? "rounded-full mx-1 shadow-sm hover:shadow-md border"
-                                : cn("shadow-md", item.isStart ? "rounded-l-md ml-1" : "-ml-1", item.isEnd ? "rounded-r-md mr-1" : "-mr-1")
-                            )}
-                            style={{
-                              gridColumnStart: item.startDayIdx + 1,
-                              gridColumnEnd: `span ${item.duration}`,
-                              gridRow: item.trackIndex + 1,
-                            }}
-                          >
-                            {/* --- SINGLE DAY RENDERER --- */}
-                            {item.isSingleDay ? (
-                              <div className={cn(
-                                "flex items-center h-full px-2 gap-2 overflow-hidden pointer-events-auto",
-                                // Helper to get color class - reuse logic
-                                (() => {
-                                  const status = getStatusForDate(item.project, projectDaysInWeek[0]);
-                                  if (['booked', 'in-progress'].includes(status) && item.project.assignedCrewId) {
-                                    const crew = crews.find(c => c.id === item.project.assignedCrewId);
-                                    if (crew?.paletteId) {
-                                      const scale = CREW_PALETTES.find(p => p.id === crew.paletteId);
-                                      return scale ? scale.class : "bg-primary/10 text-primary border-primary/20";
-                                    }
-                                  }
-                                  // Default fallback or status colors
-                                  return statusColors[status] || "bg-gray-100 border-gray-200 text-gray-700";
-                                })()
-                              )}>
-                                {item.startTimeDisplay && (
-                                  <span className="font-mono font-bold opacity-80 shrink-0 text-[10px]">
-                                    {item.startTimeDisplay}
-                                  </span>
-                                )}
-                                <span className="font-semibold truncate pr-1">{item.project.name}</span>
-                                {/* Single Day Assignment Count */}
-                                {item.project.assignments && item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")] && (
-                                  <div title={`${item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")].length} assigned`} className="flex items-center gap-0.5 text-[9px] bg-white/60 px-1 rounded-sm backdrop-blur-sm self-center leading-none py-0.5 shrink-0 ml-auto mr-1 shadow-sm">
-                                    <Users className="w-2.5 h-2.5" />
-                                    {item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")].length}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              /* --- MULTI DAY RENDERER (Ribbon segments) --- */
-                              <div className="absolute inset-0 flex overflow-hidden rounded-inherit">
-                                {projectDaysInWeek.map((dayDate, i) => {
-                                  const status = getStatusForDate(item.project, dayDate);
-                                  let colorClass = statusColors[status] || "bg-gray-100 border-gray-200";
-
-                                  if (status === 'paused') {
-                                    colorClass = PAUSE_STYLE;
-                                  } else if (['booked', 'in-progress'].includes(status) && item.project.assignedCrewId) {
-                                    const crew = crews.find(c => c.id === item.project.assignedCrewId);
-                                    if (crew?.paletteId) {
-                                      const palette = CREW_PALETTES.find(p => p.id === crew.paletteId);
-                                      if (palette) colorClass = palette.class;
-                                    }
-                                  }
-
-                                  return (
-                                    <div
-                                      key={i}
-                                      onClick={(e) => handleItemClick(e, item.project)}
-                                      className={cn(
-                                        "flex-1 h-full border-y border-r first:border-l relative group/segment flex items-center px-1 pointer-events-auto cursor-pointer",
-                                        colorClass,
-                                        "border-r-black/5"
-                                      )}
-                                    >
-                                      {/* Content only on the first day of this specific ribbon segment */}
-                                      {i === 0 && (
-                                        <div className="flex items-center gap-2 overflow-hidden w-full whitespace-nowrap">
-                                          {item.startTimeDisplay && item.isStart && (
-                                            <span className="font-mono font-bold opacity-80 shrink-0 text-[10px]">
-                                              {item.startTimeDisplay}
-                                            </span>
-                                          )}
-                                          <span className="font-semibold truncate pr-1">
-                                            {!item.isStart && <span className="text-[10px] opacity-75 mr-1 font-normal italic">(Cont.)</span>}
-                                            {item.project.name}
-                                          </span>
-                                        </div>
-                                      )}
-
-                                      {/* Multi Day Assignment Count for this day segment */}
-                                      {item.project.assignments && item.project.assignments[format(dayDate, "yyyy-MM-dd")] && (
-                                        <div title={`${item.project.assignments[format(dayDate, "yyyy-MM-dd")].length} assigned`} className={`flex items-center gap-0.5 text-[9px] bg-white/40 px-1 rounded-sm backdrop-blur-sm self-center leading-none py-0.5 ml-auto mr-1 shadow-sm shrink-0 ${(i === 0 && item.isStart) ? '' : 'absolute right-0'}`}>
-                                          <Users className="w-2.5 h-2.5" />
-                                          {item.project.assignments[format(dayDate, "yyyy-MM-dd")].length}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+        <Card className="overflow-hidden">
+          <CardContent className="p-0 select-none w-full overflow-x-auto">
+            <div className="min-w-[1200px]">
+              {/* Calendar Header */}
+              <div className="grid grid-cols-7 border-b bg-muted/40 text-muted-foreground">
+                {daysHeaders.map((day) => (
+                  <div key={day} className="py-2 text-center text-xs font-semibold uppercase tracking-wider">
+                    {day}
                   </div>
-                );
-              })}
+                ))}
+              </div>
+
+              {/* Calendar Body */}
+              <div className="border-l border-b">
+                {weeks.map((week, weekIndex) => {
+                  // Calculate layout for this week
+                  const { items } = getLayoutForWeek(week);
+
+                  return (
+                    <div key={weekIndex} className="relative min-h-[120px] bg-background border-b hover:bg-muted/5 transition-colors group/week">
+                      {/* Layer 1: Visual Grid Lines (Background) */}
+                      <div className="absolute inset-0 grid grid-cols-7 pointer-events-none z-0">
+                        {week.map((date, dayIdx) => (
+                          <div
+                            key={dayIdx}
+                            className={cn(
+                              "border-r h-full transition-colors relative",
+                              isToday(date) ? "bg-blue-50/30 w-full border-l-2 border-l-red-500" : "",
+                              isWeekend(date) ? "bg-slate-100/60" : "", // Darker weekend shading
+                              viewMode === 'month' && !isCurrentMonth(date) ? "bg-muted/10 border-r-muted/50" : ""
+                            )}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Layer 2: Click Capture Overlay (Transparent, Interactive) */}
+                      <div className="absolute inset-0 grid grid-cols-7 z-[5]">
+                        {week.map((date, dayIdx) => (
+                          <div
+                            key={dayIdx}
+                            onClick={() => handleDayClick(date)}
+                            className="cursor-pointer hover:bg-black/5 transition-colors"
+                            title="Click to view full day"
+                          />
+                        ))}
+                      </div>
+
+                      {/* Layer 3: Day Numbers (Visual, Non-Interactive) */}
+                      <div className="absolute inset-0 grid grid-cols-7 pointer-events-none z-[10]">
+                        {week.map((date, dayIdx) => (
+                          <div key={dayIdx} className={cn("p-2 border-t-2 border-transparent", isToday(date) && "border-primary")}>
+                            <span
+                              className={cn(
+                                "text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full transition-colors",
+                                isToday(date)
+                                  ? "bg-primary text-primary-foreground shadow-sm"
+                                  : viewMode === 'month' && !isCurrentMonth(date)
+                                    ? "text-muted-foreground/50"
+                                    : "text-muted-foreground group-hover/week:text-foreground"
+                              )}
+                            >
+                              {date.getDate()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Layer 4: Ribbons (Interactive Content) */}
+                      <div className="relative pt-10 pb-2 px-1 grid grid-cols-7 gap-y-1 pointer-events-none z-[20]">
+                        {items.map((item) => {
+                          // Determines rendering style: Chip (Single) vs Ribbon (Multi)
+
+                          const isHovered = hoveredProjectId === item.project.id;
+
+                          const projectDaysInWeek = Array.from({ length: item.duration }, (_, i) => {
+                            const d = new Date(week[0]);
+                            d.setDate(d.getDate() + item.startDayIdx + i);
+                            return d;
+                          });
+
+                          return (
+                            <div
+                              key={`${item.project.id}-${weekIndex}`}
+                              onMouseEnter={() => setHoveredProjectId(item.project.id)}
+                              onMouseLeave={() => setHoveredProjectId(null)}
+                              onClick={(e) => handleItemClick(e, item.project)}
+                              className={cn(
+                                "cursor-pointer relative h-8 transition-all duration-200 text-xs pointer-events-auto", // Enable pointer info
+                                isHovered ? "z-30 scale-[1.01]" : "z-10",
+                                // Styling specific to Type
+                                item.isSingleDay
+                                  ? "rounded-full mx-1 shadow-sm hover:shadow-md border"
+                                  : cn("shadow-md", item.isStart ? "rounded-l-md ml-1" : "-ml-1", item.isEnd ? "rounded-r-md mr-1" : "-mr-1"),
+                                item.hasConflict && "ring-2 ring-destructive ring-offset-1 border-destructive shadow-lg z-20"
+                              )}
+                              style={{
+                                gridColumnStart: item.startDayIdx + 1,
+                                gridColumnEnd: `span ${item.duration}`,
+                                gridRow: item.trackIndex + 1,
+                              }}
+                            >
+                              {/* --- SINGLE DAY RENDERER --- */}
+                              {item.isSingleDay ? (
+                                <div className={cn(
+                                  "flex items-center h-full px-2 gap-2 overflow-hidden pointer-events-auto",
+                                  // Helper to get color class - reuse logic
+                                  (() => {
+                                    const status = getStatusForDate(item.project, projectDaysInWeek[0]);
+                                    if (['booked', 'in-progress'].includes(status) && item.project.assignedCrewId) {
+                                      const crew = crews.find(c => c.id === item.project.assignedCrewId);
+                                      if (crew?.paletteId) {
+                                        const scale = CREW_PALETTES.find(p => p.id === crew.paletteId);
+                                        return scale ? scale.class : "bg-primary/10 text-primary border-primary/20";
+                                      }
+                                    }
+                                    // Default fallback or status colors
+                                    return statusColors[status] || "bg-gray-100 border-gray-200 text-gray-700";
+                                  })()
+                                )}>
+                                  {item.startTimeDisplay && (
+                                    <span className="font-mono font-bold opacity-80 shrink-0 text-[10px]">
+                                      {item.startTimeDisplay}
+                                    </span>
+                                  )}
+                                  <span className="font-semibold truncate pr-1">{item.project.name}</span>
+                                  {item.hasConflict && <AlertCircle className="h-3.5 w-3.5 text-destructive animate-pulse shrink-0" />}
+                                  {/* Single Day Assignment Count */}
+                                  {item.project.assignments && item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")] && (
+                                    <div title={`${item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")].length} assigned`} className="flex items-center gap-0.5 text-[9px] bg-white/60 px-1 rounded-sm backdrop-blur-sm self-center leading-none py-0.5 shrink-0 ml-auto mr-1 shadow-sm">
+                                      <Users className="w-2.5 h-2.5" />
+                                      {item.project.assignments[format(projectDaysInWeek[0], "yyyy-MM-dd")].length}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                /* --- MULTI DAY RENDERER (Ribbon segments) --- */
+                                <div className="absolute inset-0 flex overflow-hidden rounded-inherit">
+                                  {projectDaysInWeek.map((dayDate, i) => {
+                                    const status = getStatusForDate(item.project, dayDate);
+                                    let colorClass = statusColors[status] || "bg-gray-100 border-gray-200";
+
+                                    if (status === 'paused') {
+                                      colorClass = PAUSE_STYLE;
+                                    } else if (['booked', 'in-progress'].includes(status) && item.project.assignedCrewId) {
+                                      const crew = crews.find(c => c.id === item.project.assignedCrewId);
+                                      if (crew?.paletteId) {
+                                        const palette = CREW_PALETTES.find(p => p.id === crew.paletteId);
+                                        if (palette) colorClass = palette.class;
+                                      }
+                                    }
+
+                                    return (
+                                      <div
+                                        key={i}
+                                        onClick={(e) => handleItemClick(e, item.project)}
+                                        className={cn(
+                                          "flex-1 h-full border-y border-r first:border-l relative group/segment flex items-center px-1 pointer-events-auto cursor-pointer",
+                                          colorClass,
+                                          "border-r-black/5",
+                                          item.hasConflict && "border-destructive/20"
+                                        )}
+                                      >
+                                        {/* Content only on the first day of this specific ribbon segment */}
+                                        {i === 0 && (
+                                          <div className="flex items-center gap-2 overflow-hidden w-full whitespace-nowrap">
+                                            {item.startTimeDisplay && item.isStart && (
+                                              <span className="font-mono font-bold opacity-80 shrink-0 text-[10px]">
+                                                {item.startTimeDisplay}
+                                              </span>
+                                            )}
+                                            <span className="font-semibold truncate pr-1">
+                                              {!item.isStart && <span className="text-[10px] opacity-75 mr-1 font-normal italic">(Cont.)</span>}
+                                              {item.project.name}
+                                            </span>
+                                            {item.hasConflict && item.isStart && <AlertCircle className="h-3 w-3 text-destructive animate-pulse shrink-0 ml-auto" />}
+                                          </div>
+                                        )}
+
+                                        {/* Multi Day Assignment Count for this day segment */}
+                                        {item.project.assignments && item.project.assignments[format(dayDate, "yyyy-MM-dd")] && (
+                                          <div title={`${item.project.assignments[format(dayDate, "yyyy-MM-dd")].length} assigned`} className={`flex items-center gap-0.5 text-[9px] bg-white/40 px-1 rounded-sm backdrop-blur-sm self-center leading-none py-0.5 ml-auto mr-1 shadow-sm shrink-0 ${(i === 0 && item.isStart) ? '' : 'absolute right-0'}`}>
+                                            <Users className="w-2.5 h-2.5" />
+                                            {item.project.assignments[format(dayDate, "yyyy-MM-dd")].length}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )
+                              }
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </CardContent>
         </Card>
-      )}
-    </div>
+      )
+      }
+    </div >
   );
 }

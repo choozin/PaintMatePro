@@ -9,6 +9,8 @@ import { Download, CheckCircle2, FileText, Loader2, AlertCircle } from "lucide-r
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { calculateTaxLines } from "@/lib/financeUtils";
+import { formatCurrency } from "@/lib/currency";
 
 // Helper to load image for PDF
 const loadImage = (url: string): Promise<HTMLImageElement> => {
@@ -66,7 +68,15 @@ export function QuoteViewer({ project, client, onApprove }: QuoteViewerProps) {
         );
     }
 
-    const { lineItems = [], subtotal = 0, tax = 0, total = 0 } = activeQuote;
+    const { lineItems = [], subtotal = 0, taxTotal = 0, total = 0, taxLines = [], currency = 'USD' } = activeQuote;
+    const legacyTax = (activeQuote as any).tax || 0;
+
+    // Ensure we have calculated taxes if they weren't stored (migration fallback)
+    const displayTaxes = taxLines.length > 0
+        ? taxLines
+        : (legacyTax > 0 ? [{ name: 'Tax', amount: legacyTax, rate: (activeQuote as any).taxRate || 0 }] : []);
+
+    const displayTaxTotal = taxTotal || legacyTax;
 
     const generatePDF = async () => {
         if (!project || !org) return;
@@ -157,6 +167,10 @@ export function QuoteViewer({ project, client, onApprove }: QuoteViewerProps) {
                 doc.text(branding.companyAddress.replace('\n', ', '), pageWidth - 20, currentY, { align: 'right' });
                 currentY += 5;
             }
+            if (org?.businessNumber) {
+                doc.text(`Business No: ${org.businessNumber}`, pageWidth - 20, currentY, { align: 'right' });
+                currentY += 5;
+            }
 
             // Determine the starting point for the content based on the tallest header element
             let headerBottomY = Math.max(currentY, (logoHeight > 0 ? 15 + logoHeight : 25)) + 12;
@@ -211,8 +225,8 @@ export function QuoteViewer({ project, client, onApprove }: QuoteViewerProps) {
                         item.description,
                         item.quantity.toFixed(2),
                         item.unit,
-                        `$${item.rate.toFixed(2)}`,
-                        `$${(item.quantity * item.rate).toFixed(2)}`
+                        formatCurrency(item.rate, currency),
+                        formatCurrency(item.quantity * item.rate, currency)
                     ];
                 }),
                 theme: 'plain',
@@ -226,10 +240,16 @@ export function QuoteViewer({ project, client, onApprove }: QuoteViewerProps) {
 
             // Totals
             const finalY = (doc as any).lastAutoTable.finalY + 10;
-            doc.text(`Subtotal: $${subtotal.toFixed(2)}`, pageWidth - 20, finalY, { align: 'right' });
-            doc.text(`Tax: $${tax.toFixed(2)}`, pageWidth - 20, finalY + 7, { align: 'right' });
+            doc.text(`Subtotal: ${formatCurrency(subtotal, currency)}`, pageWidth - 20, finalY, { align: 'right' });
+
+            let currentTaxY = finalY + 7;
+            displayTaxes.forEach(tl => {
+                doc.text(`${tl.name} (${tl.rate}%): ${formatCurrency(tl.amount, currency)}`, pageWidth - 20, currentTaxY, { align: 'right' });
+                currentTaxY += 7;
+            });
+
             doc.setFont('helvetica', 'bold');
-            doc.text(`Total: $${total.toFixed(2)}`, pageWidth - 20, finalY + 14, { align: 'right' });
+            doc.text(`Total: ${formatCurrency(total, currency)}`, pageWidth - 20, currentTaxY + 7, { align: 'right' });
 
             // Sanitize filename to prevent browser fallback to hash string
             const safeProjectName = project.name.replace(/[^a-zA-Z0-9-]/g, '_');
@@ -283,14 +303,14 @@ export function QuoteViewer({ project, client, onApprove }: QuoteViewerProps) {
                             <CardTitle>Quote Details</CardTitle>
                         </div>
                         <div className="text-right">
-                            <div className="text-2xl font-bold text-primary">${total.toFixed(2)}</div>
+                            <div className="text-2xl font-bold text-primary">{formatCurrency(total, currency)}</div>
                             <div className="text-xs text-muted-foreground">Total Estimate</div>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <div className="relative w-full overflow-auto">
-                        <table className="w-full caption-bottom text-sm text-left">
+                    <div className="relative w-full max-w-full overflow-x-auto">
+                        <table className="w-full min-w-[600px] caption-bottom text-sm text-left">
                             <thead className="[&_tr]:border-b">
                                 <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
                                     <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[40%]">Description</th>
@@ -317,8 +337,8 @@ export function QuoteViewer({ project, client, onApprove }: QuoteViewerProps) {
                                             <>
                                                 <td className="p-4 align-middle text-right">{item.quantity}</td>
                                                 <td className="p-4 align-middle">{item.unit}</td>
-                                                <td className="p-4 align-middle text-right">${item.rate.toFixed(2)}</td>
-                                                <td className="p-4 align-middle text-right">${(item.quantity * item.rate).toFixed(2)}</td>
+                                                <td className="p-4 align-middle text-right">{formatCurrency(item.rate, currency)}</td>
+                                                <td className="p-4 align-middle text-right">{formatCurrency(item.quantity * item.rate, currency)}</td>
                                             </>
                                         )}
                                     </tr>
@@ -330,15 +350,17 @@ export function QuoteViewer({ project, client, onApprove }: QuoteViewerProps) {
                     <div className="p-6 bg-muted/10 border-t flex flex-col items-end gap-2">
                         <div className="flex justify-between w-full max-w-xs text-sm">
                             <span className="text-muted-foreground">Subtotal:</span>
-                            <span>${subtotal.toFixed(2)}</span>
+                            <span>{formatCurrency(subtotal, currency)}</span>
                         </div>
-                        <div className="flex justify-between w-full max-w-xs text-sm">
-                            <span className="text-muted-foreground">Tax:</span>
-                            <span>${tax.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between w-full max-w-xs font-bold text-lg pt-2 border-t">
+                        {displayTaxes.map((tl, idx) => (
+                            <div key={idx} className="flex justify-between w-full max-w-xs text-sm">
+                                <span className="text-muted-foreground">{tl.name} ({tl.rate}%):</span>
+                                <span>{formatCurrency(tl.amount, currency)}</span>
+                            </div>
+                        ))}
+                        <div className="flex justify-between w-full max-w-xs font-bold text-lg pt-2 border-t mt-2">
                             <span>Total:</span>
-                            <span>${total.toFixed(2)}</span>
+                            <span>{formatCurrency(total, currency)}</span>
                         </div>
                     </div>
                 </CardContent>

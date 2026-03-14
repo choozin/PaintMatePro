@@ -138,7 +138,7 @@ export const updateUserRole = functions.https.onCall(async (data, context) => {
     // 4. Update Target User's Firestore Document
     const userDocRef = db.collection('users').doc(userId);
     await userDocRef.update({
-      [`orgs.${orgId}`]: role, // Update the role in the Firestore document
+      [`roles.${orgId}`]: role, // Update the role in the Firestore document
     });
     console.log(`Successfully updated Firestore document for user ${userId} in org ${orgId} to role ${role}.`);
 

@@ -142,10 +142,12 @@ export function canHaveRole(currentUserRole: OrgRole, targetRole: OrgRole): bool
 
 // Helper to map legacy roles to new roles if needed
 export function normalizeRole(role: string): OrgRole | string {
-    if (role === 'owner') return 'org_owner';
-    if (role === 'admin') return 'org_admin';
-    if (role === 'member') return 'painter'; // Default fallback for old 'member'
-    return role;
+    if (!role) return 'painter';
+    const lowRole = role.toLowerCase();
+    if (lowRole === 'owner') return 'org_owner';
+    if (lowRole === 'admin') return 'org_admin';
+    if (lowRole === 'member') return 'painter'; // Default fallback for old 'member'
+    return lowRole;
 }
 
 // UI Metadata for Permissions

@@ -11,6 +11,7 @@ import { QuoteViewer } from "./QuoteViewer";
 import { Timestamp } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface PortalDashboardProps {
     project: Project;
@@ -21,6 +22,7 @@ interface PortalDashboardProps {
 }
 
 export function PortalDashboard({ project, client, rooms, invoices = [], onApproveQuote }: PortalDashboardProps) {
+    const { toast } = useToast();
     const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
@@ -46,7 +48,11 @@ export function PortalDashboard({ project, client, rooms, invoices = [], onAppro
             if (url) window.location.href = url;
         } catch (err: any) {
             console.error('Checkout error:', err);
-            alert(err.message || 'Payment failed. Please try again.');
+            toast({
+                variant: 'destructive',
+                title: 'Payment Error',
+                description: err.message || 'Payment failed. Please try again.',
+            });
         } finally {
             setPayingInvoiceId(null);
         }

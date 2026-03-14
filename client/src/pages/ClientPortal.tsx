@@ -8,8 +8,9 @@ import { Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function ClientPortal() {
-  const [match, params] = useRoute("/portal/:token");
-  const token = params?.token;
+  const [match, params] = useRoute("/portal/:route*");
+  const pathParts = params?.route?.split('/') || [];
+  const token = pathParts.length > 1 ? pathParts[1] : pathParts[0];
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

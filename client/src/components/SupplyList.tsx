@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCatalog } from "@/hooks/useCatalog";
 import { useDebounce } from "@/hooks/useDebounce";
 import { orgOperations } from "@/lib/firestore";
+import { calcRoomTrimLFUtil, calcOpeningAreaUtil } from "@/lib/quote-generator-v2";
 import { hasPermission } from "@/lib/permissions";
 import {
     Dialog,
@@ -365,21 +366,29 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             const wallCoverage = rConfig.wallCoverage ?? config.coveragePerGallon ?? 350;
             const ceilingCoverage = rConfig.ceilingCoverage ?? config.ceilingCoverage ?? 400;
             const trimWidth = rConfig.trimWidth ?? config.defaultTrimWidth ?? 4;
+            const baseboardHeight = rConfig.baseboardHeight ?? trimWidth;
+            const casingWidth = rConfig.casingWidth ?? 3.5;
+            const crownWidth = rConfig.crownMoldingWidth ?? 3.5;
 
             const billingType = rConfig.paintBilling || config.paintBilling || 'billable';
 
+            // Deduct door/window opening area from wall area
+            const openingArea = calcOpeningAreaUtil(room);
             let netWallArea = wallArea;
             if (config.deductionMethod === 'exact') {
                 const ratio = stats.totalWallArea > 0 ? (wallArea / stats.totalWallArea) : 0;
-                netWallArea = Math.max(0, wallArea - ((config.deductionExactSqFt || 0) * ratio));
+                netWallArea = Math.max(0, wallArea - ((config.deductionExactSqFt || 0) * ratio) - openingArea);
             } else {
-                netWallArea = wallArea * (1 - (config.deductionFactor || 0));
+                netWallArea = Math.max(0, wallArea * (1 - (config.deductionFactor || 0)) - openingArea);
             }
 
             const wallPaints = (netWallArea * wallCoats) / wallCoverage;
             const ceilingPaints = includeCeiling ? (floorArea * ceilingCoats) / ceilingCoverage : 0;
-            const trimArea = perimeter * (trimWidth / 12);
-            const trimPaints = includeTrim ? (trimArea * trimCoats) / wallCoverage : 0;
+
+            // Trim paint: use actual LF from door/window-aware calculation × trim surface width
+            const trimLF = calcRoomTrimLFUtil(room);
+            const trimSurfaceArea = includeTrim ? (trimLF * (baseboardHeight / 12)) : 0;
+            const trimPaints = trimSurfaceArea > 0 ? (trimSurfaceArea * trimCoats) / wallCoverage : 0;
             const primerPaints = includePrimer ? netWallArea / wallCoverage : 0;
 
             const roomTotalGallons = wallPaints + ceilingPaints + trimPaints + primerPaints;
@@ -457,7 +466,6 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
     }, [stats, config, rooms]);
 
     const laborStats = React.useMemo(() => {
-        // Refined Labor Logic
         // Wall Hours
         const wallHours = paintNeeds.netWallArea / laborConfig.productionRate;
 
@@ -468,11 +476,19 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
             ceilingHours = stats.totalFloorArea / rate;
         }
 
-        // Trim Hours (simplified: 150 linear ft per hour approx, or use production rate as proxy for now)
+        // Trim Hours — use actual trim LF from all rooms
         let trimHours = 0;
-        if (config.includeTrim) {
-            const trimArea = stats.totalPerimeter * 0.5;
-            trimHours = trimArea / laborConfig.productionRate; // Using wall rate for trim for now
+        if (config.includeTrim && rooms) {
+            const totalTrimLF = rooms.reduce((sum, room) => {
+                const rConfig = room.supplyConfig || {};
+                const roomIncludesTrim = rConfig.includeTrim ?? config.includeTrim;
+                return sum + (roomIncludesTrim ? calcRoomTrimLFUtil(room) : 0);
+            }, 0);
+            // Trim is slower — production rate ~60% of wall rate (trim is detail work)
+            const trimProductionRate = laborConfig.productionRate * 0.6;
+            const trimWidth = config.defaultTrimWidth ?? 4;
+            const trimSqFt = totalTrimLF * (trimWidth / 12);
+            trimHours = trimSqFt / trimProductionRate;
         }
 
         const baseHours = wallHours + ceilingHours + trimHours;
@@ -480,7 +496,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
         const totalCost = totalHours * laborConfig.hourlyRate;
 
         return { totalHours, totalCost };
-    }, [paintNeeds, stats, config, laborConfig]);
+    }, [paintNeeds, stats, config, laborConfig, rooms]);
 
     const materialsStats = React.useMemo(() => {
         const billablePaintCost = paintNeeds.totalBillableCost;
@@ -722,7 +738,7 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                                 <div className="text-center p-4 text-muted-foreground border-2 border-dashed rounded-lg">No paint calculated for these rooms.</div>
                             ) : (
                                 <div className="space-y-4">
-                                    <div className="rounded-md border overflow-hidden">
+                                    <div className="rounded-md border overflow-x-auto">
                                         <Table>
                                             <TableHeader className="bg-slate-50">
                                                 <TableRow>
@@ -834,21 +850,21 @@ export function SupplyList({ projectId, onNext }: SupplyListProps) {
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
-                                                    <div className="grid grid-cols-4 items-center gap-4">
-                                                        <Label htmlFor="type" className="text-right">Type</Label>
-                                                        <div className="col-span-3">
-                                                            <Select value={newSupplyBillingType} onValueChange={(val: 'billable' | 'expense' | 'checklist' | 'provided_by_customer') => setNewSupplyBillingType(val)}>
-                                                                <SelectTrigger>
-                                                                    <SelectValue placeholder="Billing Type" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="checklist">In Inventory</SelectItem>
-                                                                    <SelectItem value="expense">Expense (Internal Cost)</SelectItem>
-                                                                    <SelectItem value="billable">Billable (On Quote)</SelectItem>
-                                                                    <SelectItem value="provided_by_customer">Provided by Customer ($0)</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
+                                                </div>
+                                                <div className="grid grid-cols-4 items-center gap-4">
+                                                    <Label htmlFor="type" className="text-right">Type</Label>
+                                                    <div className="col-span-3">
+                                                        <Select value={newSupplyBillingType} onValueChange={(val: 'billable' | 'expense' | 'checklist' | 'provided_by_customer') => setNewSupplyBillingType(val)}>
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Billing Type" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="checklist">In Inventory</SelectItem>
+                                                                <SelectItem value="expense">Expense (Internal Cost)</SelectItem>
+                                                                <SelectItem value="billable">Billable (On Quote)</SelectItem>
+                                                                <SelectItem value="provided_by_customer">Provided by Customer ($0)</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
                                                     </div>
                                                 </div>
                                             </div>

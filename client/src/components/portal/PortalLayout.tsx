@@ -30,11 +30,11 @@ export function PortalLayout({
     // Clean, centered, minimal distractions. 
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans selection:bg-primary/20">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans selection:bg-primary/20 w-full max-w-[100vw] overflow-x-hidden flex flex-col">
             {/* Top Bar: Contact & Branding */}
             <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div className="container mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                <div className="container mx-auto max-w-6xl px-4 min-h-[4rem] py-2 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                         <div className="flex items-center gap-2 font-bold text-xl tracking-tight mr-4">
                             <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground">
                                 P

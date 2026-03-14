@@ -100,6 +100,12 @@ export interface Org {
   defaultUnits: 'metric' | 'imperial';
   plan: 'free' | 'pro' | 'enterprise';
   region: string;
+  currency: string; // e.g. "USD", "CAD"
+  businessNumber?: string; // e.g. Tax ID, EIN, GST Number
+  jurisdiction?: {
+    country: 'US' | 'CA';
+    stateProvince: string;
+  };
 
   // Global Feature Flags
   enableTeamFeatures?: boolean; // Default true. detailed crew assignment, payroll, etc.
@@ -116,10 +122,12 @@ export interface Org {
     defaultTrimCoats: number;
     defaultCeilingCoats: number;
     defaultTrimRate?: number; // $/linear_ft
-    defaultTaxRate?: number; // % (e.g., 8.25)
+    defaultTaxRate?: number; // % (e.g., 8.25) - Deprecated, use defaultTaxLines
+    defaultTaxLines?: Array<{ name: string; rate: number }>; // e.g. [{name: 'GST', rate: 5}, {name: 'PST', rate: 7}]
     defaultPricePerGallon?: number; // New: Default price
     defaultCostPerGallon?: number; // New: Default cost
     defaultPaintBilling?: 'billable' | 'expense' | 'provided_by_customer'; // New: Default billing behavior
+    deductOpeningsFromLabor?: boolean; // If true, deduct door/window area from labor hour calculations too (default: false)
   };
 
   // Quoting System Phase 2: Customizable Supply Rules
@@ -152,6 +160,7 @@ export interface Org {
     defaultTerms?: string;
     defaultExpirationDays?: number;
     defaultTaxRate?: number; // Moved/Synced from estimatingSettings?
+    defaultTaxLines?: Array<{ name: string; rate: number }>;
     templateLayout?: 'standard' | 'modern' | 'minimal';
   };
 
@@ -192,6 +201,7 @@ export interface Org {
   invoiceSettings?: {
     autoCreateOnQuoteAccept?: boolean;    // Default: false (manual)
     defaultPaymentTerms?: 'due_on_receipt' | 'net_15' | 'net_30' | 'net_60'; // Default: net_30
+    defaultTaxLines?: Array<{ name: string; rate: number }>;
     invoiceNumberPrefix?: string;         // Default: 'INV'
     nextInvoiceNumber?: number;           // Auto-incrementing counter, starts at 1
     depositHandling?: 'invoice' | 'first_class'; // Default: 'invoice' (industry standard)
@@ -274,6 +284,13 @@ export interface ProjectSupplyConfig {
   // Maybe just a list of "Extra Supplies" added manually
   extraSupplies?: CustomSupplyItem[];
   deductionExactSqFt?: number;
+
+  // Enhanced Trim
+  includeBaseboard?: boolean;    // Default: true when includeTrim is on
+  includeCrownMolding?: boolean; // Default: false
+  casingWidth?: number;          // inches, default: 3.5" (standard casing)
+  baseboardHeight?: number;      // inches, default: 4" (replaces trimWidth concept for baseboard)
+  crownMoldingWidth?: number;    // inches, default: 3.5"
 }
 
 
@@ -359,6 +376,7 @@ export interface MiscMeasurement {
   roomId: string; // 'global' or specific roomId
   coverage?: number; // sqft/gallon (for Paint calculation)
   paintProductId?: string; // ID of required paint product
+  paintUnitPrice?: number; // Snapshotted price ($/gal) at time of addition
   coats?: number; // Number of coats
   excludeFromSharedPaint?: boolean;
   customPaintArea?: number; // User-defined area for paint calc (sqft) when unit is not sqft/linear_ft
@@ -382,6 +400,10 @@ export interface Room {
 
   // Overrides
   supplyConfig?: ProjectSupplyConfig;
+
+  // Door & Window Openings (feed into deductions + trim calc)
+  doors?: Array<{ width: number; height: number; count: number; includeCasing?: boolean }>;
+  windows?: Array<{ width: number; height: number; count: number; includeCasing?: boolean }>;
 }
 
 
@@ -472,7 +494,9 @@ export interface QuoteOption {
     unitCost?: number;
   }>;
   subtotal: number;
-  tax: number;
+  tax?: number; // Deprecated
+  taxTotal: number;
+  taxLines?: Array<{ name: string; rate: number; amount: number }>;
   total: number;
 }
 
@@ -490,8 +514,11 @@ export interface Quote {
     amount?: number; // Header total
   }>;
   subtotal: number;
-  tax: number;
+  tax?: number; // Deprecated, use taxTotal
+  taxTotal: number;
+  taxLines?: Array<{ name: string; rate: number; amount: number }>;
   total: number;
+  currency?: string;
   validUntil: Timestamp;
 
   createdAt?: Timestamp;
@@ -812,12 +839,17 @@ export interface Employee {
   id: string;
   orgId: string;
   name: string;
-  email?: string;
-  phone?: string;
-  role?: string;
+  email: string;
+  phone: string;
+  role: string;
+  address?: string;
+  jurisdiction?: {
+    country: 'US' | 'CA';
+    stateProvince: string;
+  };
 
   // Compensation
-  payType?: 'hourly' | 'salary';
+  payType: 'hourly' | 'salary';
   payRate?: number; // Hourly rate or annual salary
 
   createdAt: Timestamp;
@@ -994,9 +1026,12 @@ export interface Invoice {
 
   // Financials
   subtotal: number;
-  taxRate: number; // Percentage (e.g., 8.25)
-  tax: number;
+  taxRate?: number; // Percentage (e.g., 8.25) - Deprecated
+  tax?: number; // Deprecated, use taxTotal
+  taxTotal: number;
+  taxLines?: Array<{ name: string; rate: number; amount: number }>;
   total: number;
+  currency?: string;
   amountPaid: number;
   balanceDue: number;
 

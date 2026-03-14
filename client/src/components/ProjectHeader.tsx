@@ -60,7 +60,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
 
     // Status Logic
     const statusColors: Record<string, string> = {
-        lead: "bg-slate-100 text-slate-700 border-slate-200",
+        lead: "bg-amber-100 text-amber-700 border-amber-200",
         quoted: "bg-purple-100 text-purple-700 border-purple-200",
         booked: "bg-sky-100 text-sky-700 border-sky-200",
         "in-progress": "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -70,7 +70,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
         invoiced: "bg-yellow-100 text-yellow-800 border-yellow-200",
         paid: "bg-green-100 text-green-800 border-green-200",
         "on-hold": "bg-rose-100 text-rose-700 border-rose-200",
-        pending: "bg-gray-100 text-gray-700 border-gray-200",
+        pending: "bg-violet-100 text-violet-700 border-violet-200",
         overdue: "bg-red-100 text-red-700 border-red-500 animate-pulse font-bold text-md px-4 border-2", // Custom prominent style
     };
 
@@ -104,18 +104,8 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
 
 
     // Determine Current/Next Steps from Unified Timeline
-    // Filter out "Invoice" steps for Current/Next if they are just pending placeholders?
-    // User wants to see "Awaiting Invoice" if project is completed.
-
-    // Find the last completed event
     const completedEvents = timelineEvents.filter(e => e.status === 'completed');
     const currentStep = completedEvents.length > 0 ? completedEvents[completedEvents.length - 1] : timelineEvents[0];
-
-    // Find the first pending/future event
-    // IMPORTANT: timelineEvents includes "Project Completed" but we removed it from timelineUtils output?
-    // Wait, I removed it from the *returned* array in timelineUtils. So it is GONE from here too?
-    // If so, `currentStep` might miss 'Completed'.
-    // Actually, I can check project status. If Status is 'overdue', it overrides next step?
 
     const futureEvents = timelineEvents.filter(e => e.status === 'pending' || e.status === 'future');
     const nextStep = futureEvents.length > 0 ? futureEvents[0] : null;
@@ -174,12 +164,12 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
     return (
         <div className={cn("flex flex-col gap-6 w-full", className)}>
             {/* 1. Top Bar: Back & Status */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <Button variant="ghost" size="sm" onClick={() => setLocation("/projects")} className="-ml-2 text-muted-foreground hover:text-foreground">
                     <ArrowLeft className="h-5 w-5 mr-1" />
                     Back
                 </Button>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full sm:w-auto">
                     {extraActions}
                     {/* Complete Project Toggle */}
                     <Button
@@ -250,7 +240,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
                     {/* Column 1: Location & Contact */}
-                    <div className="space-y-6">
+                    <div className="space-y-6 min-w-0">
                         {/* Location */}
                         <div className="space-y-2">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Location</p>
@@ -344,7 +334,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
                     </div>
 
                     {/* Column 2: Schedule / Timeline */}
-                    <div className="space-y-4">
+                    <div className="space-y-4 min-w-0">
                         <div className="flex flex-col gap-4">
                             <div className="flex items-center justify-between">
                                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Project Schedule</p>
@@ -397,7 +387,7 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
                     </div>
 
                     {/* Column 3: Project Notes Section */}
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-4 min-w-0">
                         <div className="space-y-3">
                             <div>
                                 <Label htmlFor="project-notes-header" className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Client-Visible Notes</Label>
@@ -405,9 +395,9 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
                             <div className="relative">
                                 <textarea
                                     id="project-notes-header"
-                                    value={project?.notes || ""}
-                                    onChange={(e) => {
-                                        if (project) updateProject.mutate({ id: project.id, data: { notes: e.target.value } });
+                                    defaultValue={project?.notes || ""}
+                                    onBlur={(e) => {
+                                        if (project && e.target.value !== (project.notes || "")) updateProject.mutate({ id: project.id, data: { notes: e.target.value } });
                                     }}
                                     className="flex min-h-[90px] w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 resize-y"
                                     placeholder="General project notes, scope overviews, or instructions for the team..."
@@ -423,9 +413,9 @@ export function ProjectHeader({ project, client, clientName, clientPhone, client
                             <div className="relative">
                                 <textarea
                                     id="internal-notes-header"
-                                    value={project?.internalNotes || ""}
-                                    onChange={(e) => {
-                                        if (project) updateProject.mutate({ id: project.id, data: { internalNotes: e.target.value } });
+                                    defaultValue={project?.internalNotes || ""}
+                                    onBlur={(e) => {
+                                        if (project && e.target.value !== (project.internalNotes || "")) updateProject.mutate({ id: project.id, data: { internalNotes: e.target.value } });
                                     }}
                                     className="flex min-h-[90px] w-full rounded-md border border-amber-200 bg-amber-50/50 px-3 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-50 resize-y"
                                     placeholder="Internal team notes, issues, pricing concerns, or vendor details..."

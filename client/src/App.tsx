@@ -29,15 +29,15 @@ import ARAgingReport from "@/pages/ARAgingReport";
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="flex h-screen w-full">
+      className="flex h-[100dvh] w-full overflow-hidden w-full max-w-[100vw]">
       <AppSidebar />
       <div
-        className="flex flex-col flex-1">
-        <header className="flex items-center justify-between px-6 py-4 border-b">
+        className="flex flex-col flex-1 w-full min-w-0 overflow-hidden">
+        <header className="flex items-center justify-between px-4 sm:px-6 py-4 border-b shrink-0">
           <SidebarTrigger data-testid="button-sidebar-toggle" />
           <ThemeToggle />
         </header>
-        <main className="flex-1 overflow-auto p-8">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-5 md:p-8 w-full max-w-full">
           {children}
         </main>
       </div>
@@ -65,6 +65,7 @@ function Router() {
       <PublicLayout>
         <Switch>
           <Route path="/login" component={Login} />
+          <Route path="/portal/quote/:token" component={ClientPortal} />
           <Route path="/portal/:token" component={ClientPortal} />
           <Route component={NotFound} />
         </Switch>

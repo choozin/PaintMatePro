@@ -1,5 +1,8 @@
 # PaintMatePro - Permanent Todo List
 
+## Critical Compliance Requirement
+- [ ] Ensure payroll, invoicing and any payment related features are all in line with compliance and legal requirements, for every jurisdiction in the united states and canada.
+
 ## Completed Prerequisites
 - [x] Crew Boss Roles, Org Settings, & Terminology
 - [x] Employee Pay Rates & Compensation Base
@@ -46,9 +49,9 @@
 - [ ] Job Costing Dashboard — Compare estimated vs actual labor hours per project
 
 ## Other Backlog
-- [ ] Add a password reset feature
-- [ ] Make the nav open by default (with login screen) if user is not logged in
-- [ ] Add the ability to delete users from an App Management page
+- [x] Add a password reset feature
+- [x] Make the nav open by default (with login screen) if user is not logged in
+- [x] Add the ability to delete users from an App Management page
 
 ## Invoicing — Phase 2
 - [ ] Stripe Connect setup & Pay Now integration (deploy Cloud Functions, configure Stripe keys, wire up portal Pay Now button)
